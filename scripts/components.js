@@ -129,64 +129,81 @@ class ComponentsManager {
      * @returns {Promise<Array>} 元件数组
      */
     async loadSystemComponents() {
-        // 这里模拟加载系统元件库
-        // 在实际实现中，这会从data/system-components/目录加载JSON文件
+        try {
+            const standardComponents = await this.loadComponentsFromDirectory('data/system-components/standard');
+            const customComponents = await this.loadComponentsFromDirectory('data/system-components/custom');
+            
+            // 标记自制元件
+            customComponents.forEach(component => {
+                component.custom = true;
+            });
 
-        const mockComponents = [
+            const allComponents = [...standardComponents, ...customComponents];
+            console.log(`从JSON文件加载了 ${allComponents.length} 个元件`);
+            return allComponents;
+        } catch (error) {
+            console.error('加载元件失败，使用模拟数据:', error);
+            return this.getMockComponents();
+        }
+    }
+
+    /**
+     * 从指定目录加载元件JSON文件
+     * @param {string} directory - 目录路径
+     * @returns {Promise<Array>} 元件数组
+     */
+    async loadComponentsFromDirectory(directory) {
+        // 使用Electron的API读取文件
+        if (window.electronAPI && window.electronAPI.readComponentFiles) {
+            return await window.electronAPI.readComponentFiles(directory);
+        }
+        
+        // 如果没有Electron API，返回空数组
+        console.warn('Electron API不可用，无法读取文件');
+        return [];
+    }
+
+    /**
+     * 获取模拟元件数据（备用）
+     * @returns {Array} 模拟元件数组
+     */
+    getMockComponents() {
+        return [
             {
                 id: 'arduino-uno-r3',
                 name: 'Arduino Uno R3',
                 category: 'microcontroller',
-                icon: '🔧',
                 description: 'Arduino开发板，基于ATmega328P微控制器',
-                tags: ['arduino', 'uno', 'microcontroller']
+                tags: ['arduino', 'uno', 'microcontroller'],
+                dimensions: { width: 80, height: 120 },
+                pins: {
+                    side1: [
+                        {"pinName": "A0", "type": "analog_io", "order": 1},
+                        {"pinName": "A1", "type": "analog_io", "order": 2}
+                    ],
+                    side2: [
+                        {"pinName": "VIN", "type": "power", "order": 1},
+                        {"pinName": "GND", "type": "ground", "order": 2}
+                    ]
+                }
             },
             {
                 id: 'led-5mm',
                 name: '5mm LED',
                 category: 'output',
-                icon: '💡',
                 description: '5mm直径LED灯，支持多种颜色',
-                tags: ['led', 'light', 'output']
-            },
-            {
-                id: 'hc05-bluetooth',
-                name: 'HC-05蓝牙模块',
-                category: 'communication',
-                icon: '📡',
-                description: 'HC-05蓝牙串口模块，支持蓝牙通信',
-                tags: ['bluetooth', 'communication', 'wireless']
-            },
-            {
-                id: 'resistor-220',
-                name: '220Ω电阻',
-                category: 'power',
-                icon: '⚡',
-                description: '220欧姆碳膜电阻，常用限流电阻',
-                tags: ['resistor', 'resistance', 'power']
-            },
-            {
-                id: 'servo-sg90',
-                name: 'SG90舵机',
-                category: 'output',
-                icon: '🔄',
-                description: 'SG90 9g舵机，180度旋转范围',
-                tags: ['servo', 'motor', 'rotation']
-            },
-            {
-                id: 'dht22-sensor',
-                name: 'DHT22温湿度传感器',
-                category: 'sensor',
-                icon: '🌡️',
-                description: '数字温湿度传感器，精度较高',
-                tags: ['temperature', 'humidity', 'sensor']
+                tags: ['led', 'light', 'output'],
+                dimensions: { width: 20, height: 15 },
+                pins: {
+                    side1: [
+                        {"pinName": "正极", "type": "power", "order": 1}
+                    ],
+                    side3: [
+                        {"pinName": "负极", "type": "ground", "order": 1}
+                    ]
+                }
             }
         ];
-
-        // 模拟网络延迟
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        return mockComponents;
     }
 
     /**
@@ -257,12 +274,28 @@ class ComponentsManager {
         card.draggable = true;
         card.dataset.componentId = component.id;
 
+        // 生成图标
+        const icon = this.getComponentIcon(component);
+
         card.innerHTML = `
-            <div class="component-icon">${component.icon}</div>
+            <div class="component-icon">${icon}</div>
             <div class="component-name">${component.name}</div>
             <div class="component-category">${this.getCategoryName(component.category)}</div>
             <div class="component-description">${component.description}</div>
+            <div class="component-actions">
+                <button class="preview-btn" onclick="event.stopPropagation()">预览</button>
+            </div>
         `;
+
+        // 添加预览按钮事件
+        const previewBtn = card.querySelector('.preview-btn');
+        if (previewBtn) {
+            previewBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                this.showComponentPreview(component);
+            });
+        }
 
         // 添加拖拽事件
         card.addEventListener('dragstart', (e) => {
@@ -275,7 +308,29 @@ class ComponentsManager {
             card.classList.remove('dragging');
         });
 
+        // 双击预览
+        card.addEventListener('dblclick', () => {
+            this.showComponentPreview(component);
+        });
+
         return card;
+    }
+
+    /**
+     * 获取元件图标
+     * @param {Object} component - 元件对象
+     * @returns {string} 图标
+     */
+    getComponentIcon(component) {
+        const iconMap = {
+            'microcontroller': '🔧',
+            'sensor': '🌡️',
+            'output': '💡',
+            'communication': '📡',
+            'power': '⚡'
+        };
+
+        return iconMap[component.category] || '⚙️';
     }
 
     /**
@@ -354,6 +409,302 @@ class ComponentsManager {
         if (descriptionTextarea) descriptionTextarea.value = '';
 
         console.log('元件设计器已重置');
+    }
+
+    /**
+     * 显示元件预览窗口
+     * @param {Object} component - 元件对象
+     */
+    showComponentPreview(component) {
+        console.log('显示元件预览:', component.name);
+
+        // 创建预览窗口
+        const previewModal = this.createPreviewModal(component);
+        document.body.appendChild(previewModal);
+
+        // 显示动画
+        requestAnimationFrame(() => {
+            previewModal.classList.add('show');
+        });
+    }
+
+    /**
+     * 创建预览模态窗口
+     * @param {Object} component - 元件对象
+     * @returns {HTMLElement} 模态窗口元素
+     */
+    createPreviewModal(component) {
+        const modal = document.createElement('div');
+        modal.className = 'component-preview-modal';
+        modal.innerHTML = `
+            <div class="preview-backdrop"></div>
+            <div class="preview-content">
+                <div class="preview-header">
+                    <h3>${component.name}</h3>
+                    <button class="close-btn">&times;</button>
+                </div>
+                <div class="preview-body">
+                    <div class="component-render" id="component-render-${component.id}">
+                        <!-- 元件渲染区域 -->
+                    </div>
+                    <div class="component-info">
+                        <div class="info-section">
+                            <h4>基本信息</h4>
+                            <p><strong>类别:</strong> ${this.getCategoryName(component.category)}</p>
+                            <p><strong>描述:</strong> ${component.description}</p>
+                            ${component.dimensions ? `<p><strong>尺寸:</strong> ${component.dimensions.width} × ${component.dimensions.height}</p>` : ''}
+                        </div>
+                        ${component.pins ? this.renderPinInfo(component.pins) : ''}
+                        ${component.specifications ? this.renderSpecifications(component.specifications) : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // 绑定关闭事件
+        modal.querySelector('.close-btn').addEventListener('click', () => {
+            this.closePreviewModal(modal);
+        });
+
+        modal.querySelector('.preview-backdrop').addEventListener('click', () => {
+            this.closePreviewModal(modal);
+        });
+
+        // ESC键关闭
+        const handleEscape = (e) => {
+            if (e.key === 'Escape') {
+                this.closePreviewModal(modal);
+                document.removeEventListener('keydown', handleEscape);
+            }
+        };
+        document.addEventListener('keydown', handleEscape);
+
+        // 渲染元件形态
+        setTimeout(() => {
+            this.renderComponentShape(component, `component-render-${component.id}`);
+        }, 100);
+
+        return modal;
+    }
+
+    /**
+     * 渲染引脚信息
+     * @param {Object} pins - 引脚配置
+     * @returns {string} HTML字符串
+     */
+    renderPinInfo(pins) {
+        let html = '<div class="info-section"><h4>引脚配置</h4>';
+        
+        Object.keys(pins).forEach(side => {
+            if (pins[side] && pins[side].length > 0) {
+                html += `<div class="pin-side">
+                    <strong>${side.toUpperCase()}:</strong>
+                    <ul>`;
+                pins[side].forEach(pin => {
+                    html += `<li>${pin.pinName} (${pin.type})</li>`;
+                });
+                html += '</ul></div>';
+            }
+        });
+        
+        html += '</div>';
+        return html;
+    }
+
+    /**
+     * 渲染规格信息
+     * @param {Object} specifications - 规格对象
+     * @returns {string} HTML字符串
+     */
+    renderSpecifications(specifications) {
+        let html = '<div class="info-section"><h4>技术规格</h4><ul>';
+        
+        Object.keys(specifications).forEach(key => {
+            const value = specifications[key];
+            const displayKey = this.getSpecDisplayName(key);
+            html += `<li><strong>${displayKey}:</strong> ${value}</li>`;
+        });
+        
+        html += '</ul></div>';
+        return html;
+    }
+
+    /**
+     * 获取规格显示名称
+     * @param {string} key - 规格键名
+     * @returns {string} 显示名称
+     */
+    getSpecDisplayName(key) {
+        const specNames = {
+            'voltage': '电压',
+            'current': '电流',
+            'digitalPins': '数字引脚',
+            'analogPins': '模拟引脚',
+            'flashMemory': '闪存',
+            'frequency': '频率',
+            'range': '范围',
+            'accuracy': '精度'
+        };
+        
+        return specNames[key] || key;
+    }
+
+    /**
+     * 渲染元件形态
+     * @param {Object} component - 元件对象
+     * @param {string} containerId - 容器ID
+     */
+    renderComponentShape(component, containerId) {
+        const container = document.getElementById(containerId);
+        if (!container || !component.pins || !component.dimensions) {
+            container.innerHTML = '<div class="no-shape">暂无形态预览</div>';
+            return;
+        }
+
+        // 创建SVG画布
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const { width, height } = component.dimensions;
+        const scale = Math.min(300 / width, 200 / height, 3); // 自适应缩放
+        const svgWidth = width * scale;
+        const svgHeight = height * scale;
+        
+        svg.setAttribute('width', svgWidth + 100); // 留出引脚空间
+        svg.setAttribute('height', svgHeight + 100);
+        svg.setAttribute('viewBox', `0 0 ${svgWidth + 100} ${svgHeight + 100}`);
+
+        // 绘制主体矩形
+        const mainRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        mainRect.setAttribute('x', 50);
+        mainRect.setAttribute('y', 50);
+        mainRect.setAttribute('width', svgWidth);
+        mainRect.setAttribute('height', svgHeight);
+        mainRect.setAttribute('fill', '#f0f0f0');
+        mainRect.setAttribute('stroke', '#333');
+        mainRect.setAttribute('stroke-width', 2);
+        mainRect.setAttribute('rx', 4);
+        svg.appendChild(mainRect);
+
+        // 添加元件名称
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', 50 + svgWidth / 2);
+        text.setAttribute('y', 50 + svgHeight / 2);
+        text.setAttribute('text-anchor', 'middle');
+        text.setAttribute('dominant-baseline', 'middle');
+        text.setAttribute('font-size', Math.max(10, Math.min(14, svgWidth / 8)));
+        text.setAttribute('fill', '#333');
+        text.textContent = component.name;
+        svg.appendChild(text);
+
+        // 绘制引脚
+        this.drawPins(svg, component.pins, svgWidth, svgHeight, scale);
+
+        container.innerHTML = '';
+        container.appendChild(svg);
+    }
+
+    /**
+     * 绘制引脚
+     * @param {SVGElement} svg - SVG元素
+     * @param {Object} pins - 引脚配置
+     * @param {number} width - 主体宽度
+     * @param {number} height - 主体高度
+     * @param {number} scale - 缩放比例
+     */
+    drawPins(svg, pins, width, height, scale) {
+        const pinSize = 8;
+        const offset = 50;
+
+        Object.keys(pins).forEach(side => {
+            const sidePins = pins[side];
+            if (!sidePins || sidePins.length === 0) return;
+
+            sidePins.forEach((pin, index) => {
+                const pinRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                const pinText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                
+                let x, y, textX, textY;
+                const spacing = side === 'side1' || side === 'side3' ? 
+                    width / (sidePins.length + 1) : 
+                    height / (sidePins.length + 1);
+
+                switch (side) {
+                    case 'side1': // 上边
+                        x = offset + (index + 1) * spacing - pinSize / 2;
+                        y = offset - pinSize;
+                        textX = x + pinSize / 2;
+                        textY = y - 5;
+                        break;
+                    case 'side2': // 右边
+                        x = offset + width;
+                        y = offset + (index + 1) * spacing - pinSize / 2;
+                        textX = x + pinSize + 5;
+                        textY = y + pinSize / 2;
+                        break;
+                    case 'side3': // 下边
+                        x = offset + (index + 1) * spacing - pinSize / 2;
+                        y = offset + height;
+                        textX = x + pinSize / 2;
+                        textY = y + pinSize + 15;
+                        break;
+                    case 'side4': // 左边
+                        x = offset - pinSize;
+                        y = offset + (index + 1) * spacing - pinSize / 2;
+                        textX = x - 5;
+                        textY = y + pinSize / 2;
+                        break;
+                }
+
+                // 引脚矩形
+                pinRect.setAttribute('x', x);
+                pinRect.setAttribute('y', y);
+                pinRect.setAttribute('width', pinSize);
+                pinRect.setAttribute('height', pinSize);
+                pinRect.setAttribute('fill', this.getPinColor(pin.type));
+                pinRect.setAttribute('stroke', '#333');
+                pinRect.setAttribute('stroke-width', 1);
+                svg.appendChild(pinRect);
+
+                // 引脚标签
+                pinText.setAttribute('x', textX);
+                pinText.setAttribute('y', textY);
+                pinText.setAttribute('text-anchor', side === 'side2' ? 'start' : side === 'side4' ? 'end' : 'middle');
+                pinText.setAttribute('dominant-baseline', 'middle');
+                pinText.setAttribute('font-size', 10);
+                pinText.setAttribute('fill', '#333');
+                pinText.textContent = pin.pinName;
+                svg.appendChild(pinText);
+            });
+        });
+    }
+
+    /**
+     * 获取引脚颜色
+     * @param {string} type - 引脚类型
+     * @returns {string} 颜色值
+     */
+    getPinColor(type) {
+        const colorMap = {
+            'power': '#ff6b6b',
+            'ground': '#333',
+            'digital_io': '#4ecdc4',
+            'analog_io': '#45b7d1',
+            'communication': '#96ceb4'
+        };
+        
+        return colorMap[type] || '#ddd';
+    }
+
+    /**
+     * 关闭预览模态窗口
+     * @param {HTMLElement} modal - 模态窗口元素
+     */
+    closePreviewModal(modal) {
+        modal.classList.add('hide');
+        setTimeout(() => {
+            if (modal.parentNode) {
+                modal.parentNode.removeChild(modal);
+            }
+        }, 300);
     }
 }
 

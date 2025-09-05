@@ -124,6 +124,46 @@ ipcMain.handle('load-file', async (event, filePath) => {
   }
 });
 
+// 读取元件文件夹
+ipcMain.handle('read-component-files', async (event, directory) => {
+  const fs = require('fs').promises;
+  const path = require('path');
+  
+  try {
+    console.log(`读取元件文件夹: ${directory}`);
+    
+    // 读取目录下的所有.json文件
+    const files = await fs.readdir(directory);
+    const jsonFiles = files.filter(file => file.endsWith('.json') && file !== 'README.md');
+    
+    const components = [];
+    
+    for (const file of jsonFiles) {
+      try {
+        const filePath = path.join(directory, file);
+        const content = await fs.readFile(filePath, 'utf8');
+        const component = JSON.parse(content);
+        
+        // 确保组件有必要的标签字段
+        if (!component.tags) {
+          component.tags = [component.name?.toLowerCase() || '', component.category || ''];
+        }
+        
+        components.push(component);
+        console.log(`加载元件: ${component.name}`);
+      } catch (error) {
+        console.error(`解析文件 ${file} 失败:`, error.message);
+      }
+    }
+    
+    console.log(`成功加载 ${components.length} 个元件`);
+    return components;
+  } catch (error) {
+    console.error('读取元件文件夹失败:', error.message);
+    return [];
+  }
+});
+
 // 错误处理
 process.on('uncaughtException', (error) => {
   console.error('未捕获的异常:', error);

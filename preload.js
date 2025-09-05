@@ -30,6 +30,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loadFile: (filePath) => ipcRenderer.invoke('load-file', filePath),
 
   /**
+   * 读取元件文件夹
+   */
+  readComponentFiles: (directory) => ipcRenderer.invoke('read-component-files', directory),
+
+  /**
    * 发送消息到主进程
    */
   sendToMain: (channel, ...args) => {
