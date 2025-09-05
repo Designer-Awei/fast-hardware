@@ -6,6 +6,15 @@
 const { app, BrowserWindow, Menu, ipcMain } = require('electron');
 const path = require('path');
 
+// 设置控制台编码为UTF-8
+if (process.platform === 'win32') {
+  try {
+    require('child_process').execSync('chcp 65001', { stdio: 'inherit' });
+  } catch (error) {
+    // 忽略编码设置错误
+  }
+}
+
 // Fast Hardware主进程启动
 console.log('Fast Hardware主进程启动...');
 
@@ -22,10 +31,9 @@ function createWindow() {
   
   // 创建浏览器窗口
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    minWidth: 1000,
-    minHeight: 700,
+    width: 1000,
+    height: 650,
+    minHeight: 400,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

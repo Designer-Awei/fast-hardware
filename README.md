@@ -93,11 +93,38 @@ npm install
 npm run dev
 ```
 
-此命令会同时启动：
-1. Webpack开发服务器 (端口3000) - 用于React应用热重载
-2. Electron应用 - 自动连接到开发服务器
+此命令会启动带热重载的Electron应用：
+- 🚀 自动启动Electron应用
+- 👀 监控文件变更 (.js, .html, .css, .json)
+- 🔄 文件变更后自动重启应用
+- ⏹️ 按 Ctrl+C 停止热重载
+- 🌍 支持UTF-8中文显示
 
-**首次运行可能需要等待几秒钟让webpack编译完成。**
+**热重载特性**：
+- 自动检测文件修改
+- 500ms防抖处理，避免频繁重启
+- 支持递归监控子目录
+- 忽略node_modules和dist目录
+
+### 简单开发模式
+
+如果不需要热重载功能：
+
+```bash
+npm run dev-simple
+```
+
+此命令会启动Electron应用，不带热重载功能。
+
+### 调试模式运行
+
+如果需要打开开发者工具进行调试：
+
+```bash
+npm run dev-debug
+```
+
+此命令会启动Electron应用并自动打开开发者工具。
 
 ### 简单开发模式
 

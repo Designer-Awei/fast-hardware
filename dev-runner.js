@@ -15,7 +15,7 @@ let electronProcess = null;
 /**
  * 需要监控的文件扩展名
  */
-const watchExtensions = ['.js', '.html', '.css', '.json'];
+const watchExtensions = ['.js', '.html', '.css', '.json', '.mjs', '.txt'];
 
 /**
  * 需要忽略的目录
@@ -26,26 +26,35 @@ const ignoreDirs = ['node_modules', 'dist', '.git'];
  * 启动Electron应用
  */
 function startElectron() {
+  // 检查是否已有进程在运行
+  if (electronProcess && !electronProcess.killed) {
+    console.log('⚠️  已有Electron进程在运行，跳过启动');
+    return;
+  }
+  
   console.log('🚀 启动Electron应用...');
   
   // Windows环境下使用正确的命令
-  const command = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const args = ['run', 'electron-dev'];
+  const command = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+  const args = ['electron', '.'];
   
   electronProcess = spawn(command, args, {
     stdio: 'inherit',
     env: { ...process.env, NODE_ENV: 'development' },
-    shell: true
+    shell: true,
+    detached: false  // 确保子进程与父进程关联
   });
 
+  console.log(`📋 Electron进程ID: ${electronProcess.pid}`);
+
   electronProcess.on('close', (code) => {
-    if (code !== null && code !== 0) {
-      console.log(`⚠️  Electron进程退出，代码: ${code}`);
-    }
+    console.log(`🔚 Electron进程关闭，代码: ${code}`);
+    electronProcess = null;
   });
 
   electronProcess.on('error', (error) => {
     console.error('❌ Electron启动失败:', error);
+    electronProcess = null;
   });
 }
 
@@ -54,14 +63,33 @@ function startElectron() {
  */
 function restartElectron() {
   console.log('🔄 重启Electron应用...');
-  
+
   if (electronProcess) {
-    electronProcess.kill();
+    console.log('⏹️  关闭旧进程...');
+    
+    // Windows下需要强制终止整个进程树
+    if (process.platform === 'win32') {
+      try {
+        // 使用taskkill强制终止进程树
+        spawn('taskkill', ['/pid', electronProcess.pid, '/t', '/f'], {
+          stdio: 'ignore'
+        });
+      } catch (error) {
+        console.warn('⚠️  taskkill失败，使用普通kill');
+        electronProcess.kill('SIGKILL');
+      }
+    } else {
+      electronProcess.kill('SIGTERM');
+    }
+    
     electronProcess = null;
   }
-  
-  // 稍微延迟后重启，确保进程完全关闭
-  setTimeout(startElectron, 1000);
+
+  // 延迟重启，确保进程完全关闭
+  setTimeout(() => {
+    console.log('✨ 启动新进程...');
+    startElectron();
+  }, 2000);
 }
 
 /**
@@ -122,9 +150,25 @@ function handleExit() {
   console.log('\n👋 正在关闭开发服务器...');
   
   if (electronProcess) {
-    electronProcess.kill();
+    console.log('🔪 强制终止Electron进程...');
+    
+    // Windows下强制终止进程树
+    if (process.platform === 'win32') {
+      try {
+        spawn('taskkill', ['/pid', electronProcess.pid, '/t', '/f'], {
+          stdio: 'ignore'
+        });
+      } catch (error) {
+        electronProcess.kill('SIGKILL');
+      }
+    } else {
+      electronProcess.kill('SIGKILL');
+    }
+    
+    electronProcess = null;
   }
   
+  console.log('✅ 开发服务器已关闭');
   process.exit(0);
 }
 

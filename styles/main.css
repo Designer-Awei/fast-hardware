@@ -105,15 +105,16 @@ body {
 .workspace {
     display: flex;
     height: 100%;
+    position: relative;
 }
 
 /* 画布区域 */
 .canvas-section {
-    flex: 0 0 70%;
     display: flex;
     flex-direction: column;
     background: white;
-    border-right: 1px solid #e0e0e0;
+    position: relative;
+    flex-shrink: 0;
 }
 
 .canvas-header {
@@ -177,12 +178,46 @@ body {
     pointer-events: none;
 }
 
+/* 可拖动分割线 */
+.resizer {
+    width: 4px;
+    background: #e0e0e0;
+    cursor: col-resize;
+    position: relative;
+    z-index: 10;
+    flex-shrink: 0;
+    min-height: 100%;
+}
+
+.resizer:hover {
+    background: #007acc;
+}
+
+.resizer-handle {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 20px;
+    height: 40px;
+    background: rgba(0, 122, 204, 0.1);
+    border-radius: 2px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.resizer:hover .resizer-handle {
+    opacity: 1;
+}
+
 /* 对话栏区域 */
 .chat-section {
-    flex: 0 0 30%;
     display: flex;
     flex-direction: column;
     background: white;
+    border-left: 1px solid #e0e0e0;
+    position: relative;
+    flex-shrink: 0;
 }
 
 .chat-header {
@@ -356,7 +391,10 @@ body {
     align-items: center;
 }
 
-#component-search {
+/* 统一的搜索框样式 - 适用于所有元件页面 */
+#component-search,
+#standard-component-search,
+#custom-component-search {
     flex: 1;
     padding: 8px 12px;
     border: 1px solid #ddd;
@@ -364,12 +402,17 @@ body {
     font-size: 14px;
 }
 
-#component-search:focus {
+#component-search:focus,
+#standard-component-search:focus,
+#custom-component-search:focus {
     outline: none;
     border-color: #667eea;
 }
 
-#category-filter {
+/* 统一的类别筛选器样式 - 适用于所有元件页面 */
+#category-filter,
+#standard-category-filter,
+#custom-category-filter {
     padding: 8px 12px;
     border: 1px solid #ddd;
     border-radius: 6px;
@@ -377,7 +420,11 @@ body {
     min-width: 120px;
 }
 
-.components-grid {
+/* 统一的元件网格样式 - 适用于所有元件页面 */
+.components-grid,
+#components-grid,
+#standard-components-grid,
+#custom-components-grid {
     padding: 20px;
     overflow-y: auto;
     height: calc(100% - 80px);
@@ -387,6 +434,64 @@ body {
     text-align: center;
     padding: 40px;
     color: #666;
+}
+
+.no-results {
+    text-align: center;
+    padding: 40px;
+    color: #666;
+}
+
+/* 元件卡片样式 */
+.component-card {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 15px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.component-card:hover {
+    border-color: #667eea;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+    transform: translateY(-1px);
+}
+
+.component-card.dragging {
+    opacity: 0.8;
+    transform: rotate(2deg);
+}
+
+.component-icon {
+    font-size: 32px;
+    text-align: center;
+    margin-bottom: 12px;
+}
+
+.component-name {
+    font-size: 16px;
+    font-weight: 500;
+    color: #333;
+    margin-bottom: 6px;
+}
+
+.component-category {
+    font-size: 12px;
+    color: #667eea;
+    background: rgba(102, 126, 234, 0.1);
+    padding: 2px 8px;
+    border-radius: 12px;
+    display: inline-block;
+    margin-bottom: 8px;
+}
+
+.component-description {
+    font-size: 14px;
+    color: #666;
+    line-height: 1.4;
 }
 
 /* 元件绘制 */
@@ -495,20 +600,16 @@ body {
 }
 
 /* 响应式设计 */
-@media (max-width: 1200px) {
-    .workspace {
-        flex-direction: column;
-    }
-
-    .canvas-section,
-    .chat-section {
-        flex: none;
-        height: 50%;
-    }
-
+@media (max-width: 900px) {
     .canvas-section {
-        border-right: none;
-        border-bottom: 1px solid #e0e0e0;
+        min-width: 50%;
+        max-width: 70%;
+    }
+
+    .chat-section {
+        width: 200px;
+        min-width: 200px;
+        max-width: 300px;
     }
 }
 

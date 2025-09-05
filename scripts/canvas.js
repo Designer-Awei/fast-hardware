@@ -28,11 +28,14 @@ class CanvasManager {
         }
 
         this.ctx = this.canvas.getContext('2d');
-        this.resizeCanvas();
-        this.bindEvents();
-        this.draw();
-
-        console.log('画布管理器初始化完成');
+        
+        // 延迟初始化，确保容器完全渲染
+        setTimeout(() => {
+            this.resizeCanvas();
+            this.resetView(); // 设置初始视图
+            this.bindEvents();
+            console.log('画布管理器初始化完成');
+        }, 100);
     }
 
     /**
@@ -44,6 +47,9 @@ class CanvasManager {
             const rect = container.getBoundingClientRect();
             this.canvas.width = rect.width;
             this.canvas.height = rect.height;
+            
+            // 画布尺寸变化后需要重新绘制
+            this.draw();
         }
     }
 
@@ -66,7 +72,7 @@ class CanvasManager {
         // 窗口大小改变
         window.addEventListener('resize', () => {
             this.resizeCanvas();
-            this.draw();
+            // resizeCanvas内部已经调用了draw()，这里不需要重复调用
         });
     }
 
@@ -172,8 +178,9 @@ class CanvasManager {
      */
     resetView() {
         this.scale = 1;
-        this.offsetX = 0;
-        this.offsetY = 0;
+        // 将原点设置在左下角（画布坐标系）
+        this.offsetX = 50;  // 左侧留一些边距
+        this.offsetY = this.canvas.height - 50;  // 底部留一些边距
         this.updateZoomDisplay();
         this.draw();
     }
@@ -195,12 +202,15 @@ class CanvasManager {
         const canvasX = e.clientX - rect.left;
         const canvasY = e.clientY - rect.top;
 
-        // 转换为世界坐标
+        // 转换为世界坐标（Y轴：上正下负，符合平面直角坐标系）
         const worldX = Math.round((canvasX - this.offsetX) / this.scale);
-        const worldY = Math.round((canvasY - this.offsetY) / this.scale);
+        const worldY = Math.round(-(canvasY - this.offsetY) / this.scale); // 取负值使上正下负
 
-        document.getElementById('mouse-x').textContent = worldX;
-        document.getElementById('mouse-y').textContent = worldY;
+        const mouseXElement = document.getElementById('mouse-x');
+        const mouseYElement = document.getElementById('mouse-y');
+
+        if (mouseXElement) mouseXElement.textContent = worldX;
+        if (mouseYElement) mouseYElement.textContent = worldY;
     }
 
     /**
@@ -208,8 +218,10 @@ class CanvasManager {
      */
     updateZoomDisplay() {
         const zoomPercent = Math.round(this.scale * 100);
-        document.getElementById('zoom-level').textContent = `${zoomPercent}%`;
-        document.getElementById('zoom-percent').textContent = zoomPercent;
+        const zoomLevelElement = document.getElementById('zoom-level');
+        if (zoomLevelElement) {
+            zoomLevelElement.textContent = `${zoomPercent}%`;
+        }
     }
 
     /**
@@ -277,26 +289,44 @@ class CanvasManager {
      * 绘制坐标轴
      */
     drawAxes() {
-        this.ctx.strokeStyle = '#666';
-        this.ctx.lineWidth = 2 / this.scale;
+        this.ctx.strokeStyle = '#999';
+        this.ctx.lineWidth = 1 / this.scale;
 
-        // X轴
+        // X轴（水平线）
         this.ctx.beginPath();
         this.ctx.moveTo(-1000, 0);
         this.ctx.lineTo(1000, 0);
         this.ctx.stroke();
 
-        // Y轴
+        // Y轴（垂直线）
         this.ctx.beginPath();
         this.ctx.moveTo(0, -1000);
         this.ctx.lineTo(0, 1000);
         this.ctx.stroke();
 
-        // 原点标记
-        this.ctx.fillStyle = '#666';
+        // 原点标记（小圆点）
+        this.ctx.fillStyle = '#999';
         this.ctx.beginPath();
-        this.ctx.arc(0, 0, 5 / this.scale, 0, 2 * Math.PI);
+        this.ctx.arc(0, 0, 3 / this.scale, 0, 2 * Math.PI);
         this.ctx.fill();
+
+        // 添加坐标轴标签
+        this.drawAxisLabels();
+    }
+
+    /**
+     * 绘制坐标轴标签
+     */
+    drawAxisLabels() {
+        this.ctx.fillStyle = '#666';
+        this.ctx.font = `${12 / this.scale}px Arial`;
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+
+        // X轴标签
+        this.ctx.fillText('X', 50, -10);
+        // Y轴标签
+        this.ctx.fillText('Y', 10, -50);
     }
 
     /**

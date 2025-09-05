@@ -43,6 +43,16 @@ class TabManager {
             button: document.querySelector('[data-sub-tab="preview"]')
         });
 
+        this.subTabs.set('standard', {
+            element: document.getElementById('standard-sub-tab'),
+            button: document.querySelector('[data-sub-tab="standard"]')
+        });
+
+        this.subTabs.set('custom', {
+            element: document.getElementById('custom-sub-tab'),
+            button: document.querySelector('[data-sub-tab="custom"]')
+        });
+
         this.subTabs.set('designer', {
             element: document.getElementById('designer-sub-tab'),
             button: document.querySelector('[data-sub-tab="designer"]')
@@ -206,6 +216,12 @@ class TabManager {
             case 'preview':
                 this.initializePreviewSubTab();
                 break;
+            case 'standard':
+                this.initializeStandardSubTab();
+                break;
+            case 'custom':
+                this.initializeCustomSubTab();
+                break;
             case 'designer':
                 this.initializeDesignerSubTab();
                 break;
@@ -240,6 +256,24 @@ class TabManager {
     initializePreviewSubTab() {
         console.log('初始化元件预览二级标签页');
         // 这里可以添加元件预览的初始化逻辑
+    }
+
+    /**
+     * 初始化标准元件二级标签页
+     */
+    initializeStandardSubTab() {
+        console.log('初始化标准元件二级标签页');
+        // 这里可以添加标准元件的初始化逻辑
+        // 复用元件预览的组件加载逻辑
+    }
+
+    /**
+     * 初始化自制元件二级标签页
+     */
+    initializeCustomSubTab() {
+        console.log('初始化自制元件二级标签页');
+        // 这里可以添加自制元件的初始化逻辑
+        // 复用元件预览的组件加载逻辑
     }
 
     /**

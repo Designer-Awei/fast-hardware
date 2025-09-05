@@ -18,7 +18,8 @@ class ComponentsManager {
     init() {
         console.log('初始化元件管理器...');
         this.bindEvents();
-        this.loadComponents();
+        this.bindOtherEvents();
+        this.loadComponents('all');
         console.log('元件管理器初始化完成');
     }
 
@@ -26,24 +27,49 @@ class ComponentsManager {
      * 绑定事件监听器
      */
     bindEvents() {
-        // 搜索输入
-        const searchInput = document.getElementById('component-search');
+        // 绑定所有搜索输入框
+        this.bindSearchEvents('component-search');
+        this.bindSearchEvents('standard-component-search');
+        this.bindSearchEvents('custom-component-search');
+
+        // 绑定所有分类筛选器
+        this.bindCategoryEvents('category-filter');
+        this.bindCategoryEvents('standard-category-filter');
+        this.bindCategoryEvents('custom-category-filter');
+    }
+
+    /**
+     * 绑定搜索事件
+     * @param {string} elementId - 搜索输入框ID
+     */
+    bindSearchEvents(elementId) {
+        const searchInput = document.getElementById(elementId);
         if (searchInput) {
             searchInput.addEventListener('input', (e) => {
                 this.searchQuery = e.target.value.toLowerCase();
                 this.filterComponents();
             });
         }
+    }
 
-        // 分类筛选
-        const categorySelect = document.getElementById('category-filter');
+    /**
+     * 绑定分类筛选事件
+     * @param {string} elementId - 分类选择器ID
+     */
+    bindCategoryEvents(elementId) {
+        const categorySelect = document.getElementById(elementId);
         if (categorySelect) {
             categorySelect.addEventListener('change', (e) => {
                 this.currentCategory = e.target.value;
                 this.filterComponents();
             });
         }
+    }
 
+    /**
+     * 绑定其他事件监听器
+     */
+    bindOtherEvents() {
         // 元件设计器表单
         const saveBtn = document.getElementById('save-component');
         const resetBtn = document.getElementById('reset-designer');
@@ -58,20 +84,38 @@ class ComponentsManager {
 
         // 监听标签页切换事件
         document.addEventListener('subTabActivated', (e) => {
-            if (e.detail.subTabName === 'preview') {
-                this.loadComponents();
-            }
+            this.handleSubTabSwitch(e.detail.subTabName);
         });
     }
 
     /**
-     * 加载元件库
+     * 处理二级标签页切换
+     * @param {string} subTabName - 二级标签页名称
      */
-    async loadComponents() {
-        console.log('加载元件库...');
+    handleSubTabSwitch(subTabName) {
+        switch (subTabName) {
+            case 'preview':
+                this.loadComponents('all');
+                break;
+            case 'standard':
+                this.loadComponents('standard');
+                break;
+            case 'custom':
+                this.loadComponents('custom');
+                break;
+        }
+    }
+
+    /**
+     * 加载元件库
+     * @param {string} type - 元件类型 ('all', 'standard', 'custom')
+     */
+    async loadComponents(type = 'all') {
+        console.log(`加载元件库 (${type})...`);
 
         // 模拟从系统元件库加载元件
         this.components = await this.loadSystemComponents();
+        this.currentType = type;
 
         // 初始筛选
         this.filterComponents();
@@ -150,6 +194,14 @@ class ComponentsManager {
      */
     filterComponents() {
         this.filteredComponents = this.components.filter(component => {
+            // 类型筛选
+            let typeMatch = true;
+            if (this.currentType === 'standard') {
+                typeMatch = !component.custom;
+            } else if (this.currentType === 'custom') {
+                typeMatch = component.custom === true;
+            }
+
             // 分类筛选
             const categoryMatch = this.currentCategory === 'all' ||
                                 component.category === this.currentCategory;
@@ -160,7 +212,7 @@ class ComponentsManager {
                               component.description.toLowerCase().includes(this.searchQuery) ||
                               component.tags.some(tag => tag.toLowerCase().includes(this.searchQuery));
 
-            return categoryMatch && searchMatch;
+            return typeMatch && categoryMatch && searchMatch;
         });
 
         this.renderComponents();
@@ -170,7 +222,15 @@ class ComponentsManager {
      * 渲染元件列表
      */
     renderComponents() {
-        const container = document.getElementById('components-grid');
+        // 根据当前类型确定容器ID
+        let containerId = 'components-grid';
+        if (this.currentType === 'standard') {
+            containerId = 'standard-components-grid';
+        } else if (this.currentType === 'custom') {
+            containerId = 'custom-components-grid';
+        }
+
+        const container = document.getElementById(containerId);
         if (!container) return;
 
         if (this.filteredComponents.length === 0) {

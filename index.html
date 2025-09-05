@@ -59,6 +59,11 @@
                         </div>
                     </section>
 
+                    <!-- 可拖动分割线 -->
+                    <div class="resizer" id="resizer">
+                        <div class="resizer-handle"></div>
+                    </div>
+
                     <!-- 对话栏区域 -->
                     <section class="chat-section">
                         <div class="chat-header">
@@ -92,6 +97,12 @@
                         <button class="sub-tab-btn active" data-sub-tab="preview">
                             元件预览
                         </button>
+                        <button class="sub-tab-btn" data-sub-tab="standard">
+                            标准元件
+                        </button>
+                        <button class="sub-tab-btn" data-sub-tab="custom">
+                            自制元件
+                        </button>
                         <button class="sub-tab-btn" data-sub-tab="designer">
                             元件绘制
                         </button>
@@ -116,6 +127,52 @@
                             <!-- 元件卡片将在这里动态生成 -->
                             <div class="loading-placeholder">
                                 <p>正在加载元件库...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 标准元件子标签页 -->
+                    <div id="standard-sub-tab" class="sub-tab-content">
+                        <div class="preview-header">
+                            <div class="search-section">
+                                <input type="text" id="standard-component-search" placeholder="搜索标准元件..." />
+                                <select id="standard-category-filter">
+                                    <option value="all">全部类别</option>
+                                    <option value="microcontroller">微控制器</option>
+                                    <option value="sensor">传感器</option>
+                                    <option value="output">输出设备</option>
+                                    <option value="communication">通信模块</option>
+                                    <option value="power">电源模块</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="components-grid" id="standard-components-grid">
+                            <!-- 标准元件卡片将在这里动态生成 -->
+                            <div class="loading-placeholder">
+                                <p>正在加载标准元件库...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 自制元件子标签页 -->
+                    <div id="custom-sub-tab" class="sub-tab-content">
+                        <div class="preview-header">
+                            <div class="search-section">
+                                <input type="text" id="custom-component-search" placeholder="搜索自制元件..." />
+                                <select id="custom-category-filter">
+                                    <option value="all">全部类别</option>
+                                    <option value="microcontroller">微控制器</option>
+                                    <option value="sensor">传感器</option>
+                                    <option value="output">输出设备</option>
+                                    <option value="communication">通信模块</option>
+                                    <option value="power">电源模块</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="components-grid" id="custom-components-grid">
+                            <!-- 自制元件卡片将在这里动态生成 -->
+                            <div class="loading-placeholder">
+                                <p>正在加载自制元件库...</p>
                             </div>
                         </div>
                     </div>
@@ -169,5 +226,6 @@
     <script src="scripts/canvas.js"></script>
     <script src="scripts/chat.js"></script>
     <script src="scripts/components.js"></script>
+    <script src="scripts/resizer.js"></script>
 </body>
 </html>
