@@ -1,0 +1,25 @@
+{
+  "name": "电阻 220Ω",
+  "id": "resistor-220",
+  "description": "220欧姆碳膜电阻器",
+  "category": "passive",
+  "pins": {
+    "side1": [
+      {"pinName": "端子1", "type": "passive", "order": 1}
+    ],
+    "side3": [
+      {"pinName": "端子2", "type": "passive", "order": 1}
+    ]
+  },
+  "dimensions": {
+    "width": 30,
+    "height": 10
+  },
+  "specifications": {
+    "resistance": "220Ω",
+    "tolerance": "5%",
+    "power": "0.25W",
+    "material": "碳膜",
+    "colorCode": ["红", "红", "棕", "金"]
+  }
+}

@@ -1,0 +1,385 @@
+/* Fast Hardware - 组件样式文件 */
+
+/* 元件卡片样式 */
+.component-card {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.component-card:hover {
+    border-color: #667eea;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+    transform: translateY(-2px);
+}
+
+.component-card.dragging {
+    opacity: 0.5;
+    transform: rotate(5deg);
+}
+
+.component-icon {
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.component-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: #333;
+    text-align: center;
+    margin-bottom: 4px;
+}
+
+.component-category {
+    font-size: 12px;
+    color: #666;
+    text-align: center;
+    margin-bottom: 8px;
+}
+
+.component-description {
+    font-size: 12px;
+    color: #888;
+    text-align: center;
+    line-height: 1.4;
+}
+
+/* 元件网格布局 */
+.components-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 16px;
+}
+
+/* 消息样式增强 */
+.message.user-message {
+    flex-direction: row-reverse;
+}
+
+.message.user-message .message-content {
+    background: #667eea;
+    color: white;
+    border-bottom-left-radius: 12px;
+    border-bottom-right-radius: 4px;
+}
+
+.message.user-message .message-avatar {
+    background: #28a745;
+}
+
+/* 工具提示 */
+.tooltip {
+    position: relative;
+    display: inline-block;
+}
+
+.tooltip .tooltip-text {
+    visibility: hidden;
+    width: 120px;
+    background-color: #333;
+    color: #fff;
+    text-align: center;
+    border-radius: 4px;
+    padding: 5px;
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -60px;
+    opacity: 0;
+    transition: opacity 0.3s;
+    font-size: 12px;
+}
+
+.tooltip:hover .tooltip-text {
+    visibility: visible;
+    opacity: 1;
+}
+
+/* 加载动画 */
+.loading-spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid #f3f3f3;
+    border-top: 2px solid #667eea;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* 按钮状态 */
+.btn-primary:disabled,
+.btn-secondary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn-primary:disabled:hover,
+.btn-secondary:disabled:hover {
+    background: inherit;
+    transform: none;
+}
+
+/* 表单验证样式 */
+.form-group.error input,
+.form-group.error select,
+.form-group.error textarea {
+    border-color: #dc3545;
+}
+
+.form-group.error label::after {
+    content: ' *';
+    color: #dc3545;
+}
+
+.error-message {
+    color: #dc3545;
+    font-size: 12px;
+    margin-top: 4px;
+}
+
+/* 成功消息 */
+.success-message {
+    color: #28a745;
+    font-size: 14px;
+    padding: 8px 12px;
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+    border-radius: 4px;
+    margin-top: 10px;
+}
+
+/* 画布网格样式 */
+.canvas-grid {
+    background-image:
+        linear-gradient(#e0e0e0 1px, transparent 1px),
+        linear-gradient(90deg, #e0e0e0 1px, transparent 1px);
+    background-size: 20px 20px;
+}
+
+/* 画布元件样式 */
+.canvas-component {
+    position: absolute;
+    cursor: move;
+    user-select: none;
+}
+
+.canvas-component:hover {
+    z-index: 10;
+}
+
+.canvas-component.selected {
+    box-shadow: 0 0 0 2px #667eea;
+}
+
+.component-body {
+    background: #fff;
+    border: 2px solid #333;
+    border-radius: 4px;
+    padding: 8px;
+    min-width: 80px;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.component-pin {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background: #666;
+    border-radius: 50%;
+    cursor: crosshair;
+    border: 2px solid #fff;
+}
+
+.component-pin:hover {
+    background: #333;
+    transform: scale(1.2);
+}
+
+.component-pin.connected {
+    background: #28a745;
+}
+
+/* 连线样式 */
+.wire {
+    position: absolute;
+    pointer-events: none;
+    stroke: #333;
+    stroke-width: 2;
+    fill: none;
+}
+
+.wire:hover {
+    stroke-width: 3;
+}
+
+.wire.selected {
+    stroke: #667eea;
+    stroke-width: 3;
+}
+
+/* 模态框样式 */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal.hidden {
+    display: none;
+}
+
+.modal-content {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    max-width: 500px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.modal-title {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #666;
+}
+
+.modal-body {
+    margin-bottom: 20px;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding-top: 15px;
+    border-top: 1px solid #e0e0e0;
+}
+
+/* 通知样式 */
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #333;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 1001;
+    transform: translateX(400px);
+    transition: transform 0.3s ease;
+    max-width: 300px;
+}
+
+.notification.show {
+    transform: translateX(0);
+}
+
+.notification.success {
+    background: #28a745;
+}
+
+.notification.error {
+    background: #dc3545;
+}
+
+.notification.warning {
+    background: #ffc107;
+    color: #333;
+}
+
+/* 暗色主题支持 */
+@media (prefers-color-scheme: dark) {
+    body {
+        background-color: #1a1a1a;
+        color: #e0e0e0;
+    }
+
+    .canvas-section,
+    .chat-section,
+    .component-card {
+        background: #2a2a2a;
+        border-color: #404040;
+    }
+
+    .canvas-header,
+    .chat-header {
+        background: #333;
+        border-color: #404040;
+    }
+
+    .message-content {
+        background: #333;
+        color: #e0e0e0;
+    }
+
+    .chat-input-area {
+        background: #333;
+        border-color: #404040;
+    }
+
+    #chat-input {
+        background: #2a2a2a;
+        border-color: #404040;
+        color: #e0e0e0;
+    }
+
+    .tool-btn,
+    .chat-tool-btn {
+        background: #404040;
+        border-color: #555;
+        color: #e0e0e0;
+    }
+
+    .tool-btn:hover,
+    .chat-tool-btn:hover {
+        background: #555;
+    }
+}

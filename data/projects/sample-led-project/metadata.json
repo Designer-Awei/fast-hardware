@@ -1,0 +1,46 @@
+{
+  "createdAt": "2024-01-01T10:00:00Z",
+  "lastModified": "2024-01-01T15:30:00Z",
+  "author": "Fast Hardware User",
+  "authorEmail": "user@example.com",
+  "tags": ["LED", "PWM", "基础项目", "Arduino", "初学者"],
+  "version": "1.0.0",
+  "description": "这是一个LED亮度控制的示例项目，适合Arduino初学者学习PWM（脉宽调制）的基本概念。项目通过改变PWM占空比来控制LED的亮度，实现呼吸灯效果。",
+  "difficulty": "beginner",
+  "estimatedTime": "30分钟",
+  "thumbnail": "project_thumbnail.png",
+  "requiredSkills": [
+    "基本电路知识",
+    "Arduino编程入门"
+  ],
+  "learningObjectives": [
+    "理解PWM的工作原理",
+    "学习analogWrite()函数的使用",
+    "掌握基本的LED控制方法"
+  ],
+  "codeFiles": [
+    {
+      "filename": "led_brightness_control.ino",
+      "language": "arduino",
+      "generatedAt": "2024-01-01T15:30:00Z",
+      "generatedBy": "LLM",
+      "lastModifiedBy": "user",
+      "description": "主程序文件，实现LED亮度控制逻辑"
+    }
+  ],
+  "hardwareRequirements": [
+    "Arduino Uno R3开发板",
+    "5mm红色LED × 1",
+    "220Ω电阻 × 1",
+    "面包板",
+    "跳线若干"
+  ],
+  "projectStats": {
+    "componentsCount": 3,
+    "connectionsCount": 3,
+    "lastSaveTime": "2024-01-01T15:30:00Z",
+    "editTime": 1800,
+    "llmGenerationCount": 1,
+    "manualEditCount": 2
+  }
+}

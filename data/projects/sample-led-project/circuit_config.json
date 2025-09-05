@@ -1,0 +1,118 @@
+{
+  "projectName": "LED亮度控制项目",
+  "version": "1.0.0", 
+  "description": "使用PWM控制LED亮度的示例项目，演示基本的模拟输出功能",
+  "createdAt": "2024-01-01T10:00:00Z",
+  "lastModified": "2024-01-01T15:30:00Z",
+  "components": [
+    {
+      "componentFile": "arduino-uno-r3.json",
+      "instanceId": "arduino-1",
+      "position": [200, 150],
+      "orientation": "up",
+      "properties": {
+        "customLabel": "主控板",
+        "boardType": "Arduino Uno R3"
+      }
+    },
+    {
+      "componentFile": "led-5mm.json",
+      "instanceId": "led-1",
+      "position": [350, 100],
+      "orientation": "up",
+      "properties": {
+        "color": "red",
+        "customLabel": "状态指示灯"
+      }
+    },
+    {
+      "componentFile": "resistor-220.json",
+      "instanceId": "resistor-1",
+      "position": [300, 120],
+      "orientation": "right",
+      "properties": {
+        "customLabel": "限流电阻"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "wire-1",
+      "source": {
+        "instanceId": "arduino-1",
+        "pinName": "D9"
+      },
+      "target": {
+        "instanceId": "resistor-1",
+        "pinName": "端子1"
+      },
+      "wireType": "digital",
+      "description": "PWM信号输出到限流电阻",
+      "routingPoints": [
+        [220, 170],
+        [280, 170],
+        [280, 125],
+        [300, 125]
+      ],
+      "style": {
+        "color": "#ff6b6b",
+        "thickness": 2,
+        "dashPattern": []
+      }
+    },
+    {
+      "id": "wire-2",
+      "source": {
+        "instanceId": "resistor-1",
+        "pinName": "端子2"
+      },
+      "target": {
+        "instanceId": "led-1",
+        "pinName": "正极"
+      },
+      "wireType": "digital",
+      "description": "电阻连接到LED正极",
+      "routingPoints": [
+        [330, 125],
+        [340, 125],
+        [340, 115],
+        [350, 115]
+      ],
+      "style": {
+        "color": "#ff6b6b",
+        "thickness": 2,
+        "dashPattern": []
+      }
+    },
+    {
+      "id": "wire-3",
+      "source": {
+        "instanceId": "led-1",
+        "pinName": "负极"
+      },
+      "target": {
+        "instanceId": "arduino-1",
+        "pinName": "GND"
+      },
+      "wireType": "ground",
+      "description": "LED负极连接到地",
+      "routingPoints": [
+        [350, 130],
+        [350, 180],
+        [240, 180],
+        [240, 165]
+      ],
+      "style": {
+        "color": "#2d3748",
+        "thickness": 2,
+        "dashPattern": []
+      }
+    }
+  ],
+  "canvasSettings": {
+    "gridSize": 10,
+    "snapToGrid": true,
+    "showGrid": true,
+    "backgroundColor": "#f8f9fa"
+  }
+}

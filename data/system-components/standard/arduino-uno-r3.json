@@ -1,0 +1,53 @@
+{
+  "name": "Arduino Uno R3",
+  "id": "arduino-uno-r3",
+  "description": "Arduino开发板，基于ATmega328P微控制器",
+  "category": "microcontroller",
+  "pins": {
+    "side1": [
+      {"pinName": "A0", "type": "analog_io", "order": 1},
+      {"pinName": "A1", "type": "analog_io", "order": 2},
+      {"pinName": "A2", "type": "analog_io", "order": 3},
+      {"pinName": "A3", "type": "analog_io", "order": 4},
+      {"pinName": "A4", "type": "analog_io", "order": 5},
+      {"pinName": "A5", "type": "analog_io", "order": 6}
+    ],
+    "side2": [
+      {"pinName": "VIN", "type": "power", "order": 1},
+      {"pinName": "GND", "type": "ground", "order": 2},
+      {"pinName": "GND", "type": "ground", "order": 3},
+      {"pinName": "5V", "type": "power", "order": 4},
+      {"pinName": "3.3V", "type": "power", "order": 5},
+      {"pinName": "RESET", "type": "digital_io", "order": 6}
+    ],
+    "side3": [
+      {"pinName": "D0", "type": "digital_io", "order": 1},
+      {"pinName": "D1", "type": "digital_io", "order": 2},
+      {"pinName": "D2", "type": "digital_io", "order": 3},
+      {"pinName": "D3", "type": "digital_io", "order": 4},
+      {"pinName": "D4", "type": "digital_io", "order": 5},
+      {"pinName": "D5", "type": "digital_io", "order": 6},
+      {"pinName": "D6", "type": "digital_io", "order": 7},
+      {"pinName": "D7", "type": "digital_io", "order": 8}
+    ],
+    "side4": [
+      {"pinName": "D8", "type": "digital_io", "order": 1},
+      {"pinName": "D9", "type": "digital_io", "order": 2},
+      {"pinName": "D10", "type": "digital_io", "order": 3},
+      {"pinName": "D11", "type": "digital_io", "order": 4},
+      {"pinName": "D12", "type": "digital_io", "order": 5},
+      {"pinName": "D13", "type": "digital_io", "order": 6}
+    ]
+  },
+  "dimensions": {
+    "width": 80,
+    "height": 120
+  },
+  "specifications": {
+    "voltage": "5V",
+    "current": "40mA",
+    "digitalPins": 14,
+    "analogPins": 6,
+    "flashMemory": "32KB"
+  }
+}

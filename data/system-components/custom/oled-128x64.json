@@ -1,0 +1,25 @@
+{
+  "name": "OLED显示屏",
+  "id": "oled-128x64",
+  "description": "128x64像素OLED显示屏，I2C接口",
+  "category": "output",
+  "pins": {
+    "side1": [
+      {"pinName": "VCC", "type": "power", "order": 1},
+      {"pinName": "GND", "type": "ground", "order": 2},
+      {"pinName": "SCL", "type": "digital_io", "order": 3},
+      {"pinName": "SDA", "type": "digital_io", "order": 4}
+    ]
+  },
+  "dimensions": {
+    "width": 35,
+    "height": 25
+  },
+  "specifications": {
+    "voltage": "3.3-5V",
+    "current": "20mA",
+    "resolution": "128x64",
+    "interface": "I2C",
+    "address": "0x3C"
+  }
+}

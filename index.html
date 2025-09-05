@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fast Hardware - 智能硬件开发助手</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="stylesheet" href="styles/components.css">
+</head>
+<body>
+    <div id="app">
+        <!-- 顶部导航栏 -->
+        <nav class="main-nav">
+            <div class="nav-brand">
+                <h1>Fast Hardware</h1>
+            </div>
+            <div class="nav-tabs">
+                <button class="tab-btn active" data-tab="circuit-design">
+                    电路搭建
+                </button>
+                <button class="tab-btn" data-tab="component-lib">
+                    元件管理
+                </button>
+            </div>
+            <div class="nav-actions">
+                <button class="nav-btn" id="save-project">
+                    保存项目
+                </button>
+                <button class="nav-btn" id="load-project">
+                    加载项目
+                </button>
+            </div>
+        </nav>
+
+        <!-- 主内容区域 -->
+        <main class="main-content">
+            <!-- 电路搭建标签页 -->
+            <div id="circuit-design-tab" class="tab-content active">
+                <div class="workspace">
+                    <!-- 画布区域 -->
+                    <section class="canvas-section">
+                        <div class="canvas-header">
+                            <h2>电路设计画布</h2>
+                            <div class="canvas-tools">
+                                <button class="tool-btn" id="zoom-in">放大</button>
+                                <button class="tool-btn" id="zoom-out">缩小</button>
+                                <button class="tool-btn" id="reset-view">重置视图</button>
+                                <button class="tool-btn" id="fit-view">适应画布</button>
+                            </div>
+                        </div>
+                        <div class="canvas-container">
+                            <canvas id="main-canvas" width="800" height="600"></canvas>
+                            <div class="canvas-overlay">
+                                <div class="canvas-status">
+                                    <span>缩放: <span id="zoom-level">100%</span></span>
+                                    <span>坐标: (<span id="mouse-x">0</span>, <span id="mouse-y">0</span>)</span>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- 对话栏区域 -->
+                    <section class="chat-section">
+                        <div class="chat-header">
+                            <h3>🤖 AI硬件助手</h3>
+                            <div class="chat-tools">
+                                <button class="chat-tool-btn" id="clear-chat">清空</button>
+                                <button class="chat-tool-btn" id="export-chat">导出</button>
+                            </div>
+                        </div>
+                        <div class="chat-messages" id="chat-messages">
+                            <div class="message ai-message">
+                                <div class="message-avatar">🤖</div>
+                                <div class="message-content">
+                                    <p>你好！我是Fast Hardware智能助手。我可以帮你进行硬件选型、电路设计和代码生成。请告诉我你想要实现什么功能？</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="chat-input-area">
+                            <textarea id="chat-input" placeholder="描述你想要实现的硬件功能，我来帮你设计电路..." rows="3"></textarea>
+                            <button class="send-btn" id="send-message">发送</button>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- 元件管理标签页 -->
+            <div id="component-lib-tab" class="tab-content">
+                <div class="component-workspace">
+                    <!-- 二级标签页 -->
+                    <div class="sub-tabs">
+                        <button class="sub-tab-btn active" data-sub-tab="preview">
+                            元件预览
+                        </button>
+                        <button class="sub-tab-btn" data-sub-tab="designer">
+                            元件绘制
+                        </button>
+                    </div>
+
+                    <!-- 元件预览子标签页 -->
+                    <div id="preview-sub-tab" class="sub-tab-content active">
+                        <div class="preview-header">
+                            <div class="search-section">
+                                <input type="text" id="component-search" placeholder="搜索元件..." />
+                                <select id="category-filter">
+                                    <option value="all">全部类别</option>
+                                    <option value="microcontroller">微控制器</option>
+                                    <option value="sensor">传感器</option>
+                                    <option value="output">输出设备</option>
+                                    <option value="communication">通信模块</option>
+                                    <option value="power">电源模块</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="components-grid" id="components-grid">
+                            <!-- 元件卡片将在这里动态生成 -->
+                            <div class="loading-placeholder">
+                                <p>正在加载元件库...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 元件绘制子标签页 -->
+                    <div id="designer-sub-tab" class="sub-tab-content">
+                        <div class="designer-header">
+                            <h3>自定义元件设计器</h3>
+                        </div>
+                        <div class="designer-workspace">
+                            <div class="designer-form">
+                                <div class="form-group">
+                                    <label for="component-name">元件名称:</label>
+                                    <input type="text" id="component-name" placeholder="例如：自定义传感器" />
+                                </div>
+                                <div class="form-group">
+                                    <label for="component-category">类别:</label>
+                                    <select id="component-category">
+                                        <option value="sensor">传感器</option>
+                                        <option value="microcontroller">微控制器</option>
+                                        <option value="output">输出设备</option>
+                                        <option value="communication">通信模块</option>
+                                        <option value="power">电源模块</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="component-description">描述:</label>
+                                    <textarea id="component-description" placeholder="描述元件功能..." rows="3"></textarea>
+                                </div>
+                                <div class="form-actions">
+                                    <button class="btn-secondary" id="reset-designer">重置</button>
+                                    <button class="btn-primary" id="save-component">保存元件</button>
+                                </div>
+                            </div>
+                            <div class="designer-canvas">
+                                <div class="canvas-placeholder">
+                                    <p>元件设计画布</p>
+                                    <small>功能开发中...</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- JavaScript文件 -->
+    <script src="scripts/main.js"></script>
+    <script src="scripts/tabs.js"></script>
+    <script src="scripts/canvas.js"></script>
+    <script src="scripts/chat.js"></script>
+    <script src="scripts/components.js"></script>
+</body>
+</html>

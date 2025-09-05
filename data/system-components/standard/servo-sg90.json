@@ -1,0 +1,23 @@
+{
+  "name": "Servo Motor SG90",
+  "id": "servo-sg90",
+  "description": "SG90舵机",
+  "category": "actuator",
+  "pins": {
+    "side1": [
+      {"pinName": "信号线", "type": "digital_io", "order": 1},
+      {"pinName": "电源正", "type": "power", "order": 2},
+      {"pinName": "电源负", "type": "ground", "order": 3}
+    ]
+  },
+  "dimensions": {
+    "width": 40,
+    "height": 50
+  },
+  "specifications": {
+    "voltage": "4.8-6V",
+    "current": "500mA",
+    "torque": "1.8kg/cm",
+    "angle": "180°"
+  }
+}

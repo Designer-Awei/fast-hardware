@@ -1,0 +1,40 @@
+{
+  "name": "ESP32开发板",
+  "id": "esp32-devkit",
+  "description": "ESP32 WiFi蓝牙双模开发板",
+  "category": "microcontroller",
+  "pins": {
+    "side1": [
+      {"pinName": "GPIO0", "type": "digital_io", "order": 1},
+      {"pinName": "GPIO2", "type": "digital_io", "order": 2},
+      {"pinName": "GPIO4", "type": "digital_io", "order": 3},
+      {"pinName": "GPIO5", "type": "digital_io", "order": 4},
+      {"pinName": "GPIO12", "type": "digital_io", "order": 5},
+      {"pinName": "GPIO13", "type": "digital_io", "order": 6}
+    ],
+    "side2": [
+      {"pinName": "3V3", "type": "power", "order": 1},
+      {"pinName": "GND", "type": "ground", "order": 2},
+      {"pinName": "VIN", "type": "power", "order": 3}
+    ],
+    "side3": [
+      {"pinName": "GPIO14", "type": "digital_io", "order": 1},
+      {"pinName": "GPIO15", "type": "digital_io", "order": 2},
+      {"pinName": "GPIO16", "type": "digital_io", "order": 3},
+      {"pinName": "GPIO17", "type": "digital_io", "order": 4},
+      {"pinName": "GPIO18", "type": "digital_io", "order": 5},
+      {"pinName": "GPIO19", "type": "digital_io", "order": 6}
+    ]
+  },
+  "dimensions": {
+    "width": 60,
+    "height": 100
+  },
+  "specifications": {
+    "voltage": "3.3V",
+    "wifi": "802.11 b/g/n",
+    "bluetooth": "v4.2 BR/EDR and BLE",
+    "flash": "4MB",
+    "sram": "520KB"
+  }
+}
