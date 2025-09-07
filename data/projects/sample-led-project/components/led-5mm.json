@@ -2,7 +2,7 @@
   "name": "LED 5mm",
   "id": "led-5mm",
   "description": "5mm红色发光二极管",
-  "category": "output",
+  "category": "auxiliary",
   "pins": {
     "side1": [
       {"pinName": "正极", "type": "digital_io", "order": 1}

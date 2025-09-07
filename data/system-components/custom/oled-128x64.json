@@ -2,7 +2,7 @@
   "name": "OLED显示屏",
   "id": "oled-128x64",
   "description": "128x64像素OLED显示屏，I2C接口",
-  "category": "output",
+  "category": "auxiliary",
   "pins": {
     "side1": [
       {"pinName": "VCC", "type": "power", "order": 1},

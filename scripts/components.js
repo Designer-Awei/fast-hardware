@@ -325,12 +325,14 @@ class ComponentsManager {
         const iconMap = {
             'microcontroller': '🔧',
             'sensor': '🌡️',
-            'output': '💡',
+            'actuator': '⚙️',
+            'power': '⚡',
             'communication': '📡',
-            'power': '⚡'
+            'auxiliary': '🔩',
+            'other': '📦'
         };
 
-        return iconMap[component.category] || '⚙️';
+        return iconMap[component.category] || '📦';
     }
 
     /**
@@ -342,12 +344,14 @@ class ComponentsManager {
         const categoryNames = {
             'microcontroller': '微控制器',
             'sensor': '传感器',
-            'output': '输出设备',
+            'actuator': '执行器',
+            'power': '电源模块',
             'communication': '通信模块',
-            'power': '电源模块'
+            'auxiliary': '辅助元件',
+            'other': '其他'
         };
 
-        return categoryNames[category] || category;
+        return categoryNames[category] || '其他';
     }
 
     /**

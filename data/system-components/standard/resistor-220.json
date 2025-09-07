@@ -2,7 +2,7 @@
   "name": "Resistor 220Ω",
   "id": "resistor-220",
   "description": "220欧姆电阻器",
-  "category": "passive",
+  "category": "auxiliary",
   "pins": {
     "side1": [
       {"pinName": "端子1", "type": "passive", "order": 1}
