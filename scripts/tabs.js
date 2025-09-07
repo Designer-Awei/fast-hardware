@@ -281,7 +281,32 @@ class TabManager {
      */
     initializeDesignerSubTab() {
         console.log('初始化元件绘制二级标签页');
-        // 这里可以添加元件绘制的初始化逻辑
+
+        // 确保元件设计器画布元素已渲染
+        const canvasElement = document.getElementById('component-designer-canvas');
+        if (!canvasElement) {
+            console.warn('元件设计画布元素未找到，等待DOM更新');
+            // 多次延迟检查，确保DOM完全更新
+            setTimeout(() => {
+                const retryCanvas = document.getElementById('component-designer-canvas');
+                if (!retryCanvas) {
+                    console.error('元件设计画布元素仍然未找到');
+                    // 再次延迟检查
+                    setTimeout(() => {
+                        const finalRetry = document.getElementById('component-designer-canvas');
+                        if (!finalRetry) {
+                            console.error('最终检查：元件设计画布元素未找到');
+                        } else {
+                            console.log('延迟后找到元件设计画布元素');
+                        }
+                    }, 100);
+                } else {
+                    console.log('元件设计画布元素已找到');
+                }
+            }, 50);
+        } else {
+            console.log('元件设计画布元素已准备就绪');
+        }
     }
 
     /**

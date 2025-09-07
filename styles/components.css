@@ -383,3 +383,198 @@
         background: #555;
     }
 }
+
+/* ========== 元件设计器样式 ========== */
+
+/* 设计器工作区布局 */
+.designer-workspace {
+    display: flex;
+    height: calc(100vh - 160px);
+    gap: 20px;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+/* 左侧属性面板 */
+.designer-panel {
+    width: 300px;
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    position: relative; /* 为悬浮按钮提供定位上下文 */
+    max-height: calc(100vh - 140px); /* 限制最大高度 */
+    box-sizing: border-box; /* 确保padding计算在内 */
+}
+
+/* 设计师面板内容区域 */
+.designer-panel-content {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-height: 0; /* 允许内容区域缩小 */
+    overflow: hidden; /* 防止内容溢出 */
+}
+
+.designer-panel .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.designer-panel label {
+    font-weight: 500;
+    color: #333;
+    font-size: 14px;
+}
+
+.designer-panel input,
+.designer-panel select,
+.designer-panel textarea {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: border-color 0.2s ease;
+}
+
+.designer-panel input:focus,
+.designer-panel select:focus,
+.designer-panel textarea:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+}
+
+.designer-panel textarea {
+    resize: vertical;
+    min-height: 80px;
+}
+
+.form-actions {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    right: 20px;
+    background: white;
+    border-radius: 8px;
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    min-height: 40px; /* 固定最小高度 */
+    box-sizing: border-box;
+    z-index: 100; /* 确保悬浮在最上层 */
+    backdrop-filter: blur(4px);
+    background: rgba(255, 255, 255, 0.95);
+}
+
+.btn-secondary,
+.btn-primary {
+    flex: 1;
+    padding: 10px 16px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-secondary {
+    background: #f8f9fa;
+    color: #666;
+    border: 1px solid #ddd;
+}
+
+.btn-secondary:hover {
+    background: #e9ecef;
+    border-color: #adb5bd;
+}
+
+.btn-primary {
+    background: #667eea;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #5a67d8;
+    transform: translateY(-1px);
+}
+
+/* 右侧设计画布区域 */
+.designer-canvas-area {
+    flex: 1;
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* 工具栏 */
+.canvas-toolbar {
+    padding: 12px 20px;
+    border-bottom: 1px solid #e0e0e0;
+    background: #f8f9fa;
+    display: flex;
+    gap: 8px;
+}
+
+.tool-btn {
+    padding: 6px 12px;
+    background: #6c757d;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.tool-btn:hover {
+    background: #5a6268;
+}
+
+/* 画布容器 */
+.canvas-container {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #fafafa;
+    position: relative;
+    overflow: hidden;
+}
+
+#component-designer-canvas {
+    border: none;
+    background: white;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
+}
+
+/* 状态栏 */
+.canvas-status-bar {
+    padding: 8px 20px;
+    border-top: 1px solid #e0e0e0;
+    background: #f8f9fa;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: #666;
+}
+
+#status-message {
+    font-weight: 500;
+}
+
+#component-info {
+    font-style: italic;
+}
+
