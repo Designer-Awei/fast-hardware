@@ -5,7 +5,7 @@
     background: white;
     border: 1px solid #e0e0e0;
     border-radius: 8px;
-    padding: 16px;
+    padding: 20px;
     cursor: pointer;
     transition: all 0.2s ease;
     position: relative;
@@ -40,6 +40,12 @@
     color: #333;
     text-align: center;
     margin-bottom: 4px;
+    height: calc(1.4 * 14px); /* 一行文字的高度 */
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    line-height: 1.4;
+    padding: 0;
 }
 
 .component-category {
@@ -52,8 +58,17 @@
 .component-description {
     font-size: 12px;
     color: #888;
-    text-align: center;
+    text-align: justify; /* 两端对齐 */
     line-height: 1.4;
+    height: calc(1.4 * 12px * 3); /* 三行文字的高度 */
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3; /* 限制为3行 */
+    line-clamp: 3; /* 标准属性 */
+    text-overflow: ellipsis;
+    margin: 0;
+    padding: 0;
 }
 
 /* 元件网格布局 */
