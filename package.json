@@ -1,16 +1,18 @@
 {
   "name": "fast-hardware",
-  "version": "1.0.0",
+  "version": "0.1.1",
   "description": "一个基于纯Electron的智能硬件开发辅助桌面应用程序",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "chcp 65001 >nul && node dev-runner.js",
-    "dev-simple": "chcp 65001 >nul && electron .",
-    "dev-debug": "chcp 65001 >nul && electron . --enable-logging",
-    "dev-no-reload": "chcp 65001 >nul && node dev-runner-no-reload.js",
+    "dev": "node cross-platform-runner.js dev",
+    "dev-simple": "node cross-platform-runner.js dev-simple",
+    "dev-debug": "node cross-platform-runner.js dev-debug",
+    "dev-no-reload": "node cross-platform-runner.js dev-no-reload",
     "build": "electron-builder",
-    "dist": "electron-builder --publish=never"
+    "dist": "electron-builder --publish=never",
+    "check-platform": "node platform-check.js",
+    "error-help": "node error-handler.js"
   },
   "keywords": [
     "electron",
@@ -28,24 +30,97 @@
     "appId": "com.fasthardware.app",
     "productName": "Fast Hardware",
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "buildResources": "assets"
     },
     "files": [
       "**/*",
       "!node_modules",
-      "!dist"
+      "!dist",
+      "!*.md",
+      "!package-lock.json",
+      "!cross-platform-runner.js",
+      "!dev-runner*.js",
+      "!test-*.js",
+      "!edit_prd.md",
+      "!Fast Hardware.txt",
+      "!nul"
     ],
     "win": {
-      "target": "nsis",
-      "icon": "assets/icon.ico"
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64", "ia32"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64", "ia32"]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "requestedExecutionLevel": "asInvoker"
     },
     "mac": {
-      "target": "dmg",
-      "icon": "assets/icon.icns"
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.developer-tools"
     },
     "linux": {
-      "target": "AppImage",
-      "icon": "assets/icon.png"
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        },
+        {
+          "target": "deb",
+          "arch": ["x64"]
+        },
+        {
+          "target": "rpm",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "category": "Development"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Fast Hardware"
+    },
+    "dmg": {
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "your-github-username",
+      "repo": "fast-hardware"
     }
   }
 }

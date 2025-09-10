@@ -1147,14 +1147,22 @@ class ComponentDesigner {
      * 同步尺寸到属性栏输入框
      */
     syncDimensionsToInputs() {
-        if (this.elements) {
-            const { widthInput, heightInput } = this.elements;
-            if (widthInput && this.componentRect) {
-                widthInput.value = this.componentRect.width;
+        // 确保能访问到设计器的elements
+        const elements = this.elements || (this.designer ? this.designer.elements : null);
+        const componentRect = this.componentRect;
+
+        if (elements) {
+            const { widthInput, heightInput } = elements;
+            if (widthInput && componentRect) {
+                widthInput.value = componentRect.width;
+                console.log('同步宽度到输入框:', componentRect.width);
             }
-            if (heightInput && this.componentRect) {
-                heightInput.value = this.componentRect.height;
+            if (heightInput && componentRect) {
+                heightInput.value = componentRect.height;
+                console.log('同步高度到输入框:', componentRect.height);
             }
+        } else {
+            console.warn('无法同步尺寸：elements对象不可用');
         }
     }
 
@@ -1450,6 +1458,9 @@ class SimpleCanvasRenderer {
         // 简单居中，不需要网格对齐
         this.componentRect.x = (canvasWidth - this.componentRect.width) / 2;
         this.componentRect.y = (canvasHeight - this.componentRect.height) / 2;
+
+        // 同步尺寸到输入框
+        this.syncDimensionsToInputs();
     }
 
     /**
@@ -1464,10 +1475,14 @@ class SimpleCanvasRenderer {
             const { widthInput, heightInput } = elements;
             if (widthInput && componentRect) {
                 widthInput.value = componentRect.width;
+                console.log('渲染器同步宽度到输入框:', componentRect.width);
             }
             if (heightInput && componentRect) {
                 heightInput.value = componentRect.height;
+                console.log('渲染器同步高度到输入框:', componentRect.height);
             }
+        } else {
+            console.warn('渲染器无法同步尺寸：elements对象不可用');
         }
     }
 

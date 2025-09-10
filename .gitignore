@@ -116,6 +116,31 @@ pids
 ehthumbs.db
 Thumbs.db
 
+# Windows specific files
+nul
+desktop.ini
+$RECYCLE.BIN/
+*.stackdump
+*.tmp
+*.temp
+
+# Cross-platform development files (保留在版本控制中)
+# 这些文件是跨平台兼容的核心工具，必须包含在版本控制中
+# cross-platform-runner.js
+# dev-runner*.js
+# test-*.js
+# platform-check.js
+# error-handler.js
+
 # Electron specific
 app/node_modules/
 app/dist/
+
+# Build artifacts
+*.exe
+*.dmg
+*.pkg
+*.deb
+*.rpm
+*.AppImage
+*.snap
