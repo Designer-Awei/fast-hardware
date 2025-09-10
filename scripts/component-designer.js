@@ -277,20 +277,14 @@ class ComponentDesigner {
         }
 
         try {
-            // 生成最终的元件数据
+            // 生成最终的元件数据（与系统元件文件格式保持一致）
             const finalComponent = {
-                ...this.component,
+                name: this.component.name,
                 id: this.generateComponentId(),
-                specifications: {},
-                designMetadata: {
-                    createdAt: new Date().toISOString(),
-                    lastModified: new Date().toISOString(),
-                    canvasState: {
-                        zoom: 1.0,
-                        panX: 0,
-                        panY: 0
-                    }
-                }
+                description: this.component.description,
+                category: this.component.category,
+                pins: this.component.pins,
+                dimensions: this.component.dimensions
             };
 
             // 保存到文件系统
