@@ -1,7 +1,7 @@
 {
   "name": "Servo Motor SG90",
   "id": "servo-sg90",
-  "description": "SG90舵机",
+  "description": "SG90舵机。工作电压4.8-6V，工作电流500mA，扭矩1.8kg/cm，旋转角度180°。",
   "category": "actuator",
   "pins": {
     "side1": [
@@ -13,11 +13,5 @@
   "dimensions": {
     "width": 40,
     "height": 50
-  },
-  "specifications": {
-    "voltage": "4.8-6V",
-    "current": "500mA",
-    "torque": "1.8kg/cm",
-    "angle": "180°"
   }
 }

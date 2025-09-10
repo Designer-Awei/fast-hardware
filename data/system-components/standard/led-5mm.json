@@ -1,7 +1,7 @@
 {
   "name": "LED",
   "id": "led-5mm",
-  "description": "5mm发光二极管",
+  "description": "5mm红色发光二极管。工作电压2-3.3V，工作电流20mA。",
   "category": "auxiliary",
   "pins": {
     "side1": [
@@ -14,10 +14,5 @@
   "dimensions": {
     "width": 20,
     "height": 30
-  },
-  "specifications": {
-    "voltage": "2-3.3V",
-    "current": "20mA",
-    "color": "red"
   }
 }

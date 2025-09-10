@@ -401,7 +401,7 @@
     background: white;
     border: 1px solid #e0e0e0;
     border-radius: 8px;
-    padding: 20px;
+    padding: 16px;
     display: flex;
     flex-direction: column;
     gap: 16px;
@@ -415,7 +415,7 @@
     flex: 1 1 auto;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 14px;
     min-height: 0; /* 允许内容区域缩小 */
     overflow: hidden; /* 防止内容溢出 */
 }
@@ -424,6 +424,46 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
+}
+
+/* 尺寸输入框样式 - 改为一行显示 */
+.dimensions-input {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.dimensions-input input {
+    width: 92px;
+    padding: 6px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    text-align: center;
+    font-size: 14px;
+}
+
+.dimensions-input input:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.dimensions-input span {
+    color: #666;
+    font-size: 14px;
+}
+
+/* 尺寸表单组特殊样式 - 一行显示 */
+.form-group.dimensions-row {
+    display: flex !important;
+    align-items: center;
+    gap: 12px;
+    flex-direction: row !important;
+}
+
+.form-group.dimensions-row label {
+    margin-bottom: 0;
+    white-space: nowrap;
 }
 
 .designer-panel label {
@@ -452,14 +492,14 @@
 
 .designer-panel textarea {
     resize: vertical;
-    min-height: 80px;
+    min-height: 60px;
 }
 
 .form-actions {
     position: absolute;
-    bottom: 20px;
-    left: 20px;
-    right: 20px;
+    bottom: 16px;
+    left: 16px;
+    right: 16px;
     background: white;
     border-radius: 8px;
     display: flex;
@@ -518,7 +558,7 @@
 
 /* 工具栏 */
 .canvas-toolbar {
-    padding: 10px 10px;
+    padding: 10px 20px;
     border-bottom: 1px solid #e0e0e0;
     background: #f8f9fa;
     display: flex;

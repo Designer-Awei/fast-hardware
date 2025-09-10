@@ -50,8 +50,7 @@
   "dimensions": {
     "width": 宽度,
     "height": 高度
-  },
-  "specifications": {技术规格}
+  }
 }
 ```
 
@@ -97,7 +96,7 @@
 - `ground`: 接地引脚 (GND)
 - `digital_io`: 数字输入输出引脚
 - `analog_io`: 模拟输入输出引脚
-- `passive`: 无源器件引脚
+- `special`: 特殊引脚 (其他特殊功能引脚)
 
 ## 🎯 元件类别说明
 

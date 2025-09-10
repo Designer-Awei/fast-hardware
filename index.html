@@ -194,11 +194,11 @@
                                 <!-- 可滚动的内容区域 -->
                                 <div class="designer-panel-content">
                                     <div class="form-group">
-                                        <label for="component-name">元件名称:</label>
+                                        <label for="component-name">元件名称</label>
                                         <input type="text" id="component-name" placeholder="例如：自定义传感器" />
                                     </div>
                                     <div class="form-group">
-                                        <label for="component-category">类别:</label>
+                                        <label for="component-category">元件类别</label>
                                         <select id="component-category">
                                             <option value="microcontroller">微控制器</option>
                                             <option value="sensor">传感器</option>
@@ -209,8 +209,17 @@
                                             <option value="other">其他</option>
                                         </select>
                                     </div>
+                                    <div class="form-group dimensions-row">
+                                        <label for="component-dimensions">尺寸</label>
+                                        <div class="dimensions-input">
+                                            <input type="number" id="component-width" placeholder="宽度" min="20" max="500" value="100">
+                                            <span>×</span>
+                                            <input type="number" id="component-height" placeholder="高度" min="20" max="500" value="80">
+                                            <span>px</span>
+                                        </div>
+                                    </div>
                                     <div class="form-group">
-                                        <label for="component-description">描述:</label>
+                                        <label for="component-description">元件描述</label>
                                         <textarea id="component-description" placeholder="描述元件功能..." rows="3"></textarea>
                                     </div>
                                 </div>
@@ -229,7 +238,6 @@
                                     <button class="tool-btn" id="reset-view-designer">重置视图</button>
                                     <div class="toolbar-spacer"></div>
                                     <button class="tool-btn" id="reset-component">重置元件</button>
-                                    <button class="tool-btn" id="undo-action">撤销</button>
                                 </div>
 
                                 <!-- 画布容器 -->

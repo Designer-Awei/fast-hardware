@@ -1,23 +1,18 @@
 {
   "name": "Resistor 220Ω",
   "id": "resistor-220",
-  "description": "220欧姆电阻器",
+  "description": "220欧姆电阻器。阻值220Ω，精度5%，额定功率0.25W。",
   "category": "auxiliary",
   "pins": {
     "side1": [
-      {"pinName": "端子1", "type": "passive", "order": 1}
+      {"pinName": "端子1", "type": "special", "order": 1}
     ],
     "side3": [
-      {"pinName": "端子2", "type": "passive", "order": 1}
+      {"pinName": "端子2", "type": "special", "order": 1}
     ]
   },
   "dimensions": {
     "width": 30,
     "height": 10
-  },
-  "specifications": {
-    "resistance": "220Ω",
-    "tolerance": "5%",
-    "power": "0.25W"
   }
 }

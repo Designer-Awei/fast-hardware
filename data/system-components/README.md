@@ -52,16 +52,28 @@ LLM分析需求 → 扫描standard/和custom/文件夹 → 显示元件预览窗
 
 ## 📝 数据结构
 
+### ⚠️ 重要概念区分
+
+- **模块类型** (`category`): 元件的整体功能分类
+  - 例如: `"communication"`, `"sensor"`, `"actuator"`, `"microcontroller"`等
+- **引脚类型** (`type`): 单个引脚的功能分类
+  - 例如: `"power"`, `"ground"`, `"digital_io"`, `"analog_io"`, `"special"`
+
+> **注意**: 不要混淆这两个概念。例如HC-05蓝牙模块的`category`是`"communication"`（通信模块），但其引脚`type`都是`"power"`、`"ground"`、`"digital_io"`等。
+
 ### 单个元件文件格式
 ```json
 {
   "name": "元件名称",
-  "id": "唯一标识符", 
+  "id": "唯一标识符",
   "description": "元件描述",
-  "category": "元件类别",
-  "pins": {引脚定义},
-  "dimensions": {尺寸信息},
-  "specifications": {技术规格}
+  "category": "模块类型",
+  "pins": {
+    "side1": [
+      {"pinName": "引脚名称", "type": "引脚类型", "order": 序号}
+    ]
+  },
+  "dimensions": {尺寸信息}
 }
 ```
 

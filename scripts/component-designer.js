@@ -25,6 +25,9 @@ class ComponentDesigner {
         this.interactionManager = null;
         this.initialized = false;
 
+        // 初始化元件矩形位置和尺寸
+        this.componentRect = null; // 将在渲染器初始化时设置
+
         // 添加选中状态
         this.selectedSide = null; // 当前选中的边：'side1', 'side2', 'side3', 'side4'
 
@@ -66,14 +69,15 @@ class ComponentDesigner {
         this.elements = {
             nameInput: document.getElementById('component-name'),
             categorySelect: document.getElementById('component-category'),
+            widthInput: document.getElementById('component-width'),
+            heightInput: document.getElementById('component-height'),
             descriptionTextarea: document.getElementById('component-description'),
             resetBtn: document.getElementById('reset-designer'),
             saveBtn: document.getElementById('save-component'),
             canvas: document.getElementById('component-designer-canvas'),
             statusMessage: document.getElementById('status-message'),
             componentInfo: document.getElementById('component-info'),
-            resetComponentBtn: document.getElementById('reset-component'),
-            undoBtn: document.getElementById('undo-action')
+            resetComponentBtn: document.getElementById('reset-component')
         };
 
         // 检查关键元素是否存在
@@ -83,6 +87,10 @@ class ComponentDesigner {
                 missingElements.push(key);
             }
         });
+
+        // 尺寸输入框不是必须的，可以为空
+        if (this.elements.widthInput) missingElements.splice(missingElements.indexOf('widthInput'), 1);
+        if (this.elements.heightInput) missingElements.splice(missingElements.indexOf('heightInput'), 1);
 
         if (missingElements.length > 0) {
             console.warn('元件设计器缺少以下DOM元素:', missingElements);
@@ -125,6 +133,7 @@ class ComponentDesigner {
                 this.component.name = e.target.value.trim();
                 this.generateComponentId();
                 this.updateComponentInfo();
+                this.render(); // 重新渲染以显示新的元件名称
             });
         }
 
@@ -132,6 +141,21 @@ class ComponentDesigner {
             this.elements.categorySelect.addEventListener('change', (e) => {
                 this.component.category = e.target.value;
                 this.updateStatus(`类别已更改为: ${this.getCategoryDisplayName(e.target.value)}`);
+            });
+        }
+
+        // 尺寸输入事件
+        if (this.elements.widthInput) {
+            this.elements.widthInput.addEventListener('input', (e) => {
+                const width = parseInt(e.target.value) || 100;
+                this.updateComponentSize(width, this.component.dimensions.height);
+            });
+        }
+
+        if (this.elements.heightInput) {
+            this.elements.heightInput.addEventListener('input', (e) => {
+                const height = parseInt(e.target.value) || 80;
+                this.updateComponentSize(this.component.dimensions.width, height);
             });
         }
 
@@ -161,11 +185,6 @@ class ComponentDesigner {
             resetViewBtn.addEventListener('click', () => this.renderer.resetView());
         }
 
-        // 撤销按钮（暂时禁用）
-        if (this.elements.undoBtn) {
-            this.elements.undoBtn.disabled = true;
-            this.elements.undoBtn.addEventListener('click', () => this.undo());
-        }
     }
 
     /**
@@ -201,6 +220,8 @@ class ComponentDesigner {
             // 清空表单
             if (this.elements.nameInput) this.elements.nameInput.value = '';
             if (this.elements.categorySelect) this.elements.categorySelect.value = 'other';
+            if (this.elements.widthInput) this.elements.widthInput.value = '100';
+            if (this.elements.heightInput) this.elements.heightInput.value = '80';
             if (this.elements.descriptionTextarea) this.elements.descriptionTextarea.value = '';
 
             // 清除选中状态
@@ -308,7 +329,7 @@ class ComponentDesigner {
                 }
 
                 // 检查引脚类型
-                const validTypes = ['power', 'ground', 'digital_io', 'analog_io', 'communication'];
+                const validTypes = ['power', 'ground', 'digital_io', 'analog_io', 'special'];
                 if (!validTypes.includes(pin.type)) {
                     errors.push(`${sideName}的第${index + 1}个引脚类型无效`);
                 }
@@ -414,18 +435,81 @@ class ComponentDesigner {
     }
 
     /**
-     * 撤销操作（占位符）
+     * 同步尺寸到属性栏输入框
      */
-    undo() {
-        this.updateStatus('撤销功能将在后续阶段实现');
+    syncDimensionsToInputs() {
+        if (this.elements) {
+            const { widthInput, heightInput } = this.elements;
+            if (widthInput && this.componentRect) {
+                widthInput.value = this.componentRect.width;
+            }
+            if (heightInput && this.componentRect) {
+                heightInput.value = this.componentRect.height;
+            }
+        }
     }
 
     /**
-     * 重做操作（占位符）
+     * 更新元件尺寸
      */
-    redo() {
-        this.updateStatus('重做功能将在后续阶段实现');
+    updateComponentSize(width, height) {
+        // 限制尺寸范围
+        width = Math.max(20, Math.min(500, width));
+        height = Math.max(20, Math.min(500, height));
+
+        // 确保 dimensions 对象存在
+        if (!this.component.dimensions) {
+            this.component.dimensions = { width: 100, height: 80 };
+        }
+
+        // 更新元件尺寸
+        this.component.dimensions.width = width;
+        this.component.dimensions.height = height;
+
+        // 确保 componentRect 对象存在
+        if (!this.componentRect) {
+            // 如果不存在，初始化为默认值
+            const canvas = this.elements.canvas;
+            if (canvas) {
+                this.componentRect = {
+                    x: canvas.width / 2 - width / 2,
+                    y: canvas.height / 2 - height / 2,
+                    width: width,
+                    height: height
+                };
+            } else {
+                // 如果画布也不存在，使用默认位置
+                this.componentRect = {
+                    x: 200 - width / 2,
+                    y: 150 - height / 2,
+                    width: width,
+                    height: height
+                };
+            }
+        } else {
+            // 更新现有尺寸，保持位置居中
+            this.componentRect.width = width;
+            this.componentRect.height = height;
+        }
+
+        // 重新居中元件
+        if (this.canvas) {
+            const canvasWidth = this.canvas.width / (window.devicePixelRatio || 1);
+            const canvasHeight = this.canvas.height / (window.devicePixelRatio || 1);
+            this.componentRect.x = (canvasWidth - this.componentRect.width) / 2;
+            this.componentRect.y = (canvasHeight - this.componentRect.height) / 2;
+        }
+
+        // 同步更新属性栏的尺寸输入框
+        this.syncDimensionsToInputs();
+
+        // 重新渲染画布
+        this.render();
+
+        // 更新状态
+        this.updateStatus(`元件尺寸已更改为: ${width} × ${height}px`);
     }
+
 
     /**
      * 显示引脚编辑器（由交互管理器调用）
@@ -479,13 +563,17 @@ class SimpleCanvasRenderer {
         // 格线大小
         this.gridSize = 20;
 
-        // 元件尺寸调整为对齐格线 (120x80, 120是20*6, 80是20*4)
-        this.componentRect = {
-            x: Math.floor(canvas.width / 2 / this.gridSize) * this.gridSize - 60, // 居中并对齐格线
-            y: Math.floor(canvas.height / 2 / this.gridSize) * this.gridSize - 40,
-            width: 120, // 6个格子宽
-            height: 80   // 4个格子高
-        };
+        // 使用设计器的 componentRect，而不是创建自己的副本
+        // 如果设计器还没有初始化 componentRect，则创建一个临时的
+        if (!designer.componentRect) {
+            designer.componentRect = {
+                x: Math.floor(canvas.width / 2 / this.gridSize) * this.gridSize - 60, // 居中并对齐格线
+                y: Math.floor(canvas.height / 2 / this.gridSize) * this.gridSize - 40,
+                width: 120, // 6个格子宽
+                height: 80   // 4个格子高
+            };
+        }
+        this.componentRect = designer.componentRect;
 
         // 初始化画布尺寸
         this.resizeCanvas();
@@ -599,7 +687,7 @@ class SimpleCanvasRenderer {
         // 绘制网格
         this.drawGrid();
 
-        // 绘制元件和引脚
+        // 绘制元件和引脚（先绘制元件，再绘制引脚覆盖边框）
         this.drawComponentBody();
         this.drawSelectedSide();
         this.drawPins();
@@ -650,8 +738,28 @@ class SimpleCanvasRenderer {
         const canvasWidth = this.canvas.width / (window.devicePixelRatio || 1);
         const canvasHeight = this.canvas.height / (window.devicePixelRatio || 1);
 
-        this.componentRect.x = Math.floor(canvasWidth / 2 / this.gridSize) * this.gridSize - this.componentRect.width / 2;
-        this.componentRect.y = Math.floor(canvasHeight / 2 / this.gridSize) * this.gridSize - this.componentRect.height / 2;
+        // 简单居中，不需要网格对齐
+        this.componentRect.x = (canvasWidth - this.componentRect.width) / 2;
+        this.componentRect.y = (canvasHeight - this.componentRect.height) / 2;
+    }
+
+    /**
+     * 同步尺寸到属性栏输入框
+     */
+    syncDimensionsToInputs() {
+        // 如果是在渲染器上下文中调用，需要通过 designer 访问元素
+        const elements = this.designer ? this.designer.elements : this.elements;
+        const componentRect = this.componentRect;
+
+        if (elements) {
+            const { widthInput, heightInput } = elements;
+            if (widthInput && componentRect) {
+                widthInput.value = componentRect.width;
+            }
+            if (heightInput && componentRect) {
+                heightInput.value = componentRect.height;
+            }
+        }
     }
 
     /**
@@ -764,22 +872,72 @@ class SimpleCanvasRenderer {
     }
 
     drawComponentBody() {
-        // 绘制元件主体矩形
+        // 绘制元件主体矩形（带圆角）
         this.ctx.fillStyle = '#f0f0f0';
         this.ctx.strokeStyle = '#333';
         this.ctx.lineWidth = 2 / this.scale;
-        this.ctx.fillRect(
+
+        // 计算圆角半径（参照元件预览SVG的4px，考虑缩放）
+        const radius = 4 / this.scale;
+
+        // 保存当前上下文状态
+        this.ctx.save();
+
+        // 绘制圆角矩形
+        this.roundedRect(
             this.componentRect.x,
             this.componentRect.y,
             this.componentRect.width,
-            this.componentRect.height
+            this.componentRect.height,
+            radius
         );
-        this.ctx.strokeRect(
-            this.componentRect.x,
-            this.componentRect.y,
-            this.componentRect.width,
-            this.componentRect.height
-        );
+
+        this.ctx.fill();
+        this.ctx.stroke();
+
+        // 绘制元件名称
+        this.drawComponentName();
+
+        // 恢复上下文状态
+        this.ctx.restore();
+    }
+
+    /**
+     * 绘制圆角矩形路径
+     */
+    roundedRect(x, y, width, height, radius) {
+        this.ctx.beginPath();
+        this.ctx.moveTo(x + radius, y);
+        this.ctx.lineTo(x + width - radius, y);
+        this.ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+        this.ctx.lineTo(x + width, y + height - radius);
+        this.ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+        this.ctx.lineTo(x + radius, y + height);
+        this.ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+        this.ctx.lineTo(x, y + radius);
+        this.ctx.quadraticCurveTo(x, y, x + radius, y);
+        this.ctx.closePath();
+    }
+
+    /**
+     * 绘制元件名称
+     */
+    drawComponentName() {
+        const componentName = this.designer.component.name || '未命名元件';
+
+        // 设置文字样式
+        this.ctx.fillStyle = '#333';
+        this.ctx.font = `${Math.max(12, Math.min(16, this.componentRect.width / 8))}px Arial`;
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+
+        // 计算文字区域（距离边界10px）
+        const textPadding = 10 / this.scale;
+        const textX = this.componentRect.x + this.componentRect.width / 2;
+        const textY = this.componentRect.y + this.componentRect.height / 2;
+
+        // 绘制文字
+        this.ctx.fillText(componentName, textX, textY);
     }
 
     /**
@@ -865,7 +1023,19 @@ class SimpleCanvasRenderer {
      * 绘制引脚
      */
     drawPins() {
+        // 先调整元件尺寸以适应引脚布局
         const calculator = new PinPositionCalculator(this.componentRect);
+        const sizeChanged = calculator.adjustComponentSizeForPins(this.designer.component);
+
+        // 如果尺寸发生了变化，需要更新元件位置并重新渲染
+        if (sizeChanged) {
+            this.updateComponentPosition();
+            // 同步更新属性栏的尺寸输入框
+            this.syncDimensionsToInputs();
+            this.designer.render();
+            return; // 重新渲染后退出，避免重复绘制
+        }
+
         const allPins = calculator.calculateAllPositions(this.designer.component);
 
         allPins.forEach(pin => {
@@ -877,20 +1047,52 @@ class SimpleCanvasRenderer {
      * 绘制单个引脚
      */
     drawPin(pin) {
-        const { position, pinName, type } = pin;
+        const { position, pinName, type, side } = pin;
+        const pinSize = 12 / this.scale; // 引脚尺寸（中等尺寸）
 
-        // 绘制引脚圆点
-        this.ctx.beginPath();
-        this.ctx.arc(position.x, position.y, 4 / this.scale, 0, 2 * Math.PI);
+        // 根据边确定引脚的矩形位置（引脚与边线重合）
+        let pinX, pinY, pinWidth, pinHeight;
 
-        // 根据引脚类型设置颜色
+        switch (side) {
+            case 'side1': // 上边 - 引脚在元件上方突出
+                pinX = position.x - pinSize / 2; // 中心点向左偏移半个引脚宽度
+                pinY = position.y - pinSize / 2; // 向上突出
+                pinWidth = pinSize;
+                pinHeight = pinSize / 2;
+                break;
+            case 'side2': // 右边 - 引脚在元件右边突出
+                pinX = position.x; // 从元件右边线开始
+                pinY = position.y - pinSize / 2; // 中心点向上偏移半个引脚高度
+                pinWidth = pinSize / 2; // 向右突出
+                pinHeight = pinSize;
+                break;
+            case 'side3': // 下边 - 引脚在元件下方突出
+                pinX = position.x - pinSize / 2; // 中心点向左偏移半个引脚宽度
+                pinY = position.y; // 从元件下边线开始，向下突出
+                pinWidth = pinSize;
+                pinHeight = pinSize / 2;
+                break;
+            case 'side4': // 左边 - 引脚在元件左边突出
+                pinX = position.x - pinSize / 2; // 向左突出
+                pinY = position.y - pinSize / 2; // 中心点向上偏移半个引脚高度
+                pinWidth = pinSize / 2;
+                pinHeight = pinSize;
+                break;
+            default:
+                pinX = position.x - pinSize / 2;
+                pinY = position.y - pinSize / 2;
+                pinWidth = pinSize;
+                pinHeight = pinSize;
+        }
+
+        // 绘制引脚矩形
         this.ctx.fillStyle = this.getPinColor(type);
-        this.ctx.fill();
+        this.ctx.fillRect(pinX, pinY, pinWidth, pinHeight);
 
         // 绘制边框
-        this.ctx.strokeStyle = '#fff';
-        this.ctx.lineWidth = 2 / this.scale;
-        this.ctx.stroke();
+        this.ctx.strokeStyle = '#333';
+        this.ctx.lineWidth = 1 / this.scale;
+        this.ctx.strokeRect(pinX, pinY, pinWidth, pinHeight);
 
         // 绘制引脚标签
         this.drawPinLabel(pin);
@@ -901,50 +1103,61 @@ class SimpleCanvasRenderer {
      */
     drawPinLabel(pin) {
         const { position, pinName, side } = pin;
+        const fontSize = 10 / this.scale;
 
         // 设置标签样式
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-        this.ctx.font = `${11 / this.scale}px Arial`;
-        this.ctx.textAlign = 'center';
-        this.ctx.textBaseline = 'middle';
+        this.ctx.fillStyle = '#333';
+        this.ctx.font = `${fontSize}px Arial`;
 
         let labelX = position.x;
         let labelY = position.y;
+        let rotation = 0; // 旋转角度（弧度）
 
-        // 根据边调整标签位置（位置也需要随缩放调整）
-        const offset = 15 / this.scale;
+        // 根据边调整标签位置和文字方向
+        const pinHeight = 12 / this.scale; // 引脚高度（中等尺寸）
+        const textOffset = pinHeight * 2 + 4 / this.scale; // 两个引脚高度 + 额外间距
         switch (side) {
-            case 'side1': // 上边
-                labelY -= offset;
+            case 'side1': // 上边 - 文字逆时针旋转90度（纵向向上）
+                labelY -= textOffset;
+                rotation = -Math.PI / 2; // 逆时针90度
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
                 break;
-            case 'side2': // 右边
-                labelX += offset;
+            case 'side2': // 右边 - 文字水平向右
+                labelX += textOffset;
+                rotation = 0; // 不旋转
                 this.ctx.textAlign = 'left';
+                this.ctx.textBaseline = 'middle';
                 break;
-            case 'side3': // 下边
-                labelY += offset;
+            case 'side3': // 下边 - 文字顺时针旋转90度（纵向向下）
+                labelY += textOffset;
+                rotation = Math.PI / 2; // 顺时针90度
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
                 break;
-            case 'side4': // 左边
-                labelX -= offset;
+            case 'side4': // 左边 - 文字水平向左
+                labelX -= textOffset;
+                rotation = 0; // 不旋转
                 this.ctx.textAlign = 'right';
+                this.ctx.textBaseline = 'middle';
                 break;
         }
 
-        // 绘制标签背景
-        const textWidth = this.ctx.measureText(pinName).width;
-        const padding = 4 / this.scale;
-        const labelHeight = 16 / this.scale;
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-        this.ctx.fillRect(
-            labelX - textWidth/2 - padding,
-            labelY - labelHeight/2,
-            textWidth + padding * 2,
-            labelHeight
-        );
+        // 保存当前上下文状态
+        this.ctx.save();
 
-        // 绘制标签文字
-        this.ctx.fillStyle = '#fff';
-        this.ctx.fillText(pinName, labelX, labelY);
+        // 应用旋转变换
+        if (rotation !== 0) {
+            this.ctx.translate(labelX, labelY);
+            this.ctx.rotate(rotation);
+            this.ctx.fillText(pinName, 0, 0);
+        } else {
+            // 不旋转的正常绘制
+            this.ctx.fillText(pinName, labelX, labelY);
+        }
+
+        // 恢复上下文状态
+        this.ctx.restore();
     }
 
     /**
@@ -956,7 +1169,7 @@ class SimpleCanvasRenderer {
             'ground': '#000000',     // 黑色 - 地
             'digital_io': '#28a745', // 绿色 - 数字I/O
             'analog_io': '#ffc107',  // 黄色 - 模拟I/O
-            'communication': '#6f42c1' // 紫色 - 通信
+            'special': '#6f42c1'     // 紫色 - 特殊引脚
         };
 
         return colorMap[type] || '#667eea'; // 默认蓝色
@@ -993,36 +1206,122 @@ class PinPositionCalculator {
     }
 
     /**
+     * 检查并调整元件尺寸以适应引脚布局
+     */
+    adjustComponentSizeForPins(component) {
+        const spacing = 10; // 固定引脚间距
+        const margin = 15; // 边界距离调整为15px（确保在10-20px范围内）
+        const minSize = 60; // 最小尺寸
+
+        let newWidth = this.componentRect.width;
+        let newHeight = this.componentRect.height;
+        let sizeChanged = false;
+
+        // 检查上下边的引脚需求（水平布局）
+        const topPins = component.pins.side1?.length || 0;
+        const bottomPins = component.pins.side3?.length || 0;
+        const maxHorizontalPins = Math.max(topPins, bottomPins);
+
+        if (maxHorizontalPins > 0) {
+            // 计算需要的总长度：引脚数 * 引脚宽度 + (引脚数 - 1) * 间距 + 边界 * 2
+            // 这里引脚宽度近似为12px（中等尺寸，实际会根据缩放调整，但计算时使用固定值）
+            const pinWidth = 12;
+            const totalLength = maxHorizontalPins * pinWidth + (maxHorizontalPins - 1) * spacing + margin * 2;
+
+            if (totalLength > newWidth) {
+                // 以10px为单位向上取整，向右拓展
+                newWidth = Math.ceil(totalLength / 10) * 10;
+                newWidth = Math.max(newWidth, minSize);
+                sizeChanged = true;
+            }
+        }
+
+        // 检查左右边的引脚需求（垂直布局）
+        const rightPins = component.pins.side2?.length || 0;
+        const leftPins = component.pins.side4?.length || 0;
+        const maxVerticalPins = Math.max(rightPins, leftPins);
+
+        if (maxVerticalPins > 0) {
+            // 计算需要的总长度：引脚数 * 引脚高度 + (引脚数 - 1) * 间距 + 边界 * 2
+            const pinHeight = 12;
+            const totalLength = maxVerticalPins * pinHeight + (maxVerticalPins - 1) * spacing + margin * 2;
+
+            if (totalLength > newHeight) {
+                // 以10px为单位向上取整，向下拓展
+                newHeight = Math.ceil(totalLength / 10) * 10;
+                newHeight = Math.max(newHeight, minSize);
+                sizeChanged = true;
+            }
+        }
+
+        // 更新元件尺寸（如果需要）
+        if (sizeChanged) {
+            const oldWidth = this.componentRect.width;
+            const oldHeight = this.componentRect.height;
+
+            this.componentRect.width = newWidth;
+            this.componentRect.height = newHeight;
+
+            // 同步更新component对象的尺寸
+            component.dimensions.width = newWidth;
+            component.dimensions.height = newHeight;
+
+            console.log(`元件尺寸已调整: ${oldWidth}x${oldHeight} → ${newWidth}x${newHeight}（适应引脚布局）`);
+        }
+
+        return sizeChanged;
+    }
+
+    /**
      * 获取单个引脚在边上的位置
      */
     getPinPosition(side, index, totalPins) {
         const rect = this.componentRect;
         const spacing = this.getSpacing(totalPins);
+        const margin = 15; // 边界距离（目标范围10-20px）
 
         switch (side) {
-            case 'side1': // 上边
-                return {
-                    x: rect.x + spacing * (index + 1),
-                    y: rect.y - 4
-                };
+            case 'side1': // 上边 - 水平居中布局
+            case 'side3': // 下边 - 水平居中布局
+                if (totalPins > 0) {
+                    const pinWidth = 12; // 引脚宽度（中等尺寸）
 
-            case 'side2': // 右边
-                return {
-                    x: rect.x + rect.width + 4,
-                    y: rect.y + spacing * (index + 1)
-                };
+                    // 计算实际需要的布局宽度：引脚数 * 引脚宽度 + (引脚数 - 1) * 间距
+                    const layoutWidth = totalPins * pinWidth + (totalPins - 1) * spacing;
 
-            case 'side3': // 下边
-                return {
-                    x: rect.x + spacing * (index + 1),
-                    y: rect.y + rect.height + 4
-                };
+                    // 确保布局宽度不超过元件宽度减去边界
+                    const availableWidth = rect.width - 2 * margin;
+                    const actualLayoutWidth = Math.min(layoutWidth, availableWidth);
 
-            case 'side4': // 左边
-                return {
-                    x: rect.x - 4,
-                    y: rect.y + spacing * (index + 1)
-                };
+                    // 计算起始位置，使整体居中
+                    const startX = rect.x + (rect.width - actualLayoutWidth) / 2;
+                    // 每个引脚的位置：起始位置 + 引脚索引 * (引脚宽度 + 间距) + 引脚宽度/2（居中）
+                    const x = startX + index * (pinWidth + spacing) + pinWidth / 2;
+                    const y = side === 'side1' ? rect.y : rect.y + rect.height;
+                    return { x, y };
+                }
+                return { x: rect.x + rect.width / 2, y: rect.y };
+
+            case 'side2': // 右边 - 垂直居中布局
+            case 'side4': // 左边 - 垂直居中布局
+                if (totalPins > 0) {
+                    const pinHeight = 12; // 引脚高度（中等尺寸）
+
+                    // 计算实际需要的布局高度：引脚数 * 引脚高度 + (引脚数 - 1) * 间距
+                    const layoutHeight = totalPins * pinHeight + (totalPins - 1) * spacing;
+
+                    // 确保布局高度不超过元件高度减去边界
+                    const availableHeight = rect.height - 2 * margin;
+                    const actualLayoutHeight = Math.min(layoutHeight, availableHeight);
+
+                    // 计算起始位置，使整体居中
+                    const startY = rect.y + (rect.height - actualLayoutHeight) / 2;
+                    const x = side === 'side2' ? rect.x + rect.width : rect.x;
+                    // 每个引脚的位置：起始位置 + 引脚索引 * (引脚高度 + 间距) + 引脚高度/2（居中）
+                    const y = startY + index * (pinHeight + spacing) + pinHeight / 2;
+                    return { x, y };
+                }
+                return { x: rect.x, y: rect.y + rect.height / 2 };
 
             default:
                 return { x: 0, y: 0 };
@@ -1030,12 +1329,10 @@ class PinPositionCalculator {
     }
 
     /**
-     * 计算引脚间距
+     * 计算引脚间距（固定10px）
      */
     getSpacing(totalPins) {
-        const rect = this.componentRect;
-        const maxSpacing = Math.min(rect.width, rect.height) - 20; // 留出边距
-        return maxSpacing / (totalPins + 1);
+        return 10; // 固定引脚间距为10px
     }
 
     /**
@@ -1122,11 +1419,11 @@ class PinEditorModal {
             <div class="pin-item" data-index="${index}">
                 <input type="text" class="pin-name-input" value="${pin.pinName || ''}" placeholder="引脚名称" data-index="${index}">
                 <select class="pin-type-select" data-index="${index}">
-                    <option value="power" ${pin.type === 'power' ? 'selected' : ''}>电源</option>
-                    <option value="ground" ${pin.type === 'ground' ? 'selected' : ''}>地</option>
+                    <option value="power" ${pin.type === 'power' ? 'selected' : ''}>电源引脚</option>
+                    <option value="ground" ${pin.type === 'ground' ? 'selected' : ''}>接地引脚</option>
                     <option value="digital_io" ${pin.type === 'digital_io' ? 'selected' : ''}>数字I/O</option>
                     <option value="analog_io" ${pin.type === 'analog_io' ? 'selected' : ''}>模拟I/O</option>
-                    <option value="communication" ${pin.type === 'communication' ? 'selected' : ''}>通信</option>
+                    <option value="special" ${pin.type === 'special' ? 'selected' : ''}>特殊引脚</option>
                 </select>
                 <button class="pin-delete-btn" data-index="${index}">删除</button>
             </div>
@@ -1245,7 +1542,7 @@ class PinEditorModal {
             }
 
             // 检查引脚类型
-            const validTypes = ['power', 'ground', 'digital_io', 'analog_io', 'communication'];
+            const validTypes = ['power', 'ground', 'digital_io', 'analog_io', 'special'];
             if (!validTypes.includes(pin.type)) {
                 errors.push(`第${index + 1}个引脚类型无效`);
             }

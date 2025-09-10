@@ -1,7 +1,7 @@
 {
   "name": "ESP32开发板",
   "id": "esp32-devkit",
-  "description": "ESP32 WiFi蓝牙双模开发板",
+  "description": "ESP32 WiFi蓝牙双模开发板。工作电压3.3V，支持WiFi 802.11 b/g/n和蓝牙v4.2，内置4MB闪存和520KB SRAM。",
   "category": "microcontroller",
   "pins": {
     "side1": [
@@ -29,12 +29,5 @@
   "dimensions": {
     "width": 60,
     "height": 100
-  },
-  "specifications": {
-    "voltage": "3.3V",
-    "wifi": "802.11 b/g/n",
-    "bluetooth": "v4.2 BR/EDR and BLE",
-    "flash": "4MB",
-    "sram": "520KB"
   }
 }

@@ -459,7 +459,6 @@ class ComponentsManager {
                             ${component.dimensions ? `<p><strong>尺寸:</strong> ${component.dimensions.width} × ${component.dimensions.height}</p>` : ''}
                         </div>
                         ${component.pins ? this.renderPinInfo(component.pins) : ''}
-                        ${component.specifications ? this.renderSpecifications(component.specifications) : ''}
                     </div>
                 </div>
             </div>
@@ -515,43 +514,6 @@ class ComponentsManager {
         return html;
     }
 
-    /**
-     * 渲染规格信息
-     * @param {Object} specifications - 规格对象
-     * @returns {string} HTML字符串
-     */
-    renderSpecifications(specifications) {
-        let html = '<div class="info-section"><h4>技术规格</h4><ul>';
-        
-        Object.keys(specifications).forEach(key => {
-            const value = specifications[key];
-            const displayKey = this.getSpecDisplayName(key);
-            html += `<li><strong>${displayKey}:</strong> ${value}</li>`;
-        });
-        
-        html += '</ul></div>';
-        return html;
-    }
-
-    /**
-     * 获取规格显示名称
-     * @param {string} key - 规格键名
-     * @returns {string} 显示名称
-     */
-    getSpecDisplayName(key) {
-        const specNames = {
-            'voltage': '电压',
-            'current': '电流',
-            'digitalPins': '数字引脚',
-            'analogPins': '模拟引脚',
-            'flashMemory': '闪存',
-            'frequency': '频率',
-            'range': '范围',
-            'accuracy': '精度'
-        };
-        
-        return specNames[key] || key;
-    }
 
     /**
      * 渲染元件形态
@@ -636,7 +598,7 @@ class ComponentsManager {
                         x = offset + (index + 1) * spacing - pinSize / 2;
                         y = offset - pinSize;
                         textX = x + pinSize / 2;
-                        textY = y - 5;
+                        textY = y - pinSize - 8; // 向上移动两个引脚高度加额外间距
                         break;
                     case 'side2': // 右边
                         x = offset + width;
@@ -648,7 +610,7 @@ class ComponentsManager {
                         x = offset + (index + 1) * spacing - pinSize / 2;
                         y = offset + height;
                         textX = x + pinSize / 2;
-                        textY = y + pinSize + 15;
+                        textY = y + pinSize + 20; // 向下移动两个引脚高度加额外间距
                         break;
                     case 'side4': // 左边
                         x = offset - pinSize;
@@ -671,11 +633,32 @@ class ComponentsManager {
                 // 引脚标签
                 pinText.setAttribute('x', textX);
                 pinText.setAttribute('y', textY);
-                pinText.setAttribute('text-anchor', side === 'side2' ? 'start' : side === 'side4' ? 'end' : 'middle');
-                pinText.setAttribute('dominant-baseline', 'middle');
                 pinText.setAttribute('font-size', 10);
                 pinText.setAttribute('fill', '#333');
                 pinText.textContent = pin.pinName;
+
+                // 根据边设置文字对齐和旋转
+                switch (side) {
+                    case 'side1': // 上边 - 逆时针旋转90度
+                        pinText.setAttribute('text-anchor', 'middle');
+                        pinText.setAttribute('dominant-baseline', 'middle');
+                        pinText.setAttribute('transform', `rotate(-90 ${textX} ${textY})`);
+                        break;
+                    case 'side2': // 右边 - 水平向右
+                        pinText.setAttribute('text-anchor', 'start');
+                        pinText.setAttribute('dominant-baseline', 'middle');
+                        break;
+                    case 'side3': // 下边 - 顺时针旋转90度
+                        pinText.setAttribute('text-anchor', 'middle');
+                        pinText.setAttribute('dominant-baseline', 'middle');
+                        pinText.setAttribute('transform', `rotate(90 ${textX} ${textY})`);
+                        break;
+                    case 'side4': // 左边 - 水平向左
+                        pinText.setAttribute('text-anchor', 'end');
+                        pinText.setAttribute('dominant-baseline', 'middle');
+                        break;
+                }
+
                 svg.appendChild(pinText);
             });
         });
@@ -688,13 +671,13 @@ class ComponentsManager {
      */
     getPinColor(type) {
         const colorMap = {
-            'power': '#ff6b6b',
-            'ground': '#333',
-            'digital_io': '#4ecdc4',
-            'analog_io': '#45b7d1',
-            'communication': '#96ceb4'
+            'power': '#dc3545',       // 红色 - 电源引脚
+            'ground': '#000000',     // 黑色 - 接地引脚
+            'digital_io': '#28a745', // 绿色 - 数字I/O
+            'analog_io': '#ffc107',  // 黄色 - 模拟I/O
+            'special': '#6f42c1'     // 紫色 - 特殊引脚
         };
-        
+
         return colorMap[type] || '#ddd';
     }
 

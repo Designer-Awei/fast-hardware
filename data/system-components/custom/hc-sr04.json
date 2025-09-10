@@ -1,7 +1,7 @@
 {
   "name": "超声波传感器HC-SR04",
   "id": "hc-sr04",
-  "description": "超声波测距传感器，测量范围2cm-4m",
+  "description": "超声波测距传感器。工作电压5V，工作电流15mA，测量范围2cm-400cm，测量精度3mm，探测角度15°。",
   "category": "sensor",
   "pins": {
     "side1": [
@@ -14,12 +14,5 @@
   "dimensions": {
     "width": 45,
     "height": 20
-  },
-  "specifications": {
-    "voltage": "5V",
-    "current": "15mA",
-    "range": "2cm-400cm",
-    "accuracy": "3mm",
-    "angle": "15°"
   }
 }
