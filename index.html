@@ -226,14 +226,21 @@
                             <div class="designer-canvas-area">
                                 <!-- 工具栏 -->
                                 <div class="canvas-toolbar">
+                                    <button class="tool-btn" id="reset-view-designer">重置视图</button>
+                                    <div class="toolbar-spacer"></div>
                                     <button class="tool-btn" id="reset-component">重置元件</button>
                                     <button class="tool-btn" id="undo-action">撤销</button>
-                                    <button class="tool-btn" id="redo-action">重做</button>
                                 </div>
 
                                 <!-- 画布容器 -->
                                 <div class="canvas-container">
                                     <canvas id="component-designer-canvas" width="600" height="400"></canvas>
+                                    <div class="canvas-overlay">
+                                        <div class="canvas-status">
+                                            <span>缩放: <span id="designer-zoom-level">100%</span></span>
+                                            <span>坐标: (<span id="designer-mouse-x">0</span>, <span id="designer-mouse-y">0</span>)</span>
+                                        </div>
+                                    </div>
                                 </div>
 
                                 <!-- 状态栏 -->

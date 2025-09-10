@@ -225,6 +225,29 @@ class CanvasManager {
     }
 
     /**
+     * 强制重新渲染画布
+     */
+    forceRender() {
+        if (!this.canvas || !this.ctx) return;
+
+        // 确保画布有正确的尺寸
+        const container = this.canvas.parentElement;
+        if (container) {
+            const rect = container.getBoundingClientRect();
+
+            // 检查尺寸是否需要更新
+            if (this.canvas.width !== rect.width || this.canvas.height !== rect.height) {
+                this.canvas.width = rect.width;
+                this.canvas.height = rect.height;
+            }
+        }
+
+        // 强制重新渲染
+        this.draw();
+        console.log('电路搭建画布强制重新渲染完成');
+    }
+
+    /**
      * 绘制画布内容
      */
     draw() {
@@ -343,6 +366,48 @@ let canvasManager;
 
 document.addEventListener('DOMContentLoaded', () => {
     canvasManager = new CanvasManager();
+
+    // 监听标签页切换事件，确保画布正确渲染
+    document.addEventListener('tabActivated', (e) => {
+        if (e.detail.tabName === 'circuit') {
+            // 延迟执行，确保DOM完全更新
+            setTimeout(() => {
+                if (canvasManager) {
+                    canvasManager.forceRender();
+                    console.log('电路搭建画布重新渲染完成');
+                }
+            }, 100);
+        }
+    });
+
+    // 添加页面可见性监听器
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && canvasManager) {
+            // 页面变为可见时，强制重新渲染
+            setTimeout(() => {
+                canvasManager.forceRender();
+            }, 50);
+        }
+    });
+
+    // 添加Intersection Observer监听
+    const canvasElement = document.getElementById('main-canvas');
+    if (canvasElement && canvasElement.parentElement && window.IntersectionObserver) {
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting && canvasManager) {
+                    // 画布变为可见时，强制重新渲染
+                    setTimeout(() => {
+                        canvasManager.forceRender();
+                    }, 100);
+                }
+            });
+        }, {
+            threshold: 0.1 // 当10%的画布可见时触发
+        });
+
+        observer.observe(canvasElement.parentElement);
+    }
 });
 
 // 导出到全局作用域
