@@ -20,7 +20,7 @@ const watchExtensions = ['.js', '.html', '.css', '.json', '.mjs', '.txt'];
 /**
  * 需要忽略的目录
  */
-const ignoreDirs = ['node_modules', 'dist', '.git'];
+const ignoreDirs = ['node_modules', 'dist', '.git', 'data', 'data/system-components', 'data/system-components/standard', 'data/system-components/custom'];
 
 /**
  * 启动Electron应用
@@ -103,15 +103,22 @@ function shouldWatch(filePath) {
   if (!watchExtensions.includes(ext)) {
     return false;
   }
-  
-  // 检查是否在忽略目录中
+
+  // 检查是否在忽略目录中（更严格的检查）
   const relativePath = path.relative(process.cwd(), filePath);
   for (const ignoreDir of ignoreDirs) {
-    if (relativePath.includes(ignoreDir)) {
+    // 检查是否以忽略目录开头，或者包含忽略目录路径
+    if (relativePath.startsWith(ignoreDir + path.sep) ||
+        relativePath.startsWith(ignoreDir + '/') ||
+        relativePath.includes(path.sep + ignoreDir + path.sep) ||
+        relativePath.includes('/' + ignoreDir + '/') ||
+        relativePath === ignoreDir) {
+      console.log(`🚫 忽略文件: ${relativePath} (在忽略目录 ${ignoreDir} 中)`);
       return false;
     }
   }
-  
+
+  console.log(`👀 监控文件: ${relativePath}`);
   return true;
 }
 

@@ -5,10 +5,26 @@
   "category": "auxiliary",
   "pins": {
     "side1": [
-      {"pinName": "VCC", "type": "power", "order": 1},
-      {"pinName": "GND", "type": "ground", "order": 2},
-      {"pinName": "SCL", "type": "digital_io", "order": 3},
-      {"pinName": "SDA", "type": "digital_io", "order": 4}
+      {
+        "pinName": "VCC",
+        "type": "power",
+        "order": 1
+      },
+      {
+        "pinName": "GND",
+        "type": "ground",
+        "order": 2
+      },
+      {
+        "pinName": "SCL",
+        "type": "digital_io",
+        "order": 3
+      },
+      {
+        "pinName": "SDA",
+        "type": "digital_io",
+        "order": 4
+      }
     ]
   },
   "dimensions": {

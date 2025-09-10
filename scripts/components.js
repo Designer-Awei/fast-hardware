@@ -74,12 +74,34 @@ class ComponentsManager {
         const saveBtn = document.getElementById('save-component');
         const resetBtn = document.getElementById('reset-designer');
 
+        // 绑定保存和重置事件（在元件绘制器页面时会被 ComponentDesigner 的事件覆盖）
         if (saveBtn) {
-            saveBtn.addEventListener('click', () => this.saveComponent());
+            saveBtn.addEventListener('click', (e) => {
+                // 检查是否在元件绘制器页面
+                const designerTab = document.getElementById('designer-sub-tab');
+                if (designerTab && designerTab.classList.contains('active')) {
+                    // 在元件绘制器页面，不执行 ComponentsManager 的保存逻辑
+                    console.log('在元件绘制器页面，跳过 ComponentsManager 保存逻辑');
+                    return;
+                }
+                // 在元件库页面，执行 ComponentsManager 的保存逻辑
+                console.log('执行 ComponentsManager 保存逻辑');
+                this.saveComponent();
+            });
         }
 
         if (resetBtn) {
-            resetBtn.addEventListener('click', () => this.resetDesigner());
+            resetBtn.addEventListener('click', (e) => {
+                // 检查是否在元件绘制器页面
+                const designerTab = document.getElementById('designer-sub-tab');
+                if (designerTab && designerTab.classList.contains('active')) {
+                    // 在元件绘制器页面，不执行 ComponentsManager 的重置逻辑
+                    console.log('在元件绘制器页面，跳过 ComponentsManager 重置逻辑');
+                    return;
+                }
+                // 在元件库页面，执行 ComponentsManager 的重置逻辑
+                this.resetDesigner();
+            });
         }
 
         // 监听标签页切换事件
@@ -102,6 +124,10 @@ class ComponentsManager {
                 break;
             case 'custom':
                 this.loadComponents('custom');
+                break;
+            case 'designer':
+                // 元件绘制器页面，不需要加载元件列表
+                console.log('切换到元件绘制器页面');
                 break;
         }
     }
@@ -445,7 +471,10 @@ class ComponentsManager {
             <div class="preview-content">
                 <div class="preview-header">
                     <h3>${component.name}</h3>
-                    <button class="close-btn">&times;</button>
+                    <div class="header-actions">
+                        <button class="edit-btn" id="edit-component-btn">编辑</button>
+                        <button class="close-btn">&times;</button>
+                    </div>
                 </div>
                 <div class="preview-body">
                     <div class="component-render" id="component-render-${component.id}">
@@ -472,6 +501,15 @@ class ComponentsManager {
         modal.querySelector('.preview-backdrop').addEventListener('click', () => {
             this.closePreviewModal(modal);
         });
+
+        // 绑定编辑事件
+        const editBtn = modal.querySelector('.edit-btn');
+        if (editBtn) {
+            editBtn.addEventListener('click', () => {
+                this.editComponent(component);
+                this.closePreviewModal(modal);
+            });
+        }
 
         // ESC键关闭
         const handleEscape = (e) => {
@@ -679,6 +717,238 @@ class ComponentsManager {
         };
 
         return colorMap[type] || '#ddd';
+    }
+
+    /**
+     * 编辑元件 - 跳转到元件绘制页并加载数据
+     * @param {Object} component - 元件对象
+     */
+    editComponent(component) {
+        console.log('编辑元件:', component.name);
+
+        // 切换到元件绘制页标签
+        if (window.tabManager) {
+            window.tabManager.switchToSubTab('designer');
+        }
+
+        // 简化数据加载流程，直接调用加载方法
+        this.safeLoadComponentData(component);
+    }
+
+    /**
+     * 安全地加载元件数据，避免时序问题
+     * @param {Object} component - 元件对象
+     */
+    safeLoadComponentData(component) {
+        console.log('开始安全加载元件数据...');
+
+        // 定义一个安全的加载函数
+        const performLoad = () => {
+            try {
+                console.log('执行元件数据加载...');
+
+                // 直接检查并加载数据
+                if (this.checkDesignerReady()) {
+                    this.doLoadComponentData(component);
+                } else {
+                    console.log('元件设计器暂未就绪，稍后重试...');
+                    setTimeout(performLoad, 200);
+                }
+            } catch (error) {
+                console.error('加载过程中出现错误:', error);
+                // 如果出错，尝试简单的重试
+                setTimeout(() => {
+                    try {
+                        this.doLoadComponentData(component);
+                    } catch (retryError) {
+                        console.error('重试也失败:', retryError);
+                        alert('加载元件数据失败，请手动刷新页面后重试');
+                    }
+                }, 500);
+            }
+        };
+
+        // 延迟执行，确保页面切换完成
+        setTimeout(performLoad, 300);
+    }
+
+    /**
+     * 检查元件设计器是否准备就绪
+     * @returns {boolean} 是否就绪
+     */
+    checkDesignerReady() {
+        return window.componentDesigner &&
+               window.componentDesigner.initialized &&
+               window.componentDesigner.renderer &&
+               window.componentDesigner.renderer.canvas;
+    }
+
+
+    /**
+     * 执行元件数据加载的实际逻辑
+     * @param {Object} component - 元件对象
+     */
+    doLoadComponentData(component) {
+        try {
+            console.log('开始加载元件数据到设计器...');
+
+            // 再次检查元件设计器是否可用
+            if (!window.componentDesigner) {
+                throw new Error('元件设计器不可用');
+            }
+
+            if (!window.componentDesigner.initialized) {
+                throw new Error('元件设计器尚未完全初始化');
+            }
+
+            // 填充表单字段
+            this.populateDesignerForm(component);
+
+            // 加载元件数据到设计器
+            this.loadComponentDataToDesigner(component);
+
+            console.log('元件数据已加载到设计器:', component.name);
+
+            // 验证数据是否正确加载
+            const currentDesigner = window.componentDesigner;
+            if (currentDesigner && currentDesigner.component) {
+                console.log('加载的元件数据:', {
+                    name: currentDesigner.component.name,
+                    dimensions: currentDesigner.component.dimensions,
+                    pinsCount: Object.values(currentDesigner.component.pins).reduce((sum, pins) => sum + pins.length, 0)
+                });
+            }
+
+            console.log('元件数据加载完成');
+        } catch (error) {
+            console.error('加载元件数据到设计器失败:', error);
+            console.error('错误详情:', {
+                message: error.message,
+                stack: error.stack,
+                component: component.name
+            });
+            alert('加载元件数据失败: ' + error.message);
+        }
+    }
+
+    /**
+     * 填充设计器表单字段
+     * @param {Object} component - 元件对象
+     */
+    populateDesignerForm(component) {
+        const nameInput = document.getElementById('component-name');
+        const categorySelect = document.getElementById('component-category');
+        const descriptionTextarea = document.getElementById('component-description');
+        const widthInput = document.getElementById('component-width');
+        const heightInput = document.getElementById('component-height');
+
+        if (nameInput) nameInput.value = component.name || '';
+        if (categorySelect) categorySelect.value = component.category || 'other';
+        if (descriptionTextarea) descriptionTextarea.value = component.description || '';
+        if (widthInput && component.dimensions) widthInput.value = component.dimensions.width || 100;
+        if (heightInput && component.dimensions) heightInput.value = component.dimensions.height || 80;
+    }
+
+    /**
+     * 将元件数据加载到元件设计器对象
+     * @param {Object} component - 元件对象
+     */
+    loadComponentDataToDesigner(component) {
+        console.log('开始将元件数据加载到设计器对象...');
+
+        const designer = window.componentDesigner;
+
+        if (!designer) {
+            throw new Error('元件设计器实例不存在');
+        }
+
+        // 设置编辑模式标识
+        designer.isEditingExisting = true;
+        designer.originalComponentId = component.id;
+
+        // 更新元件设计器的数据
+        designer.component = {
+            name: component.name || '',
+            id: component.id || '',
+            description: component.description || '',
+            category: component.category || 'other',
+            dimensions: component.dimensions || { width: 100, height: 80 },
+            pins: component.pins || {
+                side1: [],
+                side2: [],
+                side3: [],
+                side4: []
+            }
+        };
+
+        // 更新元件矩形位置和尺寸
+        if (component.dimensions) {
+            designer.componentRect = {
+                x: 200 - (component.dimensions.width / 2),
+                y: 150 - (component.dimensions.height / 2),
+                width: component.dimensions.width,
+                height: component.dimensions.height
+            };
+        }
+
+        // 确保渲染器存在
+        if (!designer.renderer) {
+            console.warn('渲染器不存在，尝试重新初始化');
+            return;
+        }
+
+        // 强制重新渲染设计器
+        try {
+            console.log('开始重新渲染元件...');
+
+            // 确保渲染器有最新的引用
+            if (designer.renderer && designer.renderer.designer !== designer) {
+                console.log('更新渲染器引用');
+                designer.renderer.designer = designer;
+            }
+
+            if (!designer.renderer) {
+                throw new Error('渲染器不存在');
+            }
+
+            // 先清空画布
+            designer.renderer.clearCanvas();
+
+            // 重新渲染元件
+            designer.renderer.render();
+
+            console.log('元件渲染完成');
+        } catch (error) {
+            console.error('渲染元件时出错:', error);
+            console.error('渲染器状态:', {
+                rendererExists: !!designer.renderer,
+                designerExists: !!designer,
+                canvasExists: designer.renderer ? !!designer.renderer.canvas : false
+            });
+
+            // 尝试强制渲染
+            if (designer.renderer && designer.renderer.forceRender) {
+                console.log('尝试强制渲染...');
+                setTimeout(() => {
+                    try {
+                        designer.renderer.forceRender();
+                        console.log('强制渲染完成');
+                    } catch (forceError) {
+                        console.error('强制渲染也失败:', forceError);
+                    }
+                }, 100);
+            }
+        }
+
+        // 更新元件信息显示
+        if (designer.updateComponentInfo) {
+            designer.updateComponentInfo();
+        }
+
+        // 更新状态
+        if (designer.updateStatus) {
+            designer.updateStatus(`已加载元件: ${component.name}`);
+        }
     }
 
     /**

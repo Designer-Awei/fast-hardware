@@ -8,6 +8,7 @@
     "dev": "chcp 65001 >nul && node dev-runner.js",
     "dev-simple": "chcp 65001 >nul && electron .",
     "dev-debug": "chcp 65001 >nul && electron . --enable-logging",
+    "dev-no-reload": "chcp 65001 >nul && node dev-runner-no-reload.js",
     "build": "electron-builder",
     "dist": "electron-builder --publish=never"
   },

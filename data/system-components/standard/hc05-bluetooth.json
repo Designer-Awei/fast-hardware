@@ -5,16 +5,40 @@
   "category": "communication",
   "pins": {
     "side1": [
-      {"pinName": "VCC", "type": "power", "order": 1},
-      {"pinName": "GND", "type": "ground", "order": 2},
-      {"pinName": "TXD", "type": "digital_io", "order": 3},
-      {"pinName": "RXD", "type": "digital_io", "order": 4},
-      {"pinName": "STATE", "type": "digital_io", "order": 5},
-      {"pinName": "EN", "type": "digital_io", "order": 6}
+      {
+        "pinName": "VCC",
+        "type": "power",
+        "order": 1
+      },
+      {
+        "pinName": "GND",
+        "type": "ground",
+        "order": 2
+      },
+      {
+        "pinName": "TXD",
+        "type": "digital_io",
+        "order": 3
+      },
+      {
+        "pinName": "RXD",
+        "type": "digital_io",
+        "order": 4
+      },
+      {
+        "pinName": "STATE",
+        "type": "digital_io",
+        "order": 5
+      },
+      {
+        "pinName": "EN",
+        "type": "digital_io",
+        "order": 6
+      }
     ]
   },
   "dimensions": {
-    "width": 40,
-    "height": 60
+    "width": 160,
+    "height": 80
   }
 }

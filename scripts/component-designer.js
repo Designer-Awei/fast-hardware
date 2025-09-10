@@ -31,6 +31,10 @@ class ComponentDesigner {
         // 添加选中状态
         this.selectedSide = null; // 当前选中的边：'side1', 'side2', 'side3', 'side4'
 
+        // 编辑模式标识
+        this.isEditingExisting = false; // 是否正在编辑现有元件
+        this.originalComponentId = null; // 原始元件ID
+
         const success = this.init();
         if (success) {
             this.initialized = true;
@@ -165,18 +169,53 @@ class ComponentDesigner {
             });
         }
 
-        // 按钮事件
-        if (this.elements.resetBtn) {
-            this.elements.resetBtn.addEventListener('click', () => this.resetDesigner());
-        }
+        // 按钮事件 - 只在元件绘制器页面激活时绑定（避免重复绑定）
+        let eventsBound = false; // 标记是否已经绑定了事件
 
-        if (this.elements.saveBtn) {
-            this.elements.saveBtn.addEventListener('click', () => this.saveComponent());
-        }
+        const bindDesignerEvents = () => {
+            const designerTab = document.getElementById('designer-sub-tab');
+            if (designerTab && designerTab.classList.contains('active') && !eventsBound) {
+                console.log('绑定元件绘制器事件');
+                eventsBound = true; // 标记已绑定
 
-        if (this.elements.resetComponentBtn) {
-            this.elements.resetComponentBtn.addEventListener('click', () => this.resetComponent());
-        }
+                if (this.elements.resetBtn) {
+                    this.elements.resetBtn.addEventListener('click', (e) => {
+                        e.stopPropagation(); // 防止事件冒泡
+                        this.resetDesigner();
+                    });
+                }
+
+                if (this.elements.saveBtn) {
+                    this.elements.saveBtn.addEventListener('click', (e) => {
+                        e.stopPropagation(); // 防止事件冒泡
+                        console.log('元件绘制器保存按钮被点击');
+                        this.saveComponent();
+                    });
+                }
+
+                if (this.elements.resetComponentBtn) {
+                    this.elements.resetComponentBtn.addEventListener('click', (e) => {
+                        e.stopPropagation(); // 防止事件冒泡
+                        this.resetComponent();
+                    });
+                }
+            }
+        };
+
+        // 监听标签页切换事件，只在切换到元件绘制器时绑定事件
+        document.addEventListener('subTabActivated', (e) => {
+            if (e.detail.subTabName === 'designer' && !eventsBound) {
+                console.log('检测到切换到元件绘制器页面，绑定事件');
+                setTimeout(bindDesignerEvents, 50);
+            }
+        });
+
+        // 延迟尝试绑定，确保页面初始化完成
+        setTimeout(() => {
+            if (!eventsBound) {
+                bindDesignerEvents();
+            }
+        }, 200);
 
         // 重置视图按钮
         const resetViewBtn = document.getElementById('reset-view-designer');
@@ -216,6 +255,10 @@ class ComponentDesigner {
                     side4: []
                 }
             };
+
+            // 清除编辑模式标识
+            this.isEditingExisting = false;
+            this.originalComponentId = null;
 
             // 清空表单
             if (this.elements.nameInput) this.elements.nameInput.value = '';
@@ -276,26 +319,634 @@ class ComponentDesigner {
             return;
         }
 
+        // 显示保存路径选择对话框
+        this.showSavePathDialog();
+    }
+
+    /**
+     * 显示保存路径选择对话框
+     */
+    showSavePathDialog() {
+        const dialog = this.createSavePathDialog();
+        document.body.appendChild(dialog);
+
+        // 显示动画
+        requestAnimationFrame(() => {
+            dialog.classList.add('show');
+        });
+    }
+
+    /**
+     * 创建保存路径选择对话框
+     */
+    createSavePathDialog() {
+        const dialog = document.createElement('div');
+        dialog.className = 'save-path-dialog';
+        dialog.innerHTML = `
+            <div class="dialog-backdrop"></div>
+            <div class="dialog-content">
+                <div class="dialog-header">
+                    <h3>保存元件</h3>
+                    <button class="dialog-close-btn">&times;</button>
+                </div>
+                <div class="dialog-body">
+                    <p>请选择元件保存位置：</p>
+                    <div class="path-options">
+                        <div class="path-option" data-path="standard">
+                            <div class="path-icon">📚</div>
+                            <div class="path-info">
+                                <h4>标准元件库</h4>
+                                <p>保存到系统标准元件库，可被所有项目使用</p>
+                            </div>
+                        </div>
+                        <div class="path-option" data-path="custom">
+                            <div class="path-icon">🔧</div>
+                            <div class="path-info">
+                                <h4>自定义元件库</h4>
+                                <p>保存到用户自定义元件库，仅当前用户可见</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="dialog-footer">
+                    <button class="btn-secondary dialog-cancel-btn">取消</button>
+                </div>
+            </div>
+        `;
+
+        // 绑定事件
+        dialog.querySelector('.dialog-close-btn').addEventListener('click', () => {
+            this.closeSavePathDialog(dialog);
+        });
+
+        dialog.querySelector('.dialog-cancel-btn').addEventListener('click', () => {
+            this.closeSavePathDialog(dialog);
+        });
+
+        dialog.querySelector('.dialog-backdrop').addEventListener('click', () => {
+            this.closeSavePathDialog(dialog);
+        });
+
+        // 绑定路径选择事件
+        dialog.querySelectorAll('.path-option').forEach(option => {
+            option.addEventListener('click', (e) => {
+                const path = e.currentTarget.dataset.path;
+                this.handlePathSelection(path, dialog);
+            });
+        });
+
+        return dialog;
+    }
+
+    /**
+     * 处理路径选择
+     */
+    async handlePathSelection(selectedPath, dialog) {
         try {
-            // 生成最终的元件数据（与系统元件文件格式保持一致）
+            // 生成最终的元件数据
             const finalComponent = {
                 name: this.component.name,
-                id: this.generateComponentId(),
+                id: this.isEditingExisting ? this.originalComponentId || this.generateComponentId() : this.generateComponentId(),
                 description: this.component.description,
                 category: this.component.category,
                 pins: this.component.pins,
                 dimensions: this.component.dimensions
             };
 
-            // 保存到文件系统
-            await this.saveComponentToFile(finalComponent);
+            // JSON格式验证（区分编辑模式和新创建模式）
+            console.log('开始JSON验证:', {
+                isEditing: this.isEditingExisting,
+                componentId: finalComponent.id,
+                originalId: this.originalComponentId,
+                selectedPath
+            });
+
+            const validationResult = ComponentDesigner.JSONValidator.validateComponent(finalComponent, {
+                isEditing: this.isEditingExisting,
+                originalPath: selectedPath
+            });
+
+            console.log('验证结果:', validationResult);
+
+            if (!validationResult.valid) {
+                // 显示验证错误对话框
+                this.showValidationErrorDialog(validationResult.errors, dialog);
+                return;
+            }
+
+            // 检查重复并保存
+            await this.saveWithDuplicateCheck(finalComponent, selectedPath);
+
+            // 关闭对话框
+            this.closeSavePathDialog(dialog);
 
             console.log('保存元件:', finalComponent);
             this.updateStatus(`元件 "${this.component.name}" 保存成功`);
 
+            // 保存成功后，清除编辑模式标识（因为现在这是一个新的元件实例）
+            this.isEditingExisting = false;
+            this.originalComponentId = null;
+
         } catch (error) {
             console.error('保存元件失败:', error);
-            alert('保存失败: ' + error.message);
+
+            // 处理不同的错误类型
+            if (error.type) {
+                // 这是我们自定义的错误对象
+                this.showFileOperationErrorDialog(error);
+            } else {
+                // 其他未知错误
+                alert('保存失败: ' + (error.message || '未知错误'));
+            }
+        }
+    }
+
+    /**
+     * 带重复检查的保存
+     */
+    async saveWithDuplicateCheck(component, path) {
+        console.log('开始执行 saveWithDuplicateCheck，元件:', component.name, '路径:', path);
+
+        // 使用Electron IPC通信来检查文件是否存在
+        if (!window.electronAPI || !window.electronAPI.saveComponent) {
+            console.error('Electron API不可用:', {
+                electronAPI: !!window.electronAPI,
+                saveComponent: window.electronAPI ? !!window.electronAPI.saveComponent : false
+            });
+            throw new Error('Electron API不可用，无法保存元件');
+        }
+
+        // 通过IPC调用主进程的保存方法
+        try {
+            console.log('调用IPC: saveComponent');
+            const result = await window.electronAPI.saveComponent(component, path);
+            console.log('IPC调用结果:', result);
+
+            if (result.success) {
+                console.log('元件保存成功:', result.filePath);
+            } else if (result.duplicate) {
+                console.log('检测到重复文件，显示对话框');
+                // 文件存在，显示重复处理对话框
+                await this.showDuplicateDialog(component, result.filePath, path);
+            } else {
+                throw new Error(result.error || '保存失败');
+            }
+        } catch (error) {
+            console.error('IPC调用失败:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * 显示重复元件处理对话框
+     */
+    async showDuplicateDialog(component, filePath, path) {
+        return new Promise((resolve, reject) => {
+            const dialog = document.createElement('div');
+            dialog.className = 'duplicate-dialog';
+            dialog.innerHTML = `
+                <div class="dialog-backdrop"></div>
+                <div class="dialog-content">
+                    <div class="dialog-header">
+                        <h3>元件名称重复</h3>
+                        <button class="dialog-close-btn">&times;</button>
+                    </div>
+                    <div class="dialog-body">
+                        <p>元件名称 "${component.name}" 已存在。请选择处理方式：</p>
+                        <div class="duplicate-options">
+                            <button class="btn-primary duplicate-overwrite">覆盖现有元件</button>
+                            <button class="btn-secondary duplicate-rename">重命名新元件</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(dialog);
+
+            // 显示动画
+            requestAnimationFrame(() => {
+                dialog.classList.add('show');
+            });
+
+            // 绑定事件
+            dialog.querySelector('.dialog-close-btn').addEventListener('click', () => {
+                document.body.removeChild(dialog);
+                reject(new Error('用户取消操作'));
+            });
+
+            dialog.querySelector('.duplicate-overwrite').addEventListener('click', async () => {
+                // 添加二次确认对话框
+                if (!await this.showOverwriteConfirmDialog(component.name)) {
+                    return; // 用户取消覆盖
+                }
+
+                try {
+                    // 使用IPC通信覆盖保存
+                    if (!window.electronAPI || !window.electronAPI.saveComponentForce) {
+                        throw new Error('Electron API不可用，无法覆盖保存');
+                    }
+
+                    const result = await window.electronAPI.saveComponentForce(component, path);
+                    if (result.success) {
+                        document.body.removeChild(dialog);
+                        resolve();
+                    } else {
+                        throw new Error(result.error || '覆盖保存失败');
+                    }
+                } catch (error) {
+                    document.body.removeChild(dialog);
+                    reject(error);
+                }
+            });
+
+            dialog.querySelector('.duplicate-rename').addEventListener('click', async () => {
+                try {
+                    const newName = prompt('请输入新元件名称:', `${component.name}_副本`);
+                    if (newName && newName.trim()) {
+                        component.name = newName.trim();
+                        // 重新生成ID
+                        component.id = this.generateComponentId();
+
+                        // 使用IPC通信重命名保存
+                        if (!window.electronAPI || !window.electronAPI.saveComponent) {
+                            throw new Error('Electron API不可用，无法保存');
+                        }
+
+                        const result = await window.electronAPI.saveComponent(component, path);
+                        if (result.success) {
+                            document.body.removeChild(dialog);
+                            resolve();
+                        } else {
+                            throw new Error(result.error || '重命名保存失败');
+                        }
+                    } else {
+                        reject(new Error('无效的元件名称'));
+                    }
+                } catch (error) {
+                    document.body.removeChild(dialog);
+                    reject(error);
+                }
+            });
+        });
+    }
+
+    /**
+     * 显示文件操作错误对话框
+     */
+    showFileOperationErrorDialog(error) {
+        const errorDialog = document.createElement('div');
+        errorDialog.className = 'file-error-dialog';
+
+        // 根据错误类型显示不同的图标和建议
+        let icon = '⚠️';
+        let suggestion = '';
+
+        switch (error.type) {
+            case 'PERMISSION_ERROR':
+                icon = '🔒';
+                suggestion = '请检查文件夹权限设置，或尝试以管理员身份运行应用。';
+                break;
+            case 'DISK_SPACE_ERROR':
+                icon = '💾';
+                suggestion = '请清理磁盘空间，或选择其他保存位置。';
+                break;
+            case 'FILE_LIMIT_ERROR':
+                icon = '📁';
+                suggestion = '请关闭一些应用程序后再试。';
+                break;
+            case 'PATH_ERROR':
+                icon = '📂';
+                suggestion = '请检查文件路径是否正确，或联系技术支持。';
+                break;
+            default:
+                suggestion = '请联系技术支持获取帮助。';
+        }
+
+        errorDialog.innerHTML = `
+            <div class="dialog-backdrop"></div>
+            <div class="dialog-content">
+                <div class="dialog-header">
+                    <div class="error-icon">${icon}</div>
+                    <h3>文件保存失败</h3>
+                    <button class="dialog-close-btn">&times;</button>
+                </div>
+                <div class="dialog-body">
+                    <p class="error-message">${error.message}</p>
+                    <div class="error-details">
+                        <strong>错误类型：</strong>${error.type}<br>
+                        <strong>元件名称：</strong>${error.component?.name || '未知'}<br>
+                        <strong>元件ID：</strong>${error.component?.id || '未知'}
+                    </div>
+                    <div class="error-suggestion">
+                        <strong>建议解决方案：</strong><br>
+                        ${suggestion}
+                    </div>
+                </div>
+                <div class="dialog-footer">
+                    <button class="btn-secondary error-retry-btn">重试</button>
+                    <button class="btn-primary error-ok-btn">确定</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(errorDialog);
+
+        // 显示动画
+        requestAnimationFrame(() => {
+            errorDialog.classList.add('show');
+        });
+
+        // 绑定事件
+        errorDialog.querySelector('.dialog-close-btn').addEventListener('click', () => {
+            document.body.removeChild(errorDialog);
+        });
+
+        errorDialog.querySelector('.error-ok-btn').addEventListener('click', () => {
+            document.body.removeChild(errorDialog);
+        });
+
+        errorDialog.querySelector('.error-retry-btn').addEventListener('click', () => {
+            document.body.removeChild(errorDialog);
+            // 重新显示保存路径选择对话框
+            this.showSavePathDialog();
+        });
+
+        errorDialog.querySelector('.dialog-backdrop').addEventListener('click', () => {
+            document.body.removeChild(errorDialog);
+        });
+    }
+
+    /**
+     * 显示验证错误对话框
+     */
+    showValidationErrorDialog(errors, parentDialog) {
+        const errorDialog = document.createElement('div');
+        errorDialog.className = 'validation-error-dialog';
+        errorDialog.innerHTML = `
+            <div class="dialog-backdrop"></div>
+            <div class="dialog-content">
+                <div class="dialog-header">
+                    <h3>数据验证失败</h3>
+                    <button class="dialog-close-btn">&times;</button>
+                </div>
+                <div class="dialog-body">
+                    <p>发现以下数据格式错误，请修正后重新保存：</p>
+                    <div class="error-list">
+                        ${errors.map(error => `<div class="error-item">• ${error}</div>`).join('')}
+                    </div>
+                </div>
+                <div class="dialog-footer">
+                    <button class="btn-primary error-ok-btn">确定</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(errorDialog);
+
+        // 显示动画
+        requestAnimationFrame(() => {
+            errorDialog.classList.add('show');
+        });
+
+        // 绑定事件
+        errorDialog.querySelector('.dialog-close-btn').addEventListener('click', () => {
+            document.body.removeChild(errorDialog);
+        });
+
+        errorDialog.querySelector('.error-ok-btn').addEventListener('click', () => {
+            document.body.removeChild(errorDialog);
+        });
+
+        errorDialog.querySelector('.dialog-backdrop').addEventListener('click', () => {
+            document.body.removeChild(errorDialog);
+        });
+    }
+
+    /**
+     * 显示覆盖确认对话框
+     */
+    async showOverwriteConfirmDialog(componentName) {
+        return new Promise((resolve) => {
+            const confirmDialog = document.createElement('div');
+            confirmDialog.className = 'overwrite-confirm-dialog';
+            confirmDialog.innerHTML = `
+                <div class="dialog-backdrop"></div>
+                <div class="dialog-content">
+                    <div class="dialog-header">
+                        <h3>⚠️ 确认覆盖</h3>
+                    </div>
+                    <div class="dialog-body">
+                        <p>确定要覆盖现有的元件 "<strong>${componentName}</strong>" 吗？</p>
+                        <p class="warning-text">此操作无法撤销，现有的元件数据将被永久替换。</p>
+                    </div>
+                    <div class="dialog-footer">
+                        <button class="btn-secondary confirm-cancel-btn">取消</button>
+                        <button class="btn-danger confirm-overwrite-btn">确认覆盖</button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(confirmDialog);
+
+            // 显示动画
+            requestAnimationFrame(() => {
+                confirmDialog.classList.add('show');
+            });
+
+            // 绑定事件
+            confirmDialog.querySelector('.confirm-cancel-btn').addEventListener('click', () => {
+                document.body.removeChild(confirmDialog);
+                resolve(false);
+            });
+
+            confirmDialog.querySelector('.confirm-overwrite-btn').addEventListener('click', () => {
+                document.body.removeChild(confirmDialog);
+                resolve(true);
+            });
+
+            confirmDialog.querySelector('.dialog-backdrop').addEventListener('click', () => {
+                document.body.removeChild(confirmDialog);
+                resolve(false);
+            });
+        });
+    }
+
+    /**
+     * 关闭保存路径对话框
+     */
+    closeSavePathDialog(dialog) {
+        dialog.classList.add('hide');
+        setTimeout(() => {
+            if (dialog.parentNode) {
+                dialog.parentNode.removeChild(dialog);
+            }
+        }, 300);
+    }
+
+    /**
+     * JSON格式验证类
+     */
+    static JSONValidator = class {
+        /**
+         * 验证元件JSON格式
+         * @param {Object} component - 元件数据
+         * @returns {Object} 验证结果 {valid: boolean, errors: string[]}
+         */
+        static validateComponent(component, options = {}) {
+            const errors = [];
+            const { isEditing = false, originalPath = null } = options;
+
+            // 验证基本字段
+            if (!component.name || typeof component.name !== 'string' || component.name.trim() === '') {
+                errors.push('元件名称不能为空且必须是字符串');
+            }
+
+            // 编辑模式下，如果有原始ID则使用，否则生成新的
+            if (!isEditing || !component.id) {
+                if (!component.id || typeof component.id !== 'string' || component.id.trim() === '') {
+                    errors.push('元件ID不能为空且必须是字符串');
+                }
+            }
+
+            if (!component.description || typeof component.description !== 'string' || component.description.trim() === '') {
+                errors.push('元件描述不能为空且必须是字符串');
+            }
+
+            if (!component.category || typeof component.category !== 'string' || component.category.trim() === '') {
+                errors.push('元件类别不能为空且必须是字符串');
+            }
+
+            // 验证尺寸
+            if (!component.dimensions || typeof component.dimensions !== 'object') {
+                errors.push('元件尺寸必须是对象');
+            } else {
+                if (!this.isValidNumber(component.dimensions.width, 20, 500)) {
+                    errors.push('元件宽度必须是20-500之间的数字');
+                }
+                if (!this.isValidNumber(component.dimensions.height, 20, 500)) {
+                    errors.push('元件高度必须是20-500之间的数字');
+                }
+            }
+
+            // 验证引脚配置
+            if (!component.pins || typeof component.pins !== 'object') {
+                errors.push('元件引脚配置必须是对象');
+            } else {
+                // 编辑模式下：只验证存在的引脚边
+                // 新建模式下：要求所有4个引脚边都存在
+                const sidesToCheck = isEditing ?
+                    Object.keys(component.pins) : // 编辑模式：只检查存在的引脚边
+                    ['side1', 'side2', 'side3', 'side4']; // 新建模式：要求所有边都存在
+
+                for (const side of sidesToCheck) {
+                    if (!component.pins.hasOwnProperty(side)) {
+                        if (!isEditing) {
+                            errors.push(`缺少引脚边 ${side}`);
+                        }
+                    } else if (!Array.isArray(component.pins[side])) {
+                        errors.push(`引脚边 ${side} 必须是数组`);
+                    } else {
+                        // 验证每个引脚
+                        component.pins[side].forEach((pin, index) => {
+                            const pinErrors = this.validatePin(pin, side, index);
+                            errors.push(...pinErrors);
+                        });
+                    }
+                }
+            }
+
+            // 检查引脚名称唯一性
+            const allPinNames = [];
+            Object.values(component.pins).forEach(sidePins => {
+                sidePins.forEach(pin => {
+                    if (pin.pinName) {
+                        allPinNames.push(pin.pinName);
+                    }
+                });
+            });
+
+            const duplicateNames = allPinNames.filter((name, index) => allPinNames.indexOf(name) !== index);
+            if (duplicateNames.length > 0) {
+                const uniqueDuplicates = [...new Set(duplicateNames)];
+                errors.push(`发现重复的引脚名称: ${uniqueDuplicates.join(', ')}`);
+            }
+
+            return {
+                valid: errors.length === 0,
+                errors: errors
+            };
+        }
+
+        /**
+         * 验证单个引脚
+         * @param {Object} pin - 引脚对象
+         * @param {string} side - 引脚所在边
+         * @param {number} index - 引脚在数组中的索引
+         * @returns {string[]} 错误信息数组
+         */
+        static validatePin(pin, side, index) {
+            const errors = [];
+
+            if (!pin || typeof pin !== 'object') {
+                errors.push(`${side} 的第 ${index + 1} 个引脚必须是对象`);
+                return errors;
+            }
+
+            // 验证引脚名称
+            if (!pin.pinName || typeof pin.pinName !== 'string' || pin.pinName.trim() === '') {
+                errors.push(`${side} 的第 ${index + 1} 个引脚名称不能为空`);
+            }
+
+            // 验证引脚类型
+            if (!pin.type || typeof pin.type !== 'string' || pin.type.trim() === '') {
+                errors.push(`${side} 的第 ${index + 1} 个引脚类型不能为空`);
+            } else {
+                const validTypes = ['power', 'ground', 'digital_io', 'analog_io', 'special'];
+                if (!validTypes.includes(pin.type)) {
+                    errors.push(`${side} 的第 ${index + 1} 个引脚类型无效: ${pin.type}，有效类型: ${validTypes.join(', ')}`);
+                }
+            }
+
+            // 验证引脚序号
+            if (pin.order === undefined || pin.order === null) {
+                errors.push(`${side} 的第 ${index + 1} 个引脚缺少序号`);
+            } else if (!Number.isInteger(pin.order) || pin.order < 1) {
+                errors.push(`${side} 的第 ${index + 1} 个引脚序号必须是正整数`);
+            }
+
+            return errors;
+        }
+
+        /**
+         * 验证数字是否在有效范围内
+         * @param {*} value - 要验证的值
+         * @param {number} min - 最小值
+         * @param {number} max - 最大值
+         * @returns {boolean} 是否有效
+         */
+        static isValidNumber(value, min, max) {
+            return typeof value === 'number' && !isNaN(value) && value >= min && value <= max;
+        }
+
+        /**
+         * 验证ID格式
+         * @param {string} id - 元件ID
+         * @returns {boolean} 是否有效
+         */
+        static isValidId(id) {
+            // ID应该以字母或数字开头，只能包含字母、数字、连字符和下划线
+            const idPattern = /^[a-zA-Z0-9][a-zA-Z0-9-_]*$/;
+            return idPattern.test(id);
+        }
+
+        /**
+         * 验证元件名称
+         * @param {string} name - 元件名称
+         * @returns {boolean} 是否有效
+         */
+        static isValidName(name) {
+            // 名称不能为空，且不能只包含空白字符
+            return name && typeof name === 'string' && name.trim().length > 0;
         }
     }
 
@@ -350,24 +1001,88 @@ class ComponentDesigner {
 
     /**
      * 保存元件到文件
+     * @param {Object} component - 元件数据
+     * @param {string} targetDir - 目标目录（可选，默认使用custom目录）
      */
-    async saveComponentToFile(component) {
-        const fs = require('fs').promises;
-        const path = require('path');
+    async saveComponentToFile(component, targetDir = null) {
+        try {
+            const fs = require('fs').promises;
+            const path = require('path');
 
-        // 创建元件库目录（如果不存在）
-        const componentsDir = path.join(__dirname, '..', 'data', 'system-components', 'custom');
-        await fs.mkdir(componentsDir, { recursive: true });
+            // 如果没有指定目录，使用默认的custom目录
+            if (!targetDir) {
+                targetDir = path.join(__dirname, '..', 'data', 'system-components', 'custom');
+            }
 
-        // 生成文件名
-        const fileName = `${component.id}.json`;
-        const filePath = path.join(componentsDir, fileName);
+            // 检查目录是否存在，如果不存在则创建
+            try {
+                await fs.access(targetDir);
+            } catch {
+                // 目录不存在，尝试创建
+                try {
+                    await fs.mkdir(targetDir, { recursive: true });
+                    console.log(`创建目录: ${targetDir}`);
+                } catch (mkdirError) {
+                    throw new Error(`无法创建目录 ${targetDir}: ${mkdirError.message}`);
+                }
+            }
 
-        // 保存JSON文件
-        const jsonContent = JSON.stringify(component, null, 2);
-        await fs.writeFile(filePath, jsonContent, 'utf8');
+            // 生成文件名
+            const fileName = `${component.id}.json`;
+            const filePath = path.join(targetDir, fileName);
 
-        console.log(`元件已保存到: ${filePath}`);
+            // 检查文件是否已存在（防止意外覆盖）
+            try {
+                await fs.access(filePath);
+                // 如果文件存在但我们没有通过重复检查流程到达这里，说明有问题
+                console.warn(`文件已存在，将被覆盖: ${filePath}`);
+            } catch {
+                // 文件不存在，这是正常的
+            }
+
+            // 保存JSON文件
+            const jsonContent = JSON.stringify(component, null, 2);
+            await fs.writeFile(filePath, jsonContent, 'utf8');
+
+            console.log(`元件已保存到: ${filePath}`);
+            return { success: true, filePath };
+
+        } catch (error) {
+            console.error('保存元件文件失败:', error);
+
+            // 分析错误类型并提供相应的错误信息
+            let errorMessage = '未知错误';
+            let errorType = 'UNKNOWN_ERROR';
+
+            if (error.code === 'EACCES' || error.code === 'EPERM') {
+                errorMessage = '没有文件写入权限，请检查文件夹权限设置';
+                errorType = 'PERMISSION_ERROR';
+            } else if (error.code === 'ENOSPC') {
+                errorMessage = '磁盘空间不足，无法保存文件';
+                errorType = 'DISK_SPACE_ERROR';
+            } else if (error.code === 'EMFILE' || error.code === 'ENFILE') {
+                errorMessage = '打开的文件过多，请关闭一些文件后重试';
+                errorType = 'FILE_LIMIT_ERROR';
+            } else if (error.code === 'ENOENT') {
+                errorMessage = '目标路径不存在或无法访问';
+                errorType = 'PATH_ERROR';
+            } else if (error.code === 'EISDIR') {
+                errorMessage = '指定的路径是一个目录而不是文件';
+                errorType = 'PATH_ERROR';
+            } else if (error.code === 'ENOTDIR') {
+                errorMessage = '路径中的某个部分不是目录';
+                errorType = 'PATH_ERROR';
+            } else {
+                errorMessage = `保存失败: ${error.message}`;
+            }
+
+            throw {
+                type: errorType,
+                message: errorMessage,
+                originalError: error,
+                component: component
+            };
+        }
     }
 
     /**
@@ -1018,7 +1733,7 @@ class SimpleCanvasRenderer {
      */
     drawPins() {
         // 先调整元件尺寸以适应引脚布局
-        const calculator = new PinPositionCalculator(this.componentRect);
+        const calculator = new PinPositionCalculator(this.componentRect, this.designer);
         const sizeChanged = calculator.adjustComponentSizeForPins(this.designer.component);
 
         // 如果尺寸发生了变化，需要更新元件位置并重新渲染
@@ -1174,8 +1889,9 @@ class SimpleCanvasRenderer {
  * 引脚位置计算器
  */
 class PinPositionCalculator {
-    constructor(componentRect) {
+    constructor(componentRect, designer = null) {
         this.componentRect = componentRect;
+        this.designer = designer;
     }
 
     /**
@@ -1760,18 +2476,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     renderAttempts++;
                     console.log(`尝试渲染元件设计器 ${renderAttempts}/${maxRenderAttempts}`);
 
-                    if (!componentDesigner) {
-                        componentDesigner = new ComponentDesigner();
-                    } else if (componentDesigner.initialized) {
+                if (!componentDesigner) {
+                    componentDesigner = new ComponentDesigner();
+                } else if (componentDesigner.initialized) {
                         // 如果已经初始化，强制重新渲染
                         componentDesigner.renderer.forceRender();
                         console.log('元件设计器重新渲染完成');
-                    } else {
-                        // 如果初始化失败，尝试重新初始化
-                        console.log('尝试重新初始化元件设计器...');
-                        const success = componentDesigner.init();
-                        if (success) {
-                            componentDesigner.initialized = true;
+                } else {
+                    // 如果初始化失败，尝试重新初始化
+                    console.log('尝试重新初始化元件设计器...');
+                    const success = componentDesigner.init();
+                    if (success) {
+                        componentDesigner.initialized = true;
                             componentDesigner.renderer.forceRender();
                             console.log('元件设计器重新初始化完成');
                         } else if (renderAttempts < maxRenderAttempts) {
@@ -1803,4 +2519,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // 导出到全局作用域
 window.ComponentDesigner = ComponentDesigner;
+
+// 延迟导出元件设计器实例，确保初始化完成
+function exportComponentDesigner() {
+    if (componentDesigner && componentDesigner.initialized) {
 window.componentDesigner = componentDesigner;
+        console.log('元件设计器已导出到全局作用域');
+    } else {
+        // 如果还没初始化，等待一段时间后再试
+        setTimeout(exportComponentDesigner, 100);
+    }
+}
+
+// 立即尝试导出，如果失败则延迟
+if (componentDesigner) {
+    window.componentDesigner = componentDesigner;
+} else {
+    setTimeout(exportComponentDesigner, 100);
+}

@@ -128,39 +128,108 @@ ipcMain.handle('load-file', async (event, filePath) => {
 ipcMain.handle('read-component-files', async (event, directory) => {
   const fs = require('fs').promises;
   const path = require('path');
-  
+
   try {
     console.log(`读取元件文件夹: ${directory}`);
-    
+
     // 读取目录下的所有.json文件
     const files = await fs.readdir(directory);
     const jsonFiles = files.filter(file => file.endsWith('.json') && file !== 'README.md');
-    
+
     const components = [];
-    
+
     for (const file of jsonFiles) {
       try {
         const filePath = path.join(directory, file);
         const content = await fs.readFile(filePath, 'utf8');
         const component = JSON.parse(content);
-        
+
         // 确保组件有必要的标签字段
         if (!component.tags) {
           component.tags = [component.name?.toLowerCase() || '', component.category || ''];
         }
-        
+
         components.push(component);
         console.log(`加载元件: ${component.name}`);
       } catch (error) {
         console.error(`解析文件 ${file} 失败:`, error.message);
       }
     }
-    
+
     console.log(`成功加载 ${components.length} 个元件`);
     return components;
   } catch (error) {
     console.error('读取元件文件夹失败:', error.message);
     return [];
+  }
+});
+
+// 保存元件（带重复检查）
+ipcMain.handle('saveComponent', async (event, component, savePath) => {
+  const fs = require('fs').promises;
+  const path = require('path');
+
+  try {
+    console.log(`保存元件: ${component.name}, 路径: ${savePath}`);
+
+    // 确定保存目录
+    const baseDir = path.join(__dirname, 'data', 'system-components');
+    const targetDir = path.join(baseDir, savePath === 'standard' ? 'standard' : 'custom');
+
+    // 确保目录存在
+    await fs.mkdir(targetDir, { recursive: true });
+
+    // 生成文件名
+    const fileName = `${component.id}.json`;
+    const filePath = path.join(targetDir, fileName);
+
+    // 检查文件是否已存在
+    try {
+      await fs.access(filePath);
+      // 文件存在，返回重复标记
+      return { duplicate: true, filePath };
+    } catch {
+      // 文件不存在，直接保存
+      const jsonContent = JSON.stringify(component, null, 2);
+      await fs.writeFile(filePath, jsonContent, 'utf8');
+
+      console.log(`元件保存成功: ${filePath}`);
+      return { success: true, filePath };
+    }
+  } catch (error) {
+    console.error('保存元件失败:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 强制保存元件（覆盖现有文件）
+ipcMain.handle('saveComponentForce', async (event, component, savePath) => {
+  const fs = require('fs').promises;
+  const path = require('path');
+
+  try {
+    console.log(`强制保存元件: ${component.name}, 路径: ${savePath}`);
+
+    // 确定保存目录
+    const baseDir = path.join(__dirname, 'data', 'system-components');
+    const targetDir = path.join(baseDir, savePath === 'standard' ? 'standard' : 'custom');
+
+    // 确保目录存在
+    await fs.mkdir(targetDir, { recursive: true });
+
+    // 生成文件名
+    const fileName = `${component.id}.json`;
+    const filePath = path.join(targetDir, fileName);
+
+    // 保存文件（强制覆盖）
+    const jsonContent = JSON.stringify(component, null, 2);
+    await fs.writeFile(filePath, jsonContent, 'utf8');
+
+    console.log(`元件强制保存成功: ${filePath}`);
+    return { success: true, filePath };
+  } catch (error) {
+    console.error('强制保存元件失败:', error);
+    return { success: false, error: error.message };
   }
 });
 

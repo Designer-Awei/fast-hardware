@@ -35,6 +35,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readComponentFiles: (directory) => ipcRenderer.invoke('read-component-files', directory),
 
   /**
+   * 保存元件（带重复检查）
+   */
+  saveComponent: (component, path) => ipcRenderer.invoke('saveComponent', component, path),
+
+  /**
+   * 强制保存元件（覆盖现有文件）
+   */
+  saveComponentForce: (component, path) => ipcRenderer.invoke('saveComponentForce', component, path),
+
+  /**
    * 发送消息到主进程
    */
   sendToMain: (channel, ...args) => {

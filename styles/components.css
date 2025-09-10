@@ -984,3 +984,877 @@
     }
 }
 
+/* 元件预览模态窗口样式 */
+.component-preview-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.component-preview-modal.show {
+    opacity: 1;
+    visibility: visible;
+}
+
+.component-preview-modal.hide {
+    opacity: 0;
+    visibility: hidden;
+}
+
+.preview-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(2px);
+}
+
+.preview-content {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    max-width: 90vw;
+    max-height: 90vh;
+    width: 800px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.preview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid #e0e0e0;
+    background: #f8f9fa;
+    border-radius: 12px 12px 0 0;
+}
+
+.preview-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #333;
+}
+
+.header-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.edit-btn {
+    background: #007bff;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.edit-btn:hover {
+    background: #0056b3;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #666;
+    padding: 4px;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+}
+
+.close-btn:hover {
+    background: #f0f0f0;
+    color: #333;
+}
+
+.preview-body {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    padding: 24px;
+    gap: 24px;
+}
+
+.component-render {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    background: #fafafa;
+    min-height: 300px;
+}
+
+.component-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    overflow-y: auto;
+}
+
+.info-section h4 {
+    margin: 0 0 12px 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #333;
+}
+
+.info-section p {
+    margin: 8px 0;
+    color: #555;
+    line-height: 1.5;
+}
+
+.pin-side {
+    margin-bottom: 12px;
+    padding: 8px;
+    background: #f8f9fa;
+    border-radius: 4px;
+}
+
+.pin-side strong {
+    color: #333;
+    margin-bottom: 4px;
+    display: block;
+}
+
+.pin-side ul {
+    margin: 4px 0 0 0;
+    padding-left: 16px;
+}
+
+.pin-side li {
+    margin-bottom: 2px;
+    color: #666;
+    font-size: 14px;
+}
+
+.no-shape {
+    color: #999;
+    font-style: italic;
+    text-align: center;
+}
+
+/* 保存路径选择对话框样式 */
+.save-path-dialog {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.save-path-dialog.show {
+    opacity: 1;
+    visibility: visible;
+}
+
+.save-path-dialog.hide {
+    opacity: 0;
+    visibility: hidden;
+}
+
+.save-path-dialog .dialog-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(2px);
+}
+
+.save-path-dialog .dialog-content {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    max-width: 500px;
+    width: 90%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.save-path-dialog .dialog-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid #e0e0e0;
+    background: #f8f9fa;
+    border-radius: 12px 12px 0 0;
+}
+
+.save-path-dialog .dialog-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #333;
+}
+
+.save-path-dialog .dialog-close-btn {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #666;
+    padding: 4px;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+}
+
+.save-path-dialog .dialog-close-btn:hover {
+    background: #f0f0f0;
+    color: #333;
+}
+
+.save-path-dialog .dialog-body {
+    padding: 24px;
+}
+
+.save-path-dialog .dialog-body p {
+    margin: 0 0 20px 0;
+    color: #555;
+    font-size: 16px;
+}
+
+.save-path-dialog .path-options {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.save-path-dialog .path-option {
+    display: flex;
+    align-items: center;
+    padding: 20px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.save-path-dialog .path-option:hover {
+    border-color: #007bff;
+    background: #f8f9ff;
+}
+
+.save-path-dialog .path-icon {
+    font-size: 32px;
+    margin-right: 16px;
+    flex-shrink: 0;
+}
+
+.save-path-dialog .path-info h4 {
+    margin: 0 0 8px 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #333;
+}
+
+.save-path-dialog .path-info p {
+    margin: 0;
+    color: #666;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.save-path-dialog .dialog-footer {
+    padding: 20px 24px;
+    border-top: 1px solid #e0e0e0;
+    background: #f8f9fa;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.save-path-dialog .dialog-cancel-btn {
+    background: #6c757d;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.save-path-dialog .dialog-cancel-btn:hover {
+    background: #5a6268;
+}
+
+/* 重复元件处理对话框样式 */
+.duplicate-dialog {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.duplicate-dialog.show {
+    opacity: 1;
+    visibility: visible;
+}
+
+.duplicate-dialog.hide {
+    opacity: 0;
+    visibility: hidden;
+}
+
+.duplicate-dialog .dialog-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(2px);
+}
+
+.duplicate-dialog .dialog-content {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    max-width: 400px;
+    width: 90%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.duplicate-dialog .dialog-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid #e0e0e0;
+    background: #f8f9fa;
+    border-radius: 12px 12px 0 0;
+}
+
+.duplicate-dialog .dialog-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #333;
+}
+
+.duplicate-dialog .dialog-close-btn {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #666;
+    padding: 4px;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+}
+
+.duplicate-dialog .dialog-close-btn:hover {
+    background: #f0f0f0;
+    color: #333;
+}
+
+.duplicate-dialog .dialog-body {
+    padding: 24px;
+}
+
+.duplicate-dialog .dialog-body p {
+    margin: 0 0 20px 0;
+    color: #555;
+    font-size: 16px;
+}
+
+.duplicate-dialog .duplicate-options {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.duplicate-dialog .duplicate-overwrite,
+.duplicate-dialog .duplicate-rename {
+    padding: 12px 16px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.duplicate-dialog .duplicate-overwrite {
+    background: #dc3545;
+    color: white;
+}
+
+.duplicate-dialog .duplicate-overwrite:hover {
+    background: #c82333;
+}
+
+.duplicate-dialog .duplicate-rename {
+    background: #007bff;
+    color: white;
+}
+
+.duplicate-dialog .duplicate-rename:hover {
+    background: #0056b3;
+}
+
+/* 验证错误对话框样式 */
+.validation-error-dialog {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.validation-error-dialog.show {
+    opacity: 1;
+    visibility: visible;
+}
+
+.validation-error-dialog.hide {
+    opacity: 0;
+    visibility: hidden;
+}
+
+.validation-error-dialog .dialog-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(2px);
+}
+
+.validation-error-dialog .dialog-content {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    max-width: 500px;
+    width: 90%;
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.validation-error-dialog .dialog-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid #e0e0e0;
+    background: #f8f9fa;
+    border-radius: 12px 12px 0 0;
+}
+
+.validation-error-dialog .dialog-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #dc3545;
+}
+
+.validation-error-dialog .dialog-close-btn {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #666;
+    padding: 4px;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+}
+
+.validation-error-dialog .dialog-close-btn:hover {
+    background: #f0f0f0;
+    color: #333;
+}
+
+.validation-error-dialog .dialog-body {
+    padding: 24px;
+    overflow-y: auto;
+}
+
+.validation-error-dialog .dialog-body p {
+    margin: 0 0 16px 0;
+    color: #555;
+    font-size: 16px;
+    line-height: 1.5;
+}
+
+.validation-error-dialog .error-list {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.validation-error-dialog .error-item {
+    margin-bottom: 8px;
+    padding: 8px 12px;
+    background: #fff5f5;
+    border-left: 4px solid #dc3545;
+    color: #721c24;
+    font-size: 14px;
+    line-height: 1.4;
+    border-radius: 4px;
+}
+
+.validation-error-dialog .dialog-footer {
+    padding: 20px 24px;
+    border-top: 1px solid #e0e0e0;
+    background: #f8f9fa;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.validation-error-dialog .error-ok-btn {
+    background: #dc3545;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.validation-error-dialog .error-ok-btn:hover {
+    background: #c82333;
+}
+
+/* 文件操作错误对话框样式 */
+.file-error-dialog {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.file-error-dialog.show {
+    opacity: 1;
+    visibility: visible;
+}
+
+.file-error-dialog.hide {
+    opacity: 0;
+    visibility: hidden;
+}
+
+.file-error-dialog .dialog-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(2px);
+}
+
+.file-error-dialog .dialog-content {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    max-width: 500px;
+    width: 90%;
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.file-error-dialog .dialog-header {
+    display: flex;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid #e0e0e0;
+    background: #f8f9fa;
+    border-radius: 12px 12px 0 0;
+    position: relative;
+}
+
+.file-error-dialog .error-icon {
+    font-size: 32px;
+    margin-right: 16px;
+    flex-shrink: 0;
+}
+
+.file-error-dialog .dialog-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #dc3545;
+    flex: 1;
+}
+
+.file-error-dialog .dialog-close-btn {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #666;
+    padding: 4px;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+}
+
+.file-error-dialog .dialog-close-btn:hover {
+    background: #f0f0f0;
+    color: #333;
+}
+
+.file-error-dialog .dialog-body {
+    padding: 24px;
+    overflow-y: auto;
+}
+
+.file-error-dialog .error-message {
+    margin: 0 0 16px 0;
+    font-size: 16px;
+    font-weight: 500;
+    color: #dc3545;
+    line-height: 1.5;
+}
+
+.file-error-dialog .error-details {
+    margin-bottom: 16px;
+    padding: 12px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #666;
+}
+
+.file-error-dialog .error-details strong {
+    color: #333;
+}
+
+.file-error-dialog .error-suggestion {
+    margin-bottom: 16px;
+    padding: 12px;
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #856404;
+}
+
+.file-error-dialog .error-suggestion strong {
+    color: #533f00;
+}
+
+.file-error-dialog .dialog-footer {
+    padding: 20px 24px;
+    border-top: 1px solid #e0e0e0;
+    background: #f8f9fa;
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+.file-error-dialog .error-retry-btn {
+    background: #6c757d;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.file-error-dialog .error-retry-btn:hover {
+    background: #5a6268;
+}
+
+.file-error-dialog .error-ok-btn {
+    background: #dc3545;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.file-error-dialog .error-ok-btn:hover {
+    background: #c82333;
+}
+
+/* 覆盖确认对话框样式 */
+.overwrite-confirm-dialog {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 10000;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.overwrite-confirm-dialog.show {
+    opacity: 1;
+}
+
+.overwrite-confirm-dialog .dialog-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+}
+
+.overwrite-confirm-dialog .dialog-content {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.9);
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    min-width: 400px;
+    max-width: 500px;
+    transition: transform 0.3s ease;
+}
+
+.overwrite-confirm-dialog.show .dialog-content {
+    transform: translate(-50%, -50%) scale(1);
+}
+
+.overwrite-confirm-dialog .dialog-header {
+    padding: 20px 24px 0;
+    border-bottom: 1px solid #eee;
+    margin-bottom: 0;
+}
+
+.overwrite-confirm-dialog .dialog-header h3 {
+    margin: 0;
+    color: #dc3545;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.overwrite-confirm-dialog .dialog-body {
+    padding: 20px 24px;
+}
+
+.overwrite-confirm-dialog .dialog-body p {
+    margin: 0 0 12px 0;
+    line-height: 1.5;
+    color: #333;
+}
+
+.overwrite-confirm-dialog .warning-text {
+    color: #856404;
+    background: #fff3cd;
+    padding: 8px 12px;
+    border-radius: 4px;
+    border: 1px solid #ffeaa7;
+    font-size: 14px;
+    margin-top: 16px !important;
+}
+
+.overwrite-confirm-dialog .dialog-footer {
+    padding: 0 24px 20px;
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    border-top: 1px solid #eee;
+    padding-top: 16px;
+}
+
+.overwrite-confirm-dialog .confirm-cancel-btn,
+.overwrite-confirm-dialog .confirm-overwrite-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.overwrite-confirm-dialog .confirm-cancel-btn {
+    background: #6c757d;
+    color: white;
+}
+
+.overwrite-confirm-dialog .confirm-cancel-btn:hover {
+    background: #545b62;
+}
+
+.overwrite-confirm-dialog .confirm-overwrite-btn {
+    background: #dc3545;
+    color: white;
+}
+
+.overwrite-confirm-dialog .confirm-overwrite-btn:hover {
+    background: #c82333;
+}
+
