@@ -883,12 +883,44 @@ class ComponentsManager {
 
         // 更新元件矩形位置和尺寸
         if (component.dimensions) {
+            const originalWidth = component.dimensions.width;
+            const originalHeight = component.dimensions.height;
+
+            // 首先设置原始尺寸
             designer.componentRect = {
-                x: 200 - (component.dimensions.width / 2),
-                y: 150 - (component.dimensions.height / 2),
-                width: component.dimensions.width,
-                height: component.dimensions.height
+                x: 200 - (originalWidth / 2),
+                y: 150 - (originalHeight / 2),
+                width: originalWidth,
+                height: originalHeight
             };
+
+            console.log('设置元件原始尺寸:', { width: originalWidth, height: originalHeight });
+
+            // 然后运行自动尺寸调整，确保引脚正确显示
+            if (designer.renderer) {
+                const calculator = new PinPositionCalculator(designer.componentRect, designer);
+                const sizeChanged = calculator.adjustComponentSizeForPins(component);
+
+                if (sizeChanged) {
+                    // 获取自动调整后的尺寸
+                    const autoWidth = designer.componentRect.width;
+                    const autoHeight = designer.componentRect.height;
+
+                    console.log('自动调整元件尺寸:', {
+                        original: `${originalWidth}x${originalHeight}`,
+                        adjusted: `${autoWidth}x${autoHeight}`
+                    });
+
+                    // 重新计算居中位置
+                    designer.componentRect.x = 200 - (autoWidth / 2);
+                    designer.componentRect.y = 150 - (autoHeight / 2);
+                }
+            }
+
+            // 确保渲染器也更新了尺寸
+            if (designer.renderer && designer.renderer.componentRect) {
+                designer.renderer.componentRect = designer.componentRect;
+            }
         }
 
         // 确保渲染器存在
@@ -917,7 +949,18 @@ class ComponentsManager {
             // 重新渲染元件
             designer.renderer.render();
 
-            console.log('元件渲染完成');
+            // 确保尺寸输入框同步更新最新的尺寸（可能是自动调整后的尺寸）
+            if (designer.syncDimensionsToInputs) {
+                designer.syncDimensionsToInputs();
+            }
+
+            // 再次填充表单，确保输入框显示正确的尺寸
+            this.populateDesignerForm(component);
+
+            console.log('元件渲染完成，最终尺寸:', {
+                width: designer.component.dimensions.width,
+                height: designer.component.dimensions.height
+            });
         } catch (error) {
             console.error('渲染元件时出错:', error);
             console.error('渲染器状态:', {

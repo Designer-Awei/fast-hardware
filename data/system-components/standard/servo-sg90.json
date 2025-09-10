@@ -5,13 +5,25 @@
   "category": "actuator",
   "pins": {
     "side1": [
-      {"pinName": "信号线", "type": "digital_io", "order": 1},
-      {"pinName": "电源正", "type": "power", "order": 2},
-      {"pinName": "电源负", "type": "ground", "order": 3}
+      {
+        "pinName": "信号线",
+        "type": "digital_io",
+        "order": 1
+      },
+      {
+        "pinName": "电源正",
+        "type": "power",
+        "order": 2
+      },
+      {
+        "pinName": "电源负",
+        "type": "ground",
+        "order": 3
+      }
     ]
   },
   "dimensions": {
-    "width": 40,
-    "height": 50
+    "width": 150,
+    "height": 40
   }
 }

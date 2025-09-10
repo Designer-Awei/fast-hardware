@@ -25,10 +25,13 @@
         "type": "digital_io",
         "order": 4
       }
-    ]
+    ],
+    "side2": [],
+    "side3": [],
+    "side4": []
   },
   "dimensions": {
-    "width": 35,
-    "height": 25
+    "width": 110,
+    "height": 30
   }
 }

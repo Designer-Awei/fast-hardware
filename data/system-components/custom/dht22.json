@@ -1,18 +1,37 @@
 {
   "name": "温湿度传感器DHT22",
-  "id": "dht22", 
+  "id": "dht22",
   "description": "数字温湿度传感器，高精度测量。工作电压3.3-6V，工作电流2.5mA，温度测量范围-40°C到80°C，湿度测量范围0-100%RH，精度±0.5°C，±2%RH。",
   "category": "sensor",
   "pins": {
     "side1": [
-      {"pinName": "VCC", "type": "power", "order": 1},
-      {"pinName": "DATA", "type": "digital_io", "order": 2},
-      {"pinName": "NC", "type": "special", "order": 3},
-      {"pinName": "GND", "type": "ground", "order": 4}
-    ]
+      {
+        "pinName": "VCC",
+        "type": "power",
+        "order": 1
+      },
+      {
+        "pinName": "DATA",
+        "type": "digital_io",
+        "order": 2
+      },
+      {
+        "pinName": "NC",
+        "type": "special",
+        "order": 3
+      },
+      {
+        "pinName": "GND",
+        "type": "ground",
+        "order": 4
+      }
+    ],
+    "side2": [],
+    "side3": [],
+    "side4": []
   },
   "dimensions": {
-    "width": 15,
-    "height": 25
+    "width": 170,
+    "height": 40
   }
 }

@@ -84,7 +84,8 @@
         "type": "digital_io",
         "order": 6
       }
-    ]
+    ],
+    "side4": []
   },
   "dimensions": {
     "width": 160,

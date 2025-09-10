@@ -256,9 +256,10 @@ class ComponentDesigner {
                 }
             };
 
-            // 清除编辑模式标识
-            this.isEditingExisting = false;
-            this.originalComponentId = null;
+            // 注意：不清除编辑模式标识，以防用户是在编辑现有元件时点击重置
+            // 只有在真正新建元件或明确保存后才清除编辑模式
+            // this.isEditingExisting = false;
+            // this.originalComponentId = null;
 
             // 清空表单
             if (this.elements.nameInput) this.elements.nameInput.value = '';
@@ -295,6 +296,16 @@ class ComponentDesigner {
             this.render();
             this.updateStatus('元件引脚已清除');
         }
+    }
+
+    /**
+     * 清除编辑模式状态（用于新建元件）
+     */
+    clearEditingMode() {
+        console.log('清除编辑模式状态');
+        this.isEditingExisting = false;
+        this.originalComponentId = null;
+        this.updateStatus('已切换到新建模式');
     }
 
     /**
@@ -406,19 +417,51 @@ class ComponentDesigner {
             // 生成最终的元件数据
             const finalComponent = {
                 name: this.component.name,
-                id: this.isEditingExisting ? this.originalComponentId || this.generateComponentId() : this.generateComponentId(),
+                id: this.isEditingExisting && this.originalComponentId ? this.originalComponentId : this.generateComponentId(),
                 description: this.component.description,
                 category: this.component.category,
                 pins: this.component.pins,
                 dimensions: this.component.dimensions
             };
 
+            // 确保ID不为空
+            if (!finalComponent.id || finalComponent.id.trim() === '') {
+                console.warn('元件ID为空，重新生成ID', {
+                    isEditing: this.isEditingExisting,
+                    originalId: this.originalComponentId,
+                    componentName: finalComponent.name
+                });
+                finalComponent.id = this.generateComponentId();
+            }
+
+            // 确保引脚数据结构完整
+            if (!finalComponent.pins) {
+                console.warn('引脚数据为空，初始化为空结构');
+                finalComponent.pins = {
+                    side1: [],
+                    side2: [],
+                    side3: [],
+                    side4: []
+                };
+            }
+
+            // 确保所有引脚边都存在（即使是空数组）
+            const requiredSides = ['side1', 'side2', 'side3', 'side4'];
+            for (const side of requiredSides) {
+                if (!finalComponent.pins.hasOwnProperty(side)) {
+                    console.warn(`引脚边 ${side} 缺失，初始化为空数组`);
+                    finalComponent.pins[side] = [];
+                }
+            }
+
             // JSON格式验证（区分编辑模式和新创建模式）
             console.log('开始JSON验证:', {
                 isEditing: this.isEditingExisting,
                 componentId: finalComponent.id,
                 originalId: this.originalComponentId,
-                selectedPath
+                selectedPath,
+                componentPins: Object.keys(finalComponent.pins || {}),
+                pinsCount: Object.values(finalComponent.pins || {}).reduce((sum, pins) => sum + pins.length, 0)
             });
 
             const validationResult = ComponentDesigner.JSONValidator.validateComponent(finalComponent, {
@@ -427,6 +470,14 @@ class ComponentDesigner {
             });
 
             console.log('验证结果:', validationResult);
+            console.log('验证参数详情:', {
+                isEditing: this.isEditingExisting,
+                componentId: finalComponent.id,
+                componentName: finalComponent.name,
+                hasPins: !!finalComponent.pins,
+                pinSides: finalComponent.pins ? Object.keys(finalComponent.pins) : [],
+                originalId: this.originalComponentId
+            });
 
             if (!validationResult.valid) {
                 // 显示验证错误对话框
@@ -1125,8 +1176,19 @@ class ComponentDesigner {
      */
     updateStatus(message) {
         if (this.elements.statusMessage) {
-            this.elements.statusMessage.textContent = message;
+            // 添加编辑模式指示器
+            const modeIndicator = this.isEditingExisting ? '[编辑模式]' : '[新建模式]';
+            this.elements.statusMessage.textContent = `${modeIndicator} ${message}`;
         }
+
+        // 在控制台输出详细状态信息
+        console.log('元件设计器状态更新:', {
+            message,
+            isEditing: this.isEditingExisting,
+            originalId: this.originalComponentId,
+            componentId: this.component.id,
+            pinCount: Object.values(this.component.pins || {}).reduce((sum, pins) => sum + pins.length, 0)
+        });
     }
 
     /**
@@ -1182,6 +1244,8 @@ class ComponentDesigner {
         // 更新元件尺寸
         this.component.dimensions.width = width;
         this.component.dimensions.height = height;
+
+        console.log('更新元件尺寸:', { width, height, componentRect: this.componentRect });
 
         // 确保 componentRect 对象存在
         if (!this.componentRect) {
@@ -1290,7 +1354,13 @@ class SimpleCanvasRenderer {
                 height: 80   // 4个格子高
             };
         }
-        this.componentRect = designer.componentRect;
+        // 创建一个动态引用，确保始终使用最新的尺寸
+        Object.defineProperty(this, 'componentRect', {
+            get: () => designer.componentRect,
+            set: (value) => {
+                designer.componentRect = value;
+            }
+        });
 
         // 初始化画布尺寸
         this.resizeCanvas();
@@ -1747,12 +1817,15 @@ class SimpleCanvasRenderer {
      * 绘制引脚
      */
     drawPins() {
-        // 先调整元件尺寸以适应引脚布局
         const calculator = new PinPositionCalculator(this.componentRect, this.designer);
+
+        // 总是运行自动尺寸调整，确保引脚正确显示
+        // 这样可以保证无论导入的原始尺寸如何，都能正确显示所有引脚
         const sizeChanged = calculator.adjustComponentSizeForPins(this.designer.component);
 
         // 如果尺寸发生了变化，需要更新元件位置并重新渲染
         if (sizeChanged) {
+            console.log('引脚布局需要调整元件尺寸，自动调整中...');
             this.updateComponentPosition();
             // 同步更新属性栏的尺寸输入框
             this.syncDimensionsToInputs();
@@ -1991,7 +2064,13 @@ class PinPositionCalculator {
             component.dimensions.width = newWidth;
             component.dimensions.height = newHeight;
 
-            console.log(`元件尺寸已调整: ${oldWidth}x${oldHeight} → ${newWidth}x${newHeight}（适应引脚布局）`);
+            console.log(`🎯 自动调整元件尺寸: ${oldWidth}x${oldHeight} → ${newWidth}x${newHeight}（适应引脚布局）`);
+            console.log(`📏 调整原因:`, {
+                topPins: component.pins.side1?.length || 0,
+                bottomPins: component.pins.side3?.length || 0,
+                leftPins: component.pins.side4?.length || 0,
+                rightPins: component.pins.side2?.length || 0
+            });
         }
 
         return sizeChanged;
@@ -2545,6 +2624,31 @@ window.componentDesigner = componentDesigner;
         setTimeout(exportComponentDesigner, 100);
     }
 }
+
+// 导出关键类到全局作用域
+window.PinPositionCalculator = PinPositionCalculator;
+window.SimpleCanvasRenderer = SimpleCanvasRenderer;
+window.SimpleInteractionManager = SimpleInteractionManager;
+window.PinEditorModal = PinEditorModal;
+
+// 添加调试工具到全局作用域
+window.debugComponentDesigner = function() {
+    if (window.componentDesigner) {
+        const designer = window.componentDesigner;
+        console.log('=== 元件设计器调试信息 ===');
+        console.log('编辑模式:', designer.isEditingExisting);
+        console.log('原始元件ID:', designer.originalComponentId);
+        console.log('当前元件ID:', designer.component.id);
+        console.log('元件名称:', designer.component.name);
+        console.log('引脚数据:', designer.component.pins);
+        console.log('尺寸信息:', designer.component.dimensions);
+        console.log('引脚统计:', Object.values(designer.component.pins || {}).reduce((sum, pins) => sum + pins.length, 0));
+        return designer;
+    } else {
+        console.error('元件设计器实例不存在');
+        return null;
+    }
+};
 
 // 立即尝试导出，如果失败则延迟
 if (componentDesigner) {

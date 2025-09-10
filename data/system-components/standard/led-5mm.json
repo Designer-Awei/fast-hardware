@@ -5,14 +5,22 @@
   "category": "auxiliary",
   "pins": {
     "side1": [
-      {"pinName": "正极", "type": "digital_io", "order": 1}
+      {
+        "pinName": "正极",
+        "type": "digital_io",
+        "order": 1
+      }
     ],
     "side3": [
-      {"pinName": "负极", "type": "ground", "order": 1}
+      {
+        "pinName": "负极",
+        "type": "ground",
+        "order": 1
+      }
     ]
   },
   "dimensions": {
-    "width": 20,
+    "width": 60,
     "height": 30
   }
 }
