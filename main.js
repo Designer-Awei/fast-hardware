@@ -497,6 +497,49 @@ function generateStructuredComponentId(componentName, prefix) {
   return finalId;
 }
 
+// 删除元件
+ipcMain.handle('deleteComponent', async (event, component) => {
+  const fs = require('fs').promises;
+  const path = require('path');
+
+  try {
+    console.log(`删除元件: ${component.name}, ID: ${component.id}`);
+
+    const baseDir = path.join(__dirname, 'data', 'system-components');
+    const fileName = `${component.id}.json`;
+
+    // 尝试在标准库中查找并删除
+    let targetDir = path.join(baseDir, 'standard');
+    let filePath = path.join(targetDir, fileName);
+
+    try {
+      await fs.access(filePath);
+      console.log(`在标准库中找到元件文件: ${filePath}`);
+      await fs.unlink(filePath);
+      console.log(`元件 ${component.name} 删除成功`);
+      return { success: true, filePath };
+    } catch {
+      // 如果标准库中没有，尝试在自定义库中查找
+      targetDir = path.join(baseDir, 'custom');
+      filePath = path.join(targetDir, fileName);
+
+      try {
+        await fs.access(filePath);
+        console.log(`在自定义库中找到元件文件: ${filePath}`);
+        await fs.unlink(filePath);
+        console.log(`元件 ${component.name} 删除成功`);
+        return { success: true, filePath };
+      } catch {
+        // 如果两个库中都没有该文件
+        throw new Error(`找不到元件文件: ${component.id}`);
+      }
+    }
+  } catch (error) {
+    console.error('删除元件失败:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 // 错误处理
 process.on('uncaughtException', (error) => {
   console.error('未捕获的异常:', error);

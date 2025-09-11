@@ -16,7 +16,6 @@ class TabManager {
      * 初始化标签页管理器
      */
     init() {
-        console.log('初始化标签页管理器...');
         this.registerTabs();
         this.bindEvents();
         this.setInitialState();
@@ -108,7 +107,6 @@ class TabManager {
             return;
         }
 
-        console.log(`切换到标签页: ${tabName}`);
 
         // 隐藏所有标签页
         this.tabs.forEach((tab) => {
@@ -143,7 +141,6 @@ class TabManager {
             return;
         }
 
-        console.log(`切换到二级标签页: ${subTabName}`);
 
         // 隐藏所有二级标签页
         this.subTabs.forEach((subTab) => {
@@ -238,7 +235,6 @@ class TabManager {
      * 初始化电路搭建标签页
      */
     initializeCircuitDesignTab() {
-        console.log('初始化电路搭建标签页');
         // 这里可以添加电路搭建标签页的初始化逻辑
     }
 
@@ -246,7 +242,6 @@ class TabManager {
      * 初始化元件管理标签页
      */
     initializeComponentLibTab() {
-        console.log('初始化元件管理标签页');
         // 这里可以添加元件管理标签页的初始化逻辑
     }
 
@@ -254,7 +249,6 @@ class TabManager {
      * 初始化元件预览二级标签页
      */
     initializePreviewSubTab() {
-        console.log('初始化元件预览二级标签页');
         // 这里可以添加元件预览的初始化逻辑
     }
 
@@ -262,7 +256,6 @@ class TabManager {
      * 初始化标准元件二级标签页
      */
     initializeStandardSubTab() {
-        console.log('初始化标准元件二级标签页');
         // 这里可以添加标准元件的初始化逻辑
         // 复用元件预览的组件加载逻辑
     }
@@ -271,7 +264,6 @@ class TabManager {
      * 初始化自制元件二级标签页
      */
     initializeCustomSubTab() {
-        console.log('初始化自制元件二级标签页');
         // 这里可以添加自制元件的初始化逻辑
         // 复用元件预览的组件加载逻辑
     }
@@ -280,7 +272,6 @@ class TabManager {
      * 初始化元件绘制二级标签页
      */
     initializeDesignerSubTab() {
-        console.log('初始化元件绘制二级标签页');
 
         // 确保元件设计器画布元素已渲染
         const canvasElement = document.getElementById('component-designer-canvas');
@@ -297,15 +288,12 @@ class TabManager {
                         if (!finalRetry) {
                             console.error('最终检查：元件设计画布元素未找到');
                         } else {
-                            console.log('延迟后找到元件设计画布元素');
                         }
                     }, 100);
                 } else {
-                    console.log('元件设计画布元素已找到');
                 }
             }, 50);
         } else {
-            console.log('元件设计画布元素已准备就绪');
         }
     }
 

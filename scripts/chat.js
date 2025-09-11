@@ -14,10 +14,8 @@ class ChatManager {
      * 初始化对话管理器
      */
     init() {
-        console.log('初始化对话管理器...');
         this.bindEvents();
         this.loadInitialMessages();
-        console.log('对话管理器初始化完成');
     }
 
     /**

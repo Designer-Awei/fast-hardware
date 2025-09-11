@@ -15,10 +15,8 @@ class FastHardwareApp {
      * 初始化应用
      */
     init() {
-        console.log('初始化Fast Hardware应用...');
         this.bindEvents();
         this.initializeUI();
-        console.log('应用初始化完成');
     }
 
     /**
@@ -41,9 +39,13 @@ class FastHardwareApp {
             });
         });
 
-        // 窗口大小改变
+        // 窗口大小改变（防抖处理，避免频繁触发）
+        let resizeTimeout;
         window.addEventListener('resize', () => {
-            this.handleResize();
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                this.handleResize();
+            }, 200);
         });
 
         // 键盘快捷键
@@ -69,7 +71,6 @@ class FastHardwareApp {
      * @param {string} tabName - 标签页名称
      */
     switchTab(tabName) {
-        console.log(`切换到标签页: ${tabName}`);
 
         // 更新按钮状态
         document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -95,7 +96,6 @@ class FastHardwareApp {
      * @param {string} subTabName - 二级标签页名称
      */
     switchSubTab(subTabName) {
-        console.log(`切换到二级标签页: ${subTabName}`);
 
         // 更新按钮状态
         document.querySelectorAll('.sub-tab-btn').forEach(btn => {
@@ -121,7 +121,6 @@ class FastHardwareApp {
      */
     handleResize() {
         // 重新计算画布大小等
-        console.log('窗口大小改变，重新计算布局');
     }
 
     /**
@@ -246,7 +245,6 @@ let app;
 
 // DOM加载完成后初始化应用
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM加载完成，开始初始化应用');
     app = new FastHardwareApp();
 });
 

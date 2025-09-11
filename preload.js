@@ -50,6 +50,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveComponentEditMode: (component) => ipcRenderer.invoke('saveComponentEditMode', component),
 
   /**
+   * 删除元件
+   */
+  deleteComponent: (component) => ipcRenderer.invoke('deleteComponent', component),
+
+  /**
    * 发送消息到主进程
    */
   sendToMain: (channel, ...args) => {

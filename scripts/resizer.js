@@ -22,7 +22,6 @@ class ResizerManager {
      * 初始化分割线管理器
      */
     init() {
-        console.log('初始化分割线管理器...');
         this.resizer = document.getElementById('resizer');
         this.canvasSection = document.querySelector('.canvas-section');
         this.chatSection = document.querySelector('.chat-section');
@@ -35,7 +34,6 @@ class ResizerManager {
 
         this.bindEvents();
         this.setDefaultLayout();
-        console.log('分割线管理器初始化完成');
     }
 
     /**
@@ -155,7 +153,6 @@ class ResizerManager {
         this.canvasSection.style.flex = 'none';
         this.chatSection.style.flex = 'none';
         
-        console.log(`设置默认布局: 画布${canvasPercent * 100}%, 聊天${this.defaultChatWidth * 100}%`);
     }
 
     /**

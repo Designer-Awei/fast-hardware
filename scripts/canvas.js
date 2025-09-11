@@ -20,7 +20,6 @@ class CanvasManager {
      * 初始化画布管理器
      */
     init() {
-        console.log('初始化画布管理器...');
         this.canvas = document.getElementById('main-canvas');
         if (!this.canvas) {
             console.warn('未找到画布元素');
@@ -34,7 +33,6 @@ class CanvasManager {
             this.resizeCanvas();
             this.resetView(); // 设置初始视图
             this.bindEvents();
-            console.log('画布管理器初始化完成');
         }, 100);
     }
 
@@ -244,7 +242,6 @@ class CanvasManager {
 
         // 强制重新渲染
         this.draw();
-        console.log('电路搭建画布强制重新渲染完成');
     }
 
     /**
@@ -374,7 +371,6 @@ document.addEventListener('DOMContentLoaded', () => {
             setTimeout(() => {
                 if (canvasManager) {
                     canvasManager.forceRender();
-                    console.log('电路搭建画布重新渲染完成');
                 }
             }, 100);
         }

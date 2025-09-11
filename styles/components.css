@@ -530,9 +530,9 @@
 .btn-secondary,
 .btn-primary {
     flex: 1;
-    padding: 10px 16px;
+    padding: 8px 12px;
     border: none;
-    border-radius: 4px;
+    border-radius: 6px;
     font-size: 14px;
     font-weight: 500;
     cursor: pointer;
@@ -540,8 +540,8 @@
 }
 
 .btn-secondary {
-    background: #f8f9fa;
-    color: #666;
+    background: #ffffff;
+    color: #000000;
     border: 1px solid #ddd;
 }
 
@@ -1874,6 +1874,75 @@
     background: #c82333;
 }
 
+/* 元件管理样式 */
+.management-section {
+    margin-left: auto;
+}
+
+#manage-components-btn {
+    transition: all 0.3s ease;
+}
+
+#manage-components-btn.management-mode {
+    background: #dc3545;
+    color: white;
+    border-color: #dc3545;
+}
+
+#manage-components-btn.management-mode:hover {
+    background: #c82333;
+    border-color: #c82333;
+}
+
+/* 标准元件页和自制元件页的管理按钮样式 */
+#manage-standard-components-btn.management-mode,
+#manage-custom-components-btn.management-mode {
+    background: #dc3545;
+    color: white;
+    border-color: #dc3545;
+}
+
+#manage-standard-components-btn.management-mode:hover,
+#manage-custom-components-btn.management-mode:hover {
+    background: #c82333;
+    border-color: #c82333;
+}
+
+.component-card.management-mode {
+    position: relative;
+}
+
+.component-checkbox {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    width: 18px;
+    height: 18px;
+    z-index: 10;
+    display: none;
+}
+
+.component-card.management-mode .component-checkbox {
+    display: block;
+}
+
+.component-checkbox input[type="checkbox"] {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    cursor: pointer;
+}
+
+.component-actions.management-mode {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.component-card.selected {
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
 /* 编辑模式覆盖确认对话框 */
 .edit-overwrite-confirm-dialog .dialog-backdrop {
     position: absolute;
@@ -1969,5 +2038,125 @@
 
 .edit-overwrite-confirm-dialog .confirm-overwrite-btn:hover {
     background: #0056b3;
+}
+
+/* 自定义删除确认对话框样式 */
+.delete-confirmation-dialog {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.delete-confirmation-dialog .dialog-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(2px);
+}
+
+.delete-confirmation-dialog .dialog-content {
+    position: relative;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    max-width: 400px;
+    width: 90%;
+    margin: 20px;
+    animation: dialogSlideIn 0.2s ease-out;
+}
+
+.delete-confirmation-dialog .dialog-header {
+    padding: 20px 20px 0 20px;
+}
+
+.delete-confirmation-dialog .dialog-header h3 {
+    margin: 0;
+    color: #333;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.delete-confirmation-dialog .dialog-body {
+    padding: 20px;
+    color: #666;
+    line-height: 1.5;
+}
+
+.delete-confirmation-dialog .dialog-body .warning-text {
+    color: #dc3545;
+    font-weight: 500;
+    margin-top: 10px;
+}
+
+.delete-confirmation-dialog .dialog-footer {
+    padding: 0 20px 20px 20px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.delete-confirmation-dialog .cancel-btn,
+.delete-confirmation-dialog .confirm-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.delete-confirmation-dialog .cancel-btn {
+    background: #6c757d;
+    color: white;
+}
+
+.delete-confirmation-dialog .cancel-btn:hover {
+    background: #5a6268;
+}
+
+.delete-confirmation-dialog .confirm-btn {
+    background: #dc3545;
+    color: white;
+}
+
+.delete-confirmation-dialog .confirm-btn:hover {
+    background: #c82333;
+}
+
+.delete-confirmation-dialog.hide .dialog-content {
+    animation: dialogSlideOut 0.2s ease-in forwards;
+}
+
+@keyframes dialogSlideIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9) translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+@keyframes dialogSlideOut {
+    from {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: scale(0.9) translateY(-20px);
+    }
 }
 

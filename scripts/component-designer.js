@@ -47,7 +47,6 @@ class ComponentDesigner {
      * 初始化元件设计器
      */
     init() {
-        console.log('初始化元件设计器...');
 
         // 绑定DOM元素
         if (!this.bindElements()) {
@@ -68,7 +67,6 @@ class ComponentDesigner {
 
         // 更新状态
         this.updateStatus('元件设计器已就绪');
-        console.log('元件设计器初始化完成');
 
         return true;
     }
@@ -130,8 +128,10 @@ class ComponentDesigner {
         // 创建交互管理器
         this.interactionManager = new SimpleInteractionManager(this.canvas, this);
 
-        // 初次渲染
+        // 初次渲染（复用模式下跳过，避免闪烁）
+        if (!this.isReuseMode) {
         this.render();
+        }
     }
 
     /**
@@ -258,7 +258,6 @@ class ComponentDesigner {
         // 监听标签页切换事件
         document.addEventListener('subTabActivated', (e) => {
             if (e.detail.subTabName === 'designer') {
-                console.log('切换到元件绘制器标签页');
                 // 确保输入框状态正确
                 setTimeout(() => {
                     this.ensureInputBoxUsable();
@@ -700,7 +699,7 @@ class ComponentDesigner {
             await this.handleEditModeSave();
         } else {
             // 新建或复用模式：显示保存路径选择对话框
-            this.showSavePathDialog();
+        this.showSavePathDialog();
         }
     }
 
@@ -915,9 +914,9 @@ class ComponentDesigner {
             // 根据不同的模式确定ID生成策略
             let componentId;
             if (this.isReuseMode) {
-                // 复用模式：总是生成新ID
-                console.log(`复用模式：为元件 "${this.component.name}" 生成新ID`);
-                componentId = this.generateComponentId();
+                // 复用模式：总是生成新ID，并根据选择的路径确定前缀
+                console.log(`复用模式：为元件 "${this.component.name}" 生成新ID，保存到 ${selectedPath} 库`);
+                componentId = this.generateComponentIdForPath(selectedPath);
             } else {
                 // 新建模式：直接生成ID
                 // 注意：编辑模式不会到达这里，因为编辑模式直接调用 handleEditModeSave
@@ -1004,11 +1003,14 @@ class ComponentDesigner {
             console.log('保存元件:', finalComponent);
             this.updateStatus(`元件 "${this.component.name}" 保存成功`);
 
-            // 保存成功后，清除编辑模式标识（因为现在这是一个新的元件实例）
+            // 保存成功后，清除编辑模式标识
             this.isEditingExisting = false;
             this.originalComponentId = null;
             this.originalComponentName = null;
-            this.isReuseMode = false;
+
+            // 注意：复用模式应该保持激活状态，直到用户明确退出复用
+            // 这样用户可以连续保存到多个位置
+            // this.isReuseMode = false; // 注释掉，不在这里重置
 
         } catch (error) {
             console.error('保存元件失败:', error);
@@ -1799,6 +1801,55 @@ class ComponentDesigner {
     }
 
     /**
+     * 根据指定路径生成元件ID（用于复用模式）
+     * @param {string} targetPath - 目标保存路径 ('standard' 或 'custom')
+     */
+    generateComponentIdForPath(targetPath) {
+        let baseName = '';
+
+        if (this.component.name && this.component.name.trim()) {
+            // 如果有名称，使用名称生成基础ID
+            baseName = this.component.name
+                .trim()
+                .toLowerCase()
+                .replace(/[^\u4e00-\u9fa5a-z0-9\s]/g, '') // 移除特殊字符（支持中文）
+                .replace(/[\u4e00-\u9fa5]/g, (match) => {
+                    // 将中文字符转换为拼音首字母（简化版）
+                    const pinyinMap = {
+                        '传感器': 'sensor', '模块': 'module', '控制器': 'ctrl',
+                        '驱动': 'driver', '接口': 'interface', '转换器': 'converter',
+                        '放大器': 'amp', '开关': 'switch', '显示器': 'display',
+                        '电机': 'motor', '舵机': 'servo', '灯': 'led'
+                    };
+                    return pinyinMap[match] || match.charAt(0);
+                })
+                .replace(/\s+/g, '-') // 替换空格为-
+                .replace(/-+/g, '-') // 合并多个-
+                .replace(/^-|-$/g, '') // 移除开头和结尾的-
+                .substring(0, 15); // 限制长度
+        } else {
+            // 如果没有名称，使用默认前缀加上类别信息
+            const categoryPrefix = this.getCategoryPrefix(this.component.category);
+            baseName = `component-${categoryPrefix}`;
+        }
+
+        // 生成简化的时间戳（使用更友好的格式）
+        const now = new Date();
+        const timeString = now.getHours().toString().padStart(2, '0') +
+                          now.getMinutes().toString().padStart(2, '0') +
+                          now.getSeconds().toString().padStart(2, '0');
+
+        // 根据目标路径确定前缀
+        const prefix = targetPath === 'standard' ? 'std' : 'ctm';
+
+        // 生成最终的ID
+        this.component.id = `${prefix}-${baseName}-${timeString}`;
+
+        console.log(`根据路径 ${targetPath} 生成的元件ID: ${this.component.id} (基于名称: "${this.component.name || '无名称'}")`);
+        return this.component.id;
+    }
+
+    /**
      * 获取类别前缀
      */
     getCategoryPrefix(category) {
@@ -1849,16 +1900,7 @@ class ComponentDesigner {
             this.elements.statusMessage.textContent = `${modeIndicator} ${message}`;
         }
 
-        // 在控制台输出详细状态信息
-        console.log('元件设计器状态更新:', {
-            message,
-            mode: this.isReuseMode ? 'reuse' : (this.isEditingExisting ? 'edit' : 'new'),
-            isEditing: this.isEditingExisting,
-            isReuse: this.isReuseMode,
-            originalId: this.originalComponentId,
-            componentId: this.component.id,
-            pinCount: Object.values(this.component.pins || {}).reduce((sum, pins) => sum + pins.length, 0)
-        });
+        // 在控制台输出详细状态信息（已删除缩放日志）
     }
 
     /**
@@ -1886,12 +1928,16 @@ class ComponentDesigner {
         if (elements) {
             const { widthInput, heightInput } = elements;
             if (widthInput && componentRect) {
-                widthInput.value = componentRect.width;
-                console.log('同步宽度到输入框:', componentRect.width);
+                const newWidth = componentRect.width;
+                if (widthInput.value != newWidth) {
+                    widthInput.value = newWidth;
+                }
             }
             if (heightInput && componentRect) {
-                heightInput.value = componentRect.height;
-                console.log('同步高度到输入框:', componentRect.height);
+                const newHeight = componentRect.height;
+                if (heightInput.value != newHeight) {
+                    heightInput.value = newHeight;
+                }
             }
         } else {
             console.warn('无法同步尺寸：elements对象不可用');
@@ -1915,7 +1961,6 @@ class ComponentDesigner {
         this.component.dimensions.width = width;
         this.component.dimensions.height = height;
 
-        console.log('更新元件尺寸:', { width, height, componentRect: this.componentRect });
 
         // 确保 componentRect 对象存在
         if (!this.componentRect) {
@@ -1988,6 +2033,7 @@ class ComponentDesigner {
             'side1': '上边',
             'side2': '右边',
             'side3': '下边',
+
             'side4': '左边'
         };
 
@@ -2032,9 +2078,11 @@ class SimpleCanvasRenderer {
             }
         });
 
-        // 初始化画布尺寸
+        // 延迟初始化画布尺寸，避免构造函数中调用渲染时出现警告
+        setTimeout(() => {
         this.resizeCanvas();
         this.resetView();
+        }, 0);
 
         // 监听窗口大小改变
         window.addEventListener('resize', () => this.resizeCanvas());
@@ -2128,7 +2176,6 @@ class SimpleCanvasRenderer {
 
             // 强制重新渲染
             this.designer.render();
-            console.log('元件设计器强制重新渲染完成');
         }
     }
 
@@ -2215,11 +2262,9 @@ class SimpleCanvasRenderer {
             const { widthInput, heightInput } = elements;
             if (widthInput && componentRect) {
                 widthInput.value = componentRect.width;
-                console.log('渲染器同步宽度到输入框:', componentRect.width);
             }
             if (heightInput && componentRect) {
                 heightInput.value = componentRect.height;
-                console.log('渲染器同步高度到输入框:', componentRect.height);
             }
         } else {
             console.warn('渲染器无法同步尺寸：elements对象不可用');
@@ -2263,7 +2308,12 @@ class SimpleCanvasRenderer {
         renderer.updateZoomDisplay();
         this.designer.render();
 
-        this.designer.updateStatus(`缩放: ${(renderer.scale * 100).toFixed(0)}%`);
+        // 只在缩放变化明显时才更新状态，避免频繁更新
+        const zoomPercent = (renderer.scale * 100).toFixed(0);
+        if (!this._lastZoomPercent || Math.abs(parseInt(zoomPercent) - parseInt(this._lastZoomPercent)) >= 5) {
+            this.designer.updateStatus(`缩放: ${zoomPercent}%`);
+            this._lastZoomPercent = zoomPercent;
+        }
     }
 
     /**
@@ -2495,7 +2545,6 @@ class SimpleCanvasRenderer {
 
         // 如果尺寸发生了变化，需要更新元件位置并重新渲染
         if (sizeChanged) {
-            console.log('引脚布局需要调整元件尺寸，自动调整中...');
             this.updateComponentPosition();
             // 同步更新属性栏的尺寸输入框
             this.syncDimensionsToInputs();
@@ -2734,13 +2783,6 @@ class PinPositionCalculator {
             component.dimensions.width = newWidth;
             component.dimensions.height = newHeight;
 
-            console.log(`🎯 自动调整元件尺寸: ${oldWidth}x${oldHeight} → ${newWidth}x${newHeight}（适应引脚布局）`);
-            console.log(`📏 调整原因:`, {
-                topPins: component.pins.side1?.length || 0,
-                bottomPins: component.pins.side3?.length || 0,
-                leftPins: component.pins.side4?.length || 0,
-                rightPins: component.pins.side2?.length || 0
-            });
         }
 
         return sizeChanged;
@@ -3203,7 +3245,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!canvasElement) {
                     retryCount++;
                     if (retryCount < maxRetries) {
-                        console.log(`元件设计画布元素未准备好，重试 ${retryCount}/${maxRetries}`);
                         setTimeout(tryInitialize, 100);
                     } else {
                         console.error('元件设计画布元素初始化失败');
@@ -3229,7 +3270,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         ctx.scale(dpr, dpr);
                     }
 
-                    console.log('调整元件设计画布尺寸:', canvasElement.width, canvasElement.height);
                 }
 
                 // 延迟多帧，确保DOM和样式完全渲染
@@ -3238,22 +3278,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const doRender = () => {
                     renderAttempts++;
-                    console.log(`尝试渲染元件设计器 ${renderAttempts}/${maxRenderAttempts}`);
+                    if (renderAttempts <= 2 || renderAttempts === maxRenderAttempts) {
+                    }
 
                 if (!componentDesigner) {
                     componentDesigner = new ComponentDesigner();
                 } else if (componentDesigner.initialized) {
                         // 如果已经初始化，强制重新渲染
                         componentDesigner.renderer.forceRender();
-                        console.log('元件设计器重新渲染完成');
                 } else {
                     // 如果初始化失败，尝试重新初始化
-                    console.log('尝试重新初始化元件设计器...');
                     const success = componentDesigner.init();
                     if (success) {
                         componentDesigner.initialized = true;
                             componentDesigner.renderer.forceRender();
-                            console.log('元件设计器重新初始化完成');
                         } else if (renderAttempts < maxRenderAttempts) {
                             // 初始化失败，继续重试
                             setTimeout(doRender, 200);
@@ -3265,7 +3303,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (renderAttempts >= maxRenderAttempts && componentDesigner && componentDesigner.renderer) {
                         setTimeout(() => {
                             componentDesigner.renderer.forceRender();
-                            console.log('最终强制渲染元件设计器');
                         }, 500);
                     }
                 };
@@ -3311,7 +3348,6 @@ window.debugComponentDesigner = function() {
         console.log('当前元件ID:', designer.component.id);
         console.log('元件名称:', designer.component.name);
         console.log('引脚数据:', designer.component.pins);
-        console.log('尺寸信息:', designer.component.dimensions);
         console.log('引脚统计:', Object.values(designer.component.pins || {}).reduce((sum, pins) => sum + pins.length, 0));
         return designer;
     } else {

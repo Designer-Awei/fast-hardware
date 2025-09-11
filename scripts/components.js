@@ -9,18 +9,69 @@ class ComponentsManager {
         this.filteredComponents = [];
         this.currentCategory = 'all';
         this.searchQuery = '';
+
+        // 为每个页面创建独立的管理状态
+        this.pageStates = {
+            preview: {
+                managementMode: false,
+                selectedComponents: new Set(),
+                isProcessingAction: false
+            },
+            standard: {
+                managementMode: false,
+                selectedComponents: new Set(),
+                isProcessingAction: false
+            },
+            custom: {
+                managementMode: false,
+                selectedComponents: new Set(),
+                isProcessingAction: false
+            }
+        };
+
+        // 向后兼容的属性（指向preview页面的状态）
+        this.managementMode = false;
+        this.selectedComponents = new Set();
+        this.isProcessingAction = false;
+
         this.init();
+    }
+
+    /**
+     * 获取当前页面的状态
+     * @param {string} pageType - 页面类型 ('preview', 'standard', 'custom')
+     * @returns {Object} 页面状态对象
+     */
+    getPageState(pageType) {
+        if (this.pageStates[pageType]) {
+            return this.pageStates[pageType];
+        }
+        // 默认返回preview页面的状态
+        return this.pageStates.preview;
+    }
+
+    /**
+     * 根据按钮ID获取页面类型
+     * @param {string} buttonId - 按钮ID
+     * @returns {string} 页面类型
+     */
+    getPageTypeFromButtonId(buttonId) {
+        if (buttonId === 'manage-standard-components-btn') {
+            return 'standard';
+        } else if (buttonId === 'manage-custom-components-btn') {
+            return 'custom';
+        } else {
+            return 'preview';
+        }
     }
 
     /**
      * 初始化元件管理器
      */
     init() {
-        console.log('初始化元件管理器...');
         this.bindEvents();
         this.bindOtherEvents();
         this.loadComponents('all');
-        console.log('元件管理器初始化完成');
     }
 
     /**
@@ -36,6 +87,9 @@ class ComponentsManager {
         this.bindCategoryEvents('category-filter');
         this.bindCategoryEvents('standard-category-filter');
         this.bindCategoryEvents('custom-category-filter');
+
+        // 绑定管理按钮
+        this.bindManagementEvents();
     }
 
     /**
@@ -115,6 +169,17 @@ class ComponentsManager {
      * @param {string} subTabName - 二级标签页名称
      */
     handleSubTabSwitch(subTabName) {
+        // 切换标签页时，重置当前页面的管理模式状态
+        const pageTypeMap = {
+            'preview': 'preview',
+            'standard': 'standard',
+            'custom': 'custom'
+        };
+
+        if (pageTypeMap[subTabName]) {
+            this.resetManagementMode(pageTypeMap[subTabName]);
+        }
+
         switch (subTabName) {
             case 'preview':
                 this.loadComponents('all');
@@ -127,7 +192,6 @@ class ComponentsManager {
                 break;
             case 'designer':
                 // 元件绘制器页面，不需要加载元件列表
-                console.log('切换到元件绘制器页面');
                 break;
         }
     }
@@ -137,7 +201,6 @@ class ComponentsManager {
      * @param {string} type - 元件类型 ('all', 'standard', 'custom')
      */
     async loadComponents(type = 'all') {
-        console.log(`加载元件库 (${type})...`);
 
         // 模拟从系统元件库加载元件
         this.components = await this.loadSystemComponents();
@@ -147,7 +210,6 @@ class ComponentsManager {
         this.filterComponents();
         this.renderComponents();
 
-        console.log(`加载了 ${this.components.length} 个元件`);
     }
 
     /**
@@ -165,7 +227,6 @@ class ComponentsManager {
             });
 
             const allComponents = [...standardComponents, ...customComponents];
-            console.log(`从JSON文件加载了 ${allComponents.length} 个元件`);
             return allComponents;
         } catch (error) {
             console.error('加载元件失败，使用模拟数据:', error);
@@ -304,6 +365,9 @@ class ComponentsManager {
         const icon = this.getComponentIcon(component);
 
         card.innerHTML = `
+            <div class="component-checkbox">
+                <input type="checkbox" data-component-id="${component.id}" />
+            </div>
             <div class="component-icon">${icon}</div>
             <div class="component-name">${component.name}</div>
             <div class="component-category">${this.getCategoryName(component.category)}</div>
@@ -942,7 +1006,6 @@ class ComponentsManager {
 
         // 强制重新渲染设计器
         try {
-            console.log('开始重新渲染元件...');
 
             // 确保渲染器有最新的引用
             if (designer.renderer && designer.renderer.designer !== designer) {
@@ -967,11 +1030,6 @@ class ComponentsManager {
 
             // 再次填充表单，确保输入框显示正确的尺寸
             this.populateDesignerForm(component);
-
-            console.log('元件渲染完成，最终尺寸:', {
-                width: designer.component.dimensions.width,
-                height: designer.component.dimensions.height
-            });
         } catch (error) {
             console.error('渲染元件时出错:', error);
             console.error('渲染器状态:', {
@@ -982,11 +1040,9 @@ class ComponentsManager {
 
             // 尝试强制渲染
             if (designer.renderer && designer.renderer.forceRender) {
-                console.log('尝试强制渲染...');
                 setTimeout(() => {
                     try {
                         designer.renderer.forceRender();
-                        console.log('强制渲染完成');
                     } catch (forceError) {
                         console.error('强制渲染也失败:', forceError);
                     }
@@ -1012,15 +1068,59 @@ class ComponentsManager {
     reuseComponent(component) {
         console.log('复用元件:', component.name);
 
-        // 切换到元件绘制页标签
+        // 重置重试计数器
+        this._reuseRetryCount = 0;
+
+        // 先切换到元件绘制页标签，确保页面切换完成后再进行其他操作
         if (window.tabManager) {
             window.tabManager.switchToSubTab('designer');
         }
 
+        // 等待页面切换完成后再继续
+        setTimeout(() => {
+            this.performReuseOperation(component);
+        }, 100); // 增加等待时间到100ms
+    }
+
+    /**
+     * 执行复用操作的具体逻辑
+     * @param {Object} component - 元件对象
+     */
+    performReuseOperation(component) {
+        console.log('开始执行复用操作逻辑');
+
         // 获取元件设计器实例
-        const designer = window.componentDesigner;
+        let designer = window.componentDesigner;
         if (!designer) {
-            throw new Error('元件设计器实例不存在');
+            console.warn('元件设计器实例不存在，等待初始化...');
+            // 等待一段时间后重试，最多重试10次
+            if (!this._reuseRetryCount) {
+                this._reuseRetryCount = 0;
+            }
+            this._reuseRetryCount++;
+
+            if (this._reuseRetryCount < 10) {
+                setTimeout(() => {
+                    this.performReuseOperation(component);
+                }, 200); // 增加等待时间到200ms
+            } else {
+                console.error('元件设计器初始化超时，无法执行复用操作');
+                this._reuseRetryCount = 0; // 重置计数器
+            }
+            return;
+        }
+
+        // 重置重试计数器
+        this._reuseRetryCount = 0;
+
+        // 检查设计器是否已初始化
+        if (!designer.initialized) {
+            console.warn('元件设计器尚未完全初始化，等待初始化完成...');
+            // 等待一段时间后重试
+            setTimeout(() => {
+                this.performReuseOperation(component);
+            }, 100);
+            return;
         }
 
         // 设置复用模式标识（强制生成新ID）
@@ -1044,15 +1144,33 @@ class ComponentsManager {
             }
         };
 
+        // 立即填充表单，确保UI同步更新
+        console.log('填充复用元件表单数据:', {
+            name: component.name,
+            category: component.category,
+            dimensions: component.dimensions
+        });
+        this.populateDesignerForm(component);
+
         // 更新元件矩形位置和尺寸
         if (component.dimensions) {
             const originalWidth = component.dimensions.width;
             const originalHeight = component.dimensions.height;
 
-            // 首先设置原始尺寸
+            // 首先设置原始尺寸，使用画布尺寸计算居中位置
+            const canvas = designer.canvas;
+            let centerX = 200; // 默认值
+            let centerY = 150; // 默认值
+
+            if (canvas) {
+                const dpr = window.devicePixelRatio || 1;
+                centerX = (canvas.width / dpr) / 2;
+                centerY = (canvas.height / dpr) / 2;
+            }
+
             designer.componentRect = {
-                x: 200 - (originalWidth / 2),
-                y: 150 - (originalHeight / 2),
+                x: centerX - (originalWidth / 2),
+                y: centerY - (originalHeight / 2),
                 width: originalWidth,
                 height: originalHeight
             };
@@ -1109,10 +1227,6 @@ class ComponentsManager {
             // 再次填充表单，确保输入框显示正确的尺寸
             this.populateDesignerForm(component);
 
-            console.log('复用元件渲染完成，最终尺寸:', {
-                width: designer.component.dimensions.width,
-                height: designer.component.dimensions.height
-            });
         } catch (error) {
             console.error('渲染复用元件时出错:', error);
             console.error('渲染器状态:', {
@@ -1123,11 +1237,9 @@ class ComponentsManager {
 
             // 尝试强制渲染
             if (designer.renderer && designer.renderer.forceRender) {
-                console.log('尝试强制渲染...');
                 setTimeout(() => {
                     try {
                         designer.renderer.forceRender();
-                        console.log('强制渲染完成');
                     } catch (forceError) {
                         console.error('强制渲染也失败:', forceError);
                     }
@@ -1144,6 +1256,8 @@ class ComponentsManager {
         if (designer.updateStatus) {
             designer.updateStatus(`已复用元件: ${component.name} (将生成新ID)`);
         }
+
+        console.log('复用操作完成');
     }
 
     /**
@@ -1157,6 +1271,470 @@ class ComponentsManager {
                 modal.parentNode.removeChild(modal);
             }
         }, 300);
+    }
+
+    /**
+     * 绑定管理相关事件
+     */
+    bindManagementEvents() {
+        // 绑定所有管理按钮
+        const manageButtons = [
+            'manage-components-btn',        // 预览页面
+            'manage-standard-components-btn', // 标准元件页面
+            'manage-custom-components-btn'    // 自制元件页面
+        ];
+
+        manageButtons.forEach(buttonId => {
+            const manageBtn = document.getElementById(buttonId);
+            if (manageBtn) {
+                manageBtn.addEventListener('click', () => {
+                    const pageType = this.getPageTypeFromButtonId(buttonId);
+                    this.toggleManagementMode(pageType);
+                });
+            }
+        });
+
+        // 绑定所有网格的勾选框事件（使用事件委托）
+        const gridIds = [
+            'components-grid',           // 预览页面
+            'standard-components-grid',  // 标准元件页面
+            'custom-components-grid'     // 自制元件页面
+        ];
+
+        gridIds.forEach(gridId => {
+            const componentsGrid = document.getElementById(gridId);
+            if (componentsGrid) {
+                componentsGrid.addEventListener('change', (e) => {
+                    if (e.target.type === 'checkbox' && e.target.dataset.componentId) {
+                        const pageType = this.getPageTypeFromGridId(gridId);
+                        this.handleComponentSelection(e.target.dataset.componentId, e.target.checked, pageType);
+                    }
+                });
+            }
+        });
+    }
+
+    /**
+     * 根据网格ID获取页面类型
+     * @param {string} gridId - 网格ID
+     * @returns {string} 页面类型
+     */
+    getPageTypeFromGridId(gridId) {
+        if (gridId === 'standard-components-grid') {
+            return 'standard';
+        } else if (gridId === 'custom-components-grid') {
+            return 'custom';
+        } else {
+            return 'preview';
+        }
+    }
+
+    /**
+     * 切换管理模式
+     * @param {string} pageType - 页面类型 ('preview', 'standard', 'custom')
+     */
+    toggleManagementMode(pageType = 'preview') {
+        const pageState = this.getPageState(pageType);
+        const buttonId = pageType === 'standard' ? 'manage-standard-components-btn' :
+                        pageType === 'custom' ? 'manage-custom-components-btn' :
+                        'manage-components-btn';
+        const manageBtn = document.getElementById(buttonId);
+        const deleteText = manageBtn.querySelector('.delete-text');
+
+        try {
+            // 如果当前在管理模式且有选中项，执行删除操作
+            if (pageState.managementMode && pageState.selectedComponents.size > 0) {
+                this.showDeleteConfirmation(pageType);
+                return;
+            }
+
+            // 如果当前在管理模式且没有选中项，点击"返回预览"退出管理模式
+            if (pageState.managementMode && pageState.selectedComponents.size === 0) {
+                pageState.managementMode = false;
+                manageBtn.classList.remove('management-mode');
+                const manageText = manageBtn.querySelector('.manage-text');
+                manageText.style.display = 'inline';
+                deleteText.style.display = 'none';
+                pageState.selectedComponents.clear();
+                this.updateManagementModeUI(pageType);
+                console.log(`管理模式: 关闭 (${pageType}页面返回预览)`);
+                return;
+            }
+
+            // 切换到管理模式
+            pageState.managementMode = !pageState.managementMode;
+            const manageText = manageBtn.querySelector('.manage-text');
+
+            if (pageState.managementMode) {
+                // 进入管理模式
+                manageBtn.classList.add('management-mode');
+                manageText.style.display = 'none';
+                deleteText.style.display = 'inline';
+                this.updateManagementModeUI(pageType);
+                console.log(`管理模式: 开启 (${pageType}页面)`);
+            } else {
+                // 退出管理模式
+                manageBtn.classList.remove('management-mode');
+                manageText.style.display = 'inline';
+                deleteText.style.display = 'none';
+                pageState.selectedComponents.clear();
+                this.updateManagementModeUI(pageType);
+                console.log(`管理模式: 关闭 (${pageType}页面)`);
+            }
+        } catch (error) {
+            console.error('切换管理模式时出错:', error);
+        }
+    }
+
+    /**
+     * 重置管理模式状态
+     */
+    resetManagementMode(pageType = 'preview') {
+        const pageState = this.getPageState(pageType);
+
+        if (pageState.managementMode || pageState.selectedComponents.size > 0) {
+            pageState.managementMode = false;
+            pageState.selectedComponents.clear();
+
+            // 同时更新向后兼容的属性（针对preview页面）
+            if (pageType === 'preview') {
+                this.managementMode = false;
+                this.selectedComponents.clear();
+            }
+
+            // 重置管理按钮状态
+            const buttonId = pageType === 'standard' ? 'manage-standard-components-btn' :
+                            pageType === 'custom' ? 'manage-custom-components-btn' :
+                            'manage-components-btn';
+            const manageBtn = document.getElementById(buttonId);
+            if (manageBtn) {
+                const manageText = manageBtn.querySelector('.manage-text');
+                const deleteText = manageBtn.querySelector('.delete-text');
+
+                manageBtn.classList.remove('management-mode');
+                manageText.style.display = 'inline';
+                deleteText.style.display = 'none';
+                manageText.textContent = '元件管理'; // 确保文本正确
+            }
+
+            // 重置所有卡片状态
+            this.updateManagementModeUI(pageType);
+
+            console.log(`管理模式状态已重置 (${pageType}页面)`);
+        }
+    }
+
+    /**
+     * 更新管理模式UI
+     */
+    updateManagementModeUI(pageType = 'preview') {
+        const pageState = this.getPageState(pageType);
+
+        // 根据页面类型确定正确的元素
+        const gridId = pageType === 'standard' ? 'standard-components-grid' :
+                      pageType === 'custom' ? 'custom-components-grid' :
+                      'components-grid';
+        const buttonId = pageType === 'standard' ? 'manage-standard-components-btn' :
+                        pageType === 'custom' ? 'manage-custom-components-btn' :
+                        'manage-components-btn';
+
+        const cards = document.querySelectorAll(`#${gridId} .component-card`);
+        const manageBtn = document.getElementById(buttonId);
+        const manageText = manageBtn.querySelector('.manage-text');
+        const deleteText = manageBtn.querySelector('.delete-text');
+
+        cards.forEach(card => {
+            if (pageState.managementMode) {
+                card.classList.add('management-mode');
+                card.classList.remove('selected');
+
+                // 设置勾选框状态
+                const checkbox = card.querySelector('input[type="checkbox"]');
+                if (checkbox) {
+                    checkbox.checked = pageState.selectedComponents.has(card.dataset.componentId);
+                    if (checkbox.checked) {
+                        card.classList.add('selected');
+                    }
+                }
+            } else {
+                card.classList.remove('management-mode', 'selected');
+            }
+        });
+
+        // 更新按钮文本
+        if (pageState.managementMode) {
+            if (pageState.selectedComponents.size > 0) {
+                deleteText.textContent = '删除元件';
+            } else {
+                deleteText.textContent = '返回预览';
+            }
+        } else {
+            manageText.style.display = 'inline';
+            deleteText.style.display = 'none';
+            manageText.textContent = '元件管理'; // 确保退出管理模式时显示正确的文本
+        }
+    }
+
+    /**
+     * 处理元件选择
+     */
+    handleComponentSelection(componentId, isSelected, pageType = 'preview') {
+        const pageState = this.getPageState(pageType);
+
+        if (isSelected) {
+            pageState.selectedComponents.add(componentId);
+        } else {
+            pageState.selectedComponents.delete(componentId);
+        }
+
+        // 更新UI
+        const card = document.querySelector(`[data-component-id="${componentId}"]`);
+        if (card) {
+            if (isSelected) {
+                card.classList.add('selected');
+            } else {
+                card.classList.remove('selected');
+            }
+        }
+
+        // 更新按钮状态
+        this.updateManagementModeUI(pageType);
+
+        console.log(`元件 ${componentId} ${isSelected ? '选中' : '取消选中'} (${pageType}页面), 当前选中: ${pageState.selectedComponents.size}`);
+    }
+
+    /**
+     * 显示删除确认对话框
+     * @param {string} pageType - 页面类型 ('preview', 'standard', 'custom')
+     */
+    showDeleteConfirmation(pageType = 'preview') {
+        console.log(`showDeleteConfirmation 被调用 (${pageType}页面)`);
+
+        try {
+            const pageState = this.getPageState(pageType);
+            const count = pageState.selectedComponents.size;
+
+            // 创建自定义确认对话框，避免使用浏览器的confirm
+            this.showCustomDeleteConfirmation(count, pageType);
+        } catch (error) {
+            console.error('显示删除确认对话框时出错:', error);
+        }
+    }
+
+    /**
+     * 显示自定义删除确认对话框
+     * @param {number} count - 要删除的元件数量
+     * @param {string} pageType - 页面类型 ('preview', 'standard', 'custom')
+     */
+    showCustomDeleteConfirmation(count, pageType = 'preview') {
+        console.log(`开始创建自定义删除确认对话框 (${pageType}页面)...`);
+
+        let dialog = null;
+
+        try {
+            // 检查document.body是否存在
+            if (!document.body) {
+                console.error('document.body不存在，无法显示对话框');
+                return;
+            }
+
+            // 创建对话框容器
+            dialog = document.createElement('div');
+            dialog.className = 'delete-confirmation-dialog';
+            console.log('对话框元素已创建');
+
+            dialog.innerHTML = `
+                <div class="dialog-backdrop"></div>
+                <div class="dialog-content">
+                    <div class="dialog-header">
+                        <h3>确认删除</h3>
+                    </div>
+                    <div class="dialog-body">
+                        <p>确定要删除选中的 <strong>${count}</strong> 个元件吗？</p>
+                        <p class="warning-text">此操作不可撤销！</p>
+                    </div>
+                    <div class="dialog-footer">
+                        <button class="cancel-btn">取消</button>
+                        <button class="confirm-btn">确定删除</button>
+                    </div>
+                </div>
+            `;
+
+            // 添加到页面
+            document.body.appendChild(dialog);
+            console.log('对话框已添加到页面');
+
+            // 验证对话框是否真的添加到了页面
+            const dialogs = document.querySelectorAll('.delete-confirmation-dialog');
+            console.log(`页面中找到 ${dialogs.length} 个删除确认对话框`);
+
+            // 绑定事件
+            const cancelBtn = dialog.querySelector('.cancel-btn');
+            const confirmBtn = dialog.querySelector('.confirm-btn');
+            const backdrop = dialog.querySelector('.dialog-backdrop');
+
+            console.log('开始绑定事件...');
+            console.log('取消按钮:', cancelBtn);
+            console.log('确认按钮:', confirmBtn);
+            console.log('背景:', backdrop);
+
+            if (!cancelBtn || !confirmBtn || !backdrop) {
+                console.error('对话框元素未找到，无法绑定事件');
+                return;
+            }
+
+            const closeDialog = () => {
+                dialog.classList.add('hide');
+                setTimeout(() => {
+                    if (dialog.parentNode) {
+                        dialog.parentNode.removeChild(dialog);
+                    }
+                }, 300);
+                this.isProcessingAction = false;
+            };
+
+            cancelBtn.addEventListener('click', () => {
+                console.log('用户取消了删除操作');
+                closeDialog();
+            });
+
+            confirmBtn.addEventListener('click', () => {
+                console.log(`用户确认删除操作 (${pageType}页面)`);
+                closeDialog();
+                // 执行删除操作
+                this.deleteSelectedComponents(pageType);
+            });
+
+            backdrop.addEventListener('click', () => {
+                console.log('点击背景取消删除操作');
+                closeDialog();
+            });
+
+            // ESC键关闭
+            const handleEscape = (e) => {
+                if (e.key === 'Escape') {
+                    console.log('按ESC取消删除操作');
+                    closeDialog();
+                    document.removeEventListener('keydown', handleEscape);
+                }
+            };
+            document.addEventListener('keydown', handleEscape);
+
+            console.log('自定义删除确认对话框已显示');
+        } catch (error) {
+            console.error('创建或绑定对话框时出错:', error);
+            this.isProcessingAction = false;
+
+            // 如果对话框已经创建但绑定失败，尝试移除它
+            if (dialog && dialog.parentNode) {
+                dialog.parentNode.removeChild(dialog);
+            }
+        }
+    }
+
+    /**
+     * 删除选中的元件
+     * @param {string} pageType - 页面类型 ('preview', 'standard', 'custom')
+     */
+    async deleteSelectedComponents(pageType = 'preview') {
+        const pageState = this.getPageState(pageType);
+        console.log(`开始删除选中的元件 (${pageType}页面):`, Array.from(pageState.selectedComponents));
+
+        let deletedCount = 0;
+        const deletePromises = [];
+
+        for (const componentId of pageState.selectedComponents) {
+            // 查找元件信息
+            const component = this.components.find(c => c.id === componentId);
+            if (component) {
+                deletePromises.push(this.deleteComponent(component));
+                deletedCount++;
+            }
+        }
+
+        try {
+            await Promise.all(deletePromises);
+            console.log(`成功删除了 ${deletedCount} 个元件`);
+
+            // 重新加载元件库（根据页面类型）
+            if (pageType === 'standard') {
+                await this.loadComponents('standard');
+            } else if (pageType === 'custom') {
+                await this.loadComponents('custom');
+            } else {
+                // preview页面或其他情况，加载所有元件
+                await this.loadComponents('all');
+            }
+
+            // 直接退出管理模式，不使用toggleManagementMode避免重复处理
+            const pageState = this.getPageState(pageType);
+            pageState.managementMode = false;
+            pageState.selectedComponents.clear();
+
+            // 同时更新向后兼容的属性（针对preview页面）
+            if (pageType === 'preview') {
+                this.managementMode = false;
+                this.selectedComponents.clear();
+            }
+
+            const buttonId = pageType === 'standard' ? 'manage-standard-components-btn' :
+                            pageType === 'custom' ? 'manage-custom-components-btn' :
+                            'manage-components-btn';
+            const manageBtn = document.getElementById(buttonId);
+            if (manageBtn) {
+                const manageText = manageBtn.querySelector('.manage-text');
+                const deleteText = manageBtn.querySelector('.delete-text');
+                manageBtn.classList.remove('management-mode');
+                manageText.style.display = 'inline';
+                deleteText.style.display = 'none';
+                manageText.textContent = '元件管理';
+            }
+
+            this.updateManagementModeUI(pageType);
+
+            // 显示成功消息
+            if (window.showNotification) {
+                window.showNotification(`成功删除了 ${deletedCount} 个元件`, 'success', 4000);
+            } else {
+                alert(`成功删除了 ${deletedCount} 个元件`);
+            }
+
+            console.log('删除操作完成，管理模式已退出');
+        } catch (error) {
+            console.error('删除元件失败:', error);
+            if (window.showNotification) {
+                window.showNotification('删除元件失败，请重试', 'error', 4000);
+            } else {
+                alert('删除元件失败，请重试');
+            }
+        } finally {
+            // 无论成功还是失败，都要重置处理状态
+            this.isProcessingAction = false;
+        }
+    }
+
+    /**
+     * 删除单个元件
+     */
+    async deleteComponent(component) {
+        try {
+            console.log(`删除元件: ${component.name} (${component.id})`);
+
+            // 调用主进程删除方法
+            if (window.electronAPI && window.electronAPI.deleteComponent) {
+                const result = await window.electronAPI.deleteComponent(component);
+                if (result.success) {
+                    console.log(`元件 ${component.name} 删除成功`);
+                } else {
+                    throw new Error(result.error || '删除失败');
+                }
+            } else {
+                throw new Error('Electron API 不可用');
+            }
+        } catch (error) {
+            console.error(`删除元件 ${component.name} 失败:`, error);
+            throw error;
+        }
     }
 }
 
