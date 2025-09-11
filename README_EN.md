@@ -10,7 +10,7 @@
 
 [🇨🇳 中文](README.md) | [🇺🇸 English](README_EN.md)
 
-[![Version](https://img.shields.io/badge/version-0.1.1-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
+[![Version](https://img.shields.io/badge/version-0.1.5-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
 [![Electron](https://img.shields.io/badge/Electron-27.0.0-47848F.svg)](https://electronjs.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-16+-339933.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -60,13 +60,20 @@
 - **💾 Real-time Synchronization**: Real-time synchronization between canvas operations and JSON data
 - **⌨️ Keyboard Shortcuts**: Ctrl+S save with rich editing shortcuts
 
+#### ✅ Completed Features
+- **🎨 Floating Component Panel**: Left-side intelligent floating panel with default collapsed state
+- **🖱️ Component Drag & Drop**: Seamless drag from panel to canvas with precise coordinate positioning
+- **🎯 Complete Component Rendering**: Rounded rectangle body, intelligent pin layout, color-coded labels
+- **📐 Canvas Basic Functions**: Grid background, zoom controls, pan operations
+- **📱 Responsive Design**: Perfect adaptation for desktop, tablet, and mobile devices
+
 ### 🚧 5. LLM Intelligent Assistant (Planned)
 - **💬 Natural Language Interaction**: Describe requirements through dialogue
 - **🧠 Intelligent Recommendation**: LLM analyzes requirements and recommends hardware solutions
 - **🎨 Automatic Generation**: Automatically generate circuit diagrams based on dialogue
 - **⚡ API Integration**: Support for multiple LLM service providers
 
-## ✨ Latest Features (v0.1.1)
+## ✨ Latest Features (v0.1.5)
 
 ### 🎯 Intelligent Functions
 - **🎨 Intelligent Size Adjustment**: Automatically adjust component size when importing to ensure pin display is complete
@@ -75,6 +82,14 @@
 
 ### 🛠️ Development Tools
 - **🔍 Platform Detection Tool**: Automatic detection of development environment compatibility
+
+### 🎨 Floating Component Library System (Latest Update)
+- **🎯 Smart Floating Panel**: Left-side intelligent floating panel with default 10px narrow collapsed state
+- **📐 Adaptive Design**: 60% height adaptive to canvas area, 10px width minimalist design, 8px rounded corners
+- **🖱️ Smooth Drag & Drop**: HTML5 native drag and drop API for seamless experience from panel to canvas
+- **🎪 Complete Rendering**: Rounded rectangle body, multi-color pin system, intelligent text layout
+- **📱 Responsive Design**: Perfect adaptation for desktop, tablet, and mobile devices
+- **✨ Hover Feedback**: Dynamic width changes, color transitions, excellent interaction experience
 - **🚨 Error Diagnosis System**: Intelligent error analysis and solution suggestions
 - **⚡ Cross-Platform Scripts**: Unified development commands with seamless multi-platform switching
 

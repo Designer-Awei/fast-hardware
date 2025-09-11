@@ -10,7 +10,7 @@
 
 [🇨🇳 中文](README.md) | [🇺🇸 English](README_EN.md)
 
-[![Version](https://img.shields.io/badge/version-0.1.4-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
+[![Version](https://img.shields.io/badge/version-0.1.5-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
 [![Electron](https://img.shields.io/badge/Electron-27.0.0-47848F.svg)](https://electronjs.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-16+-339933.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -49,6 +49,13 @@
 ### 🚧 电路设计画布 (开发中)
 可视化电路设计界面，支持元件拖拽和连线，实时同步到JSON数据。
 
+#### ✅ 已完成功能
+- **悬浮元件库面板**: 左侧智能悬浮面板，默认收起状态，支持一键展开
+- **元件拖拽放置**: 从悬浮面板拖拽元件到画布，精确坐标定位
+- **元件完整渲染**: 圆角矩形主体、智能引脚布局、颜色编码标签
+- **画布基础功能**: 格点背景、缩放控制、平移操作
+- **自适应设计**: 响应式布局，支持桌面端、平板端、移动端
+
 ### 🚧 LLM智能助手 (规划中)
 自然语言交互，智能推荐硬件方案，自动生成电路设计。
 
@@ -59,6 +66,15 @@
 - **保存成功提示**: 所有保存操作都有即时的视觉反馈
 - **元件ID结构化**: 统一格式 `std-[name]-[time]` 和 `ctm-[name]-[time]`
 - **跨平台优化**: Windows/macOS/Linux全平台兼容
+
+#### 🎨 悬浮元件库系统 (最新更新)
+
+- **智能悬浮面板**: 默认收起状态，节省界面空间，点击一键展开
+- **自适应尺寸**: 高度60%自适应，宽度10px精简设计，圆角8px现代美观
+- **流畅拖拽**: HTML5原生拖拽，从面板到画布的无缝体验
+- **完整渲染**: 圆角矩形主体、多色引脚系统、智能文字布局
+- **响应式设计**: 桌面端、平板端、移动端完美适配
+- **悬停反馈**: 动态宽度变化，颜色过渡，优秀的交互体验
 
 ## 📁 项目结构
 

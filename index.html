@@ -37,6 +37,39 @@
             <!-- 电路搭建标签页 -->
             <div id="circuit-design-tab" class="tab-content active">
                 <div class="workspace">
+                    <!-- 左侧悬浮元件库面板 -->
+                    <aside class="floating-panel" id="component-floating-panel">
+                        <div class="floating-panel-header">
+                            <h3>元件库</h3>
+                            <button class="panel-toggle-btn" id="panel-toggle-btn" title="收起面板">
+                                <span class="toggle-icon">◀</span>
+                            </button>
+                        </div>
+                        <div class="floating-panel-content">
+                            <!-- 搜索和筛选区域 -->
+                            <div class="panel-search-section">
+                                <input type="text" id="floating-search" placeholder="搜索元件..." />
+                                <select id="floating-category-filter">
+                                    <option value="all">全部类别</option>
+                                    <option value="microcontroller">微控制器</option>
+                                    <option value="sensor">传感器</option>
+                                    <option value="actuator">执行器</option>
+                                    <option value="power">电源模块</option>
+                                    <option value="communication">通信模块</option>
+                                    <option value="auxiliary">辅助元件</option>
+                                    <option value="other">其他</option>
+                                </select>
+                            </div>
+                            <!-- 元件列表区域 -->
+                            <div class="component-list" id="component-list">
+                                <!-- 元件卡片将在这里动态生成 -->
+                                <div class="loading-placeholder">
+                                    <p>正在加载元件库...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </aside>
+
                     <!-- 画布区域 -->
                     <section class="canvas-section">
                         <div class="canvas-header">
@@ -284,6 +317,7 @@
 
     <!-- JavaScript文件 -->
     <script src="scripts/main.js"></script>
+    <script src="scripts/floating-panel.js"></script>
     <script src="scripts/tabs.js"></script>
     <script src="scripts/canvas.js"></script>
     <script src="scripts/chat.js"></script>

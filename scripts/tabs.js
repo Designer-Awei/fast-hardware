@@ -235,7 +235,13 @@ class TabManager {
      * 初始化电路搭建标签页
      */
     initializeCircuitDesignTab() {
-        // 这里可以添加电路搭建标签页的初始化逻辑
+        // 初始化悬浮元件库面板
+        if (!window.floatingPanel) {
+            window.floatingPanel = new FloatingPanel();
+        } else {
+            // 如果已存在，重新加载元件库
+            window.floatingPanel.reloadComponents();
+        }
     }
 
     /**
