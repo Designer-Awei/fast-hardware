@@ -1,7 +1,7 @@
 {
-  "name": "超声波传感器HC-SR04",
-  "id": "hc-sr04",
-  "description": "超声波测距传感器。工作电压5V，工作电流15mA，测量范围2cm-400cm，测量精度3mm，探测角度15°。",
+  "name": "温湿度传感器DHT22",
+  "id": "ctm-温湿度传感器dht22-124044",
+  "description": "数字温湿度传感器，高精度测量，工作电压3.3-6V，工作电流2.5mA，温度测量范围-40°C到80°C，湿度测量范围0-100%RH，精度±0.5°C，±2%RH。",
   "category": "sensor",
   "pins": {
     "side1": [
@@ -11,13 +11,13 @@
         "order": 1
       },
       {
-        "pinName": "Trig",
+        "pinName": "DATA",
         "type": "digital_io",
         "order": 2
       },
       {
-        "pinName": "Echo",
-        "type": "digital_io",
+        "pinName": "NC",
+        "type": "special",
         "order": 3
       },
       {
@@ -31,7 +31,7 @@
     "side4": []
   },
   "dimensions": {
-    "width": 190,
-    "height": 35
+    "width": 170,
+    "height": 40
   }
 }

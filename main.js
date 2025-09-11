@@ -361,19 +361,24 @@ ipcMain.handle('saveComponentForce', async (event, component, savePath) => {
   try {
     console.log(`强制保存元件: ${component.name}, 路径: ${savePath}`);
 
-    // 确定保存目录
+    // 确定保存目录和前缀
     const baseDir = path.join(__dirname, 'data', 'system-components');
     const targetDir = path.join(baseDir, savePath === 'standard' ? 'standard' : 'custom');
+    const prefix = savePath === 'standard' ? 'std' : 'ctm';
 
     // 确保目录存在
     await fs.mkdir(targetDir, { recursive: true });
 
+    // 重新生成ID（确保格式统一）
+    const newComponent = { ...component };
+    newComponent.id = generateStructuredComponentId(component.name, prefix);
+
     // 生成文件名
-    const fileName = `${component.id}.json`;
+    const fileName = `${newComponent.id}.json`;
     const filePath = path.join(targetDir, fileName);
 
     // 保存文件（强制覆盖）
-    const jsonContent = JSON.stringify(component, null, 2);
+    const jsonContent = JSON.stringify(newComponent, null, 2);
     await fs.writeFile(filePath, jsonContent, 'utf8');
 
     console.log(`元件强制保存成功: ${filePath}`);
@@ -383,6 +388,114 @@ ipcMain.handle('saveComponentForce', async (event, component, savePath) => {
     return { success: false, error: error.message };
   }
 });
+
+// 编辑模式保存元件（智能查找原文件位置）
+ipcMain.handle('saveComponentEditMode', async (event, component) => {
+  const fs = require('fs').promises;
+  const path = require('path');
+
+  try {
+    console.log(`编辑模式保存元件: ${component.name}, ID: ${component.id}`);
+
+    const baseDir = path.join(__dirname, 'data', 'system-components');
+    const originalFileName = `${component.id}.json`;
+
+    // 首先尝试在标准库中查找原文件
+    let targetDir = path.join(baseDir, 'standard');
+    let filePath = path.join(targetDir, originalFileName);
+    let prefix = 'std';
+
+    try {
+      await fs.access(filePath);
+      console.log(`找到原文件在标准库: ${filePath}`);
+    } catch {
+      // 如果标准库中没有，尝试在自定义库中查找
+      targetDir = path.join(baseDir, 'custom');
+      filePath = path.join(targetDir, originalFileName);
+      prefix = 'ctm';
+
+      try {
+        await fs.access(filePath);
+        console.log(`找到原文件在自定义库: ${filePath}`);
+      } catch {
+        // 如果两个库中都没有该文件，报错
+        throw new Error(`找不到原元件文件: ${component.id}`);
+      }
+    }
+
+    // 确保目录存在
+    await fs.mkdir(targetDir, { recursive: true });
+
+    // 重新生成ID（确保格式统一）
+    const newComponent = { ...component };
+    newComponent.id = generateStructuredComponentId(component.name, prefix);
+
+    // 如果ID发生变化，需要重命名文件
+    const newFileName = `${newComponent.id}.json`;
+    const newFilePath = path.join(targetDir, newFileName);
+
+    // 保存文件（强制覆盖）
+    const jsonContent = JSON.stringify(newComponent, null, 2);
+    await fs.writeFile(newFilePath, jsonContent, 'utf8');
+
+    // 如果文件名发生变化，删除旧文件
+    if (originalFileName !== newFileName) {
+      try {
+        await fs.unlink(filePath);
+        console.log(`删除旧文件: ${filePath}`);
+      } catch (deleteError) {
+        console.warn(`删除旧文件失败: ${deleteError.message}`);
+      }
+    }
+
+    console.log(`编辑模式元件保存成功: ${newFilePath}`);
+    return { success: true, filePath: newFilePath };
+  } catch (error) {
+    console.error('编辑模式保存元件失败:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 生成结构化元件ID
+function generateStructuredComponentId(componentName, prefix) {
+  let baseName = '';
+
+  if (componentName && componentName.trim()) {
+    // 如果有名称，使用名称生成基础ID
+    baseName = componentName
+      .trim()
+      .toLowerCase()
+      .replace(/[^\u4e00-\u9fa5a-z0-9\s]/g, '') // 移除特殊字符（支持中文）
+      .replace(/[\u4e00-\u9fa5]/g, (match) => {
+        // 将中文字符转换为拼音首字母（简化版）
+        const pinyinMap = {
+          '传感器': 'sensor', '模块': 'module', '控制器': 'ctrl',
+          '驱动': 'driver', '接口': 'interface', '转换器': 'converter',
+          '放大器': 'amp', '开关': 'switch', '显示器': 'display',
+          '电机': 'motor', '舵机': 'servo', '灯': 'led'
+        };
+        return pinyinMap[match] || match.charAt(0);
+      })
+      .replace(/\s+/g, '-') // 替换空格为-
+      .replace(/-+/g, '-') // 合并多个-
+      .replace(/^-|-$/g, '') // 移除开头和结尾的-
+      .substring(0, 15); // 限制长度
+  } else {
+    // 如果没有名称，使用默认名称
+    baseName = 'component';
+  }
+
+  // 生成时间戳
+  const now = new Date();
+  const timeString = now.getHours().toString().padStart(2, '0') +
+                     now.getMinutes().toString().padStart(2, '0') +
+                     now.getSeconds().toString().padStart(2, '0');
+
+  // 生成最终的ID（使用简化的前缀）
+  const finalId = `${prefix}-${baseName}-${timeString}`;
+  console.log(`生成结构化ID: ${finalId} (名称: "${componentName}", 前缀: ${prefix})`);
+  return finalId;
+}
 
 // 错误处理
 process.on('uncaughtException', (error) => {

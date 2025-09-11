@@ -1,6 +1,6 @@
 {
   "name": "LED",
-  "id": "led-5mm",
+  "id": "std-led-120000",
   "description": "5mm红色发光二极管。工作电压2-3.3V，工作电流20mA。",
   "category": "auxiliary",
   "pins": {

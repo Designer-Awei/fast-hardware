@@ -34,6 +34,8 @@ class ComponentDesigner {
         // 编辑模式标识
         this.isEditingExisting = false; // 是否正在编辑现有元件
         this.originalComponentId = null; // 原始元件ID
+        this.originalComponentName = null; // 原始元件名称
+        this.isReuseMode = false; // 是否为复用模式
 
         const success = this.init();
         if (success) {
@@ -58,6 +60,11 @@ class ComponentDesigner {
 
         // 绑定事件
         this.bindEvents();
+
+        // 生成初始ID（如果还没有ID的话）
+        if (!this.component.id) {
+            this.generateComponentId();
+        }
 
         // 更新状态
         this.updateStatus('元件设计器已就绪');
@@ -208,25 +215,25 @@ class ComponentDesigner {
         }
 
         // 绑定重置设计器按钮
-        if (this.elements.resetBtn) {
-            this.elements.resetBtn.addEventListener('click', (e) => {
+                if (this.elements.resetBtn) {
+                    this.elements.resetBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 console.log('重置设计器按钮被点击');
-                this.resetDesigner();
-            });
-        }
+                        this.resetDesigner();
+                    });
+                }
 
         // 绑定保存按钮
-        if (this.elements.saveBtn) {
-            this.elements.saveBtn.addEventListener('click', (e) => {
+                if (this.elements.saveBtn) {
+                    this.elements.saveBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                console.log('元件绘制器保存按钮被点击');
-                this.saveComponent();
-            });
-        }
+                        console.log('元件绘制器保存按钮被点击');
+                        this.saveComponent();
+                    });
+                }
 
         // 绑定重置元件按钮 - 使用更健壮的事件绑定
-        if (this.elements.resetComponentBtn) {
+                if (this.elements.resetComponentBtn) {
             // 移除可能存在的事件监听器
             this.elements.resetComponentBtn.removeEventListener('click', this.resetComponentHandler);
 
@@ -234,7 +241,7 @@ class ComponentDesigner {
             this.resetComponentHandler = (e) => {
                 e.stopPropagation();
                 console.log('重置元件按钮被点击');
-                this.resetComponent();
+                        this.resetComponent();
             };
 
             // 绑定新的事件处理器
@@ -262,7 +269,7 @@ class ComponentDesigner {
         // 监听窗口焦点变化
         window.addEventListener('focus', () => {
             console.log('窗口获得焦点');
-            setTimeout(() => {
+        setTimeout(() => {
                 this.ensureInputBoxUsable();
             }, 50);
         });
@@ -397,6 +404,16 @@ class ComponentDesigner {
                 }
             };
 
+            // 如果是复用模式，重置到新建状态
+            if (this.isReuseMode) {
+                console.log('属性面板重置：复用模式下清除复用状态，回到新建模式');
+                this.isReuseMode = false;
+                this.originalComponentId = null;
+                this.originalComponentName = null;
+                this.isEditingExisting = false;
+                this.updateStatus('已从复用模式重置到新建模式');
+            }
+
             // 注意：不清除编辑模式标识，以防用户是在编辑现有元件时点击重置
             // 只有在真正新建元件或明确保存后才清除编辑模式
             // this.isEditingExisting = false;
@@ -435,20 +452,30 @@ class ComponentDesigner {
                 const currentValue = inputElement ? inputElement.value : '';
 
                 // 重置元件引脚数据
-                this.component.pins = {
-                    side1: [],
-                    side2: [],
-                    side3: [],
-                    side4: []
-                };
+            this.component.pins = {
+                side1: [],
+                side2: [],
+                side3: [],
+                side4: []
+            };
 
-                // 清除选中状态
-                this.selectedSide = null;
+            // 清除选中状态
+            this.selectedSide = null;
+
+            // 如果是复用模式，重置到新建状态
+            if (this.isReuseMode) {
+                console.log('复用模式下点击重置，清除复用状态，回到新建模式');
+                this.isReuseMode = false;
+                this.originalComponentId = null;
+                this.originalComponentName = null;
+                this.isEditingExisting = false;
+                this.updateStatus('已从复用模式重置到新建模式');
+            }
 
                 // 更新界面
-                this.updateComponentInfo();
-                this.render();
-                this.updateStatus('元件引脚已清除');
+            this.updateComponentInfo();
+            this.render();
+            this.updateStatus('元件引脚已清除');
 
                 // 确保输入框状态正确 - 使用更全面的方法
                 if (inputElement) {
@@ -640,6 +667,8 @@ class ComponentDesigner {
         console.log('清除编辑模式状态');
         this.isEditingExisting = false;
         this.originalComponentId = null;
+        this.originalComponentName = null;
+        this.isReuseMode = false;
         this.updateStatus('已切换到新建模式');
     }
 
@@ -665,8 +694,141 @@ class ComponentDesigner {
             return;
         }
 
-        // 显示保存路径选择对话框
-        this.showSavePathDialog();
+        // 根据模式选择不同的保存流程
+        if (this.isEditingExisting && this.originalComponentId) {
+            // 编辑模式：直接处理覆盖逻辑
+            await this.handleEditModeSave();
+        } else {
+            // 新建或复用模式：显示保存路径选择对话框
+            this.showSavePathDialog();
+        }
+    }
+
+    /**
+     * 处理编辑模式的保存
+     */
+    async handleEditModeSave() {
+        try {
+            // 生成最终的元件数据
+            // 编辑模式：永远使用原始ID，确保覆盖原元件
+            console.log(`编辑模式：使用原始ID "${this.originalComponentId}"，覆盖原元件`);
+            const componentId = this.originalComponentId;
+
+            const finalComponent = {
+                name: this.component.name,
+                id: componentId,
+                description: this.component.description,
+                category: this.component.category,
+                pins: this.component.pins,
+                dimensions: this.component.dimensions
+            };
+
+            // 确保ID不为空
+            if (!finalComponent.id || finalComponent.id.trim() === '') {
+                console.warn('元件ID为空，重新生成ID', {
+                    isEditing: this.isEditingExisting,
+                    originalId: this.originalComponentId,
+                    componentName: finalComponent.name
+                });
+                finalComponent.id = this.generateComponentId();
+            }
+
+            // 编辑模式下总是显示覆盖确认对话框
+            const confirmed = await this.showEditOverwriteConfirmDialog();
+            if (!confirmed) {
+                return; // 用户取消
+            }
+
+            // 执行保存 - 编辑模式下使用智能查找原文件位置的方法
+            await this.saveComponentEditMode(finalComponent);
+
+            // 编辑模式不显示保存路径对话框，所以不需要关闭对话框
+
+            console.log('编辑模式保存元件:', finalComponent);
+            this.updateStatus(`元件 "${this.component.name}" 保存成功`);
+
+            // 显示成功提示
+            if (window.showNotification) {
+                window.showNotification(`元件 "${this.component.name}" 保存成功！`, 'success', 4000);
+            }
+
+            // 保存成功后，清除编辑模式标识（因为现在这是一个新的元件实例）
+            this.isEditingExisting = false;
+            this.originalComponentId = null;
+            this.originalComponentName = null;
+            this.isReuseMode = false;
+
+        } catch (error) {
+            console.error('编辑模式保存元件失败:', error);
+
+            // 处理不同的错误类型
+            if (error.type) {
+                // 这是我们自定义的错误对象
+                this.showFileOperationErrorDialog(error);
+            } else {
+                // 其他未知错误
+                alert('保存失败: ' + (error.message || '未知错误'));
+            }
+        }
+    }
+
+    /**
+     * 显示编辑模式覆盖确认对话框
+     */
+    async showEditOverwriteConfirmDialog() {
+        return new Promise((resolve) => {
+            const dialog = document.createElement('div');
+            dialog.className = 'edit-overwrite-confirm-dialog';
+            dialog.innerHTML = `
+                <div class="dialog-backdrop"></div>
+                <div class="dialog-content">
+                    <div class="dialog-header">
+                        <h3>⚠️ 确认覆盖</h3>
+                    </div>
+                    <div class="dialog-body">
+                        <p>确定要覆盖现有的元件 "<strong>${this.component.name}</strong>" 吗？</p>
+                        <p class="warning-text">此操作将更新现有元件的数据。</p>
+                    </div>
+                    <div class="dialog-footer">
+                        <button class="btn-secondary confirm-cancel-btn">取消</button>
+                        <button class="btn-primary confirm-overwrite-btn">确认覆盖</button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(dialog);
+
+            // 显示动画
+            requestAnimationFrame(() => {
+                dialog.classList.add('show');
+            });
+
+            // 绑定事件
+            dialog.querySelector('.confirm-cancel-btn').addEventListener('click', () => {
+                document.body.removeChild(dialog);
+                resolve(false);
+            });
+
+            dialog.querySelector('.confirm-overwrite-btn').addEventListener('click', () => {
+                document.body.removeChild(dialog);
+                resolve(true);
+            });
+
+            dialog.querySelector('.dialog-backdrop').addEventListener('click', () => {
+                document.body.removeChild(dialog);
+                resolve(false);
+            });
+
+            // ESC键关闭
+            const handleEscape = (e) => {
+                if (e.key === 'Escape') {
+                    document.body.removeChild(dialog);
+                    document.removeEventListener('keydown', handleEscape);
+                    resolve(false);
+                }
+            };
+            document.addEventListener('keydown', handleEscape);
+        });
     }
 
     /**
@@ -750,9 +912,22 @@ class ComponentDesigner {
     async handlePathSelection(selectedPath, dialog) {
         try {
             // 生成最终的元件数据
+            // 根据不同的模式确定ID生成策略
+            let componentId;
+            if (this.isReuseMode) {
+                // 复用模式：总是生成新ID
+                console.log(`复用模式：为元件 "${this.component.name}" 生成新ID`);
+                componentId = this.generateComponentId();
+            } else {
+                // 新建模式：直接生成ID
+                // 注意：编辑模式不会到达这里，因为编辑模式直接调用 handleEditModeSave
+                console.log(`新建模式：为元件 "${this.component.name}" 生成新ID`);
+                componentId = this.generateComponentId();
+            }
+
             const finalComponent = {
                 name: this.component.name,
-                id: this.isEditingExisting && this.originalComponentId ? this.originalComponentId : this.generateComponentId(),
+                id: componentId,
                 description: this.component.description,
                 category: this.component.category,
                 pins: this.component.pins,
@@ -832,6 +1007,8 @@ class ComponentDesigner {
             // 保存成功后，清除编辑模式标识（因为现在这是一个新的元件实例）
             this.isEditingExisting = false;
             this.originalComponentId = null;
+            this.originalComponentName = null;
+            this.isReuseMode = false;
 
         } catch (error) {
             console.error('保存元件失败:', error);
@@ -870,12 +1047,89 @@ class ComponentDesigner {
 
             if (result.success) {
                 console.log('元件保存成功:', result.filePath);
+                // 显示成功提示
+                if (window.showNotification) {
+                    window.showNotification(`元件 "${component.name}" 保存成功！`, 'success', 4000);
+                }
             } else if (result.duplicate) {
                 console.log('检测到重复文件，显示对话框');
                 // 文件存在，显示重复处理对话框
                 await this.showDuplicateDialog(component, result.filePath, path);
             } else {
                 throw new Error(result.error || '保存失败');
+            }
+        } catch (error) {
+            console.error('IPC调用失败:', error);
+            throw error;
+        }
+    }
+
+
+    /**
+     * 编辑模式保存元件（智能查找原文件位置）
+     */
+    async saveComponentEditMode(component) {
+        console.log('开始执行 saveComponentEditMode，元件:', component.name, 'ID:', component.id);
+
+        // 使用Electron IPC通信来编辑模式保存
+        if (!window.electronAPI || !window.electronAPI.saveComponentEditMode) {
+            console.error('Electron API不可用:', {
+                electronAPI: !!window.electronAPI,
+                saveComponentEditMode: window.electronAPI ? !!window.electronAPI.saveComponentEditMode : false
+            });
+            throw new Error('Electron API不可用，无法保存元件');
+        }
+
+        // 通过IPC调用主进程的编辑模式保存方法
+        try {
+            console.log('调用IPC: saveComponentEditMode');
+            const result = await window.electronAPI.saveComponentEditMode(component);
+            console.log('IPC调用结果:', result);
+
+            if (result.success) {
+                console.log('编辑模式元件保存成功:', result.filePath);
+                // 显示成功提示
+                if (window.showNotification) {
+                    window.showNotification(`元件 "${component.name}" 已覆盖保存！`, 'success', 4000);
+                }
+            } else {
+                throw new Error(result.error || '编辑模式保存失败');
+            }
+        } catch (error) {
+            console.error('IPC调用失败:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * 强制保存元件（覆盖现有文件）
+     */
+    async saveComponentForce(component, path) {
+        console.log('开始执行 saveComponentForce，元件:', component.name, '路径:', path);
+
+        // 使用Electron IPC通信来强制保存（覆盖）
+        if (!window.electronAPI || !window.electronAPI.saveComponentForce) {
+            console.error('Electron API不可用:', {
+                electronAPI: !!window.electronAPI,
+                saveComponentForce: window.electronAPI ? !!window.electronAPI.saveComponentForce : false
+            });
+            throw new Error('Electron API不可用，无法保存元件');
+        }
+
+        // 通过IPC调用主进程的强制保存方法
+        try {
+            console.log('调用IPC: saveComponentForce');
+            const result = await window.electronAPI.saveComponentForce(component, path);
+            console.log('IPC调用结果:', result);
+
+            if (result.success) {
+                console.log('元件覆盖保存成功:', result.filePath);
+                // 显示成功提示
+                if (window.showNotification) {
+                    window.showNotification(`元件 "${component.name}" 已覆盖保存！`, 'success', 4000);
+                }
+            } else {
+                throw new Error(result.error || '覆盖保存失败');
             }
         } catch (error) {
             console.error('IPC调用失败:', error);
@@ -935,6 +1189,10 @@ class ComponentDesigner {
                     const result = await window.electronAPI.saveComponentForce(component, path);
                     if (result.success) {
                         document.body.removeChild(dialog);
+                        // 显示覆盖成功提示
+                        if (window.showNotification) {
+                            window.showNotification(`元件 "${component.name}" 已覆盖保存！`, 'success', 4000);
+                        }
                         resolve();
                     } else {
                         throw new Error(result.error || '覆盖保存失败');
@@ -961,6 +1219,10 @@ class ComponentDesigner {
                         const result = await window.electronAPI.saveComponent(component, path);
                         if (result.success) {
                             document.body.removeChild(dialog);
+                            // 显示成功提示
+                            if (window.showNotification) {
+                                window.showNotification(`元件 "${component.name}" 保存成功！`, 'success', 4000);
+                            }
                             resolve();
                         } else {
                             throw new Error(result.error || '重命名保存失败');
@@ -1475,18 +1737,82 @@ class ComponentDesigner {
      * 生成元件ID
      */
     generateComponentId() {
-        if (this.component.name) {
-            // 将名称转换为小写，并用-替换空格和其他特殊字符
-            this.component.id = `custom-${this.component.name
+        let baseName = '';
+
+        if (this.component.name && this.component.name.trim()) {
+            // 如果有名称，使用名称生成基础ID
+            baseName = this.component.name
+                .trim()
                 .toLowerCase()
-                .replace(/[^a-z0-9\s]/g, '') // 移除特殊字符
+                .replace(/[^\u4e00-\u9fa5a-z0-9\s]/g, '') // 移除特殊字符（支持中文）
+                .replace(/[\u4e00-\u9fa5]/g, (match) => {
+                    // 将中文字符转换为拼音首字母（简化版）
+                    const pinyinMap = {
+                        '传感器': 'sensor', '模块': 'module', '控制器': 'ctrl',
+                        '驱动': 'driver', '接口': 'interface', '转换器': 'converter',
+                        '放大器': 'amp', '开关': 'switch', '显示器': 'display',
+                        '电机': 'motor', '舵机': 'servo', '灯': 'led'
+                    };
+                    return pinyinMap[match] || match.charAt(0);
+                })
                 .replace(/\s+/g, '-') // 替换空格为-
                 .replace(/-+/g, '-') // 合并多个-
                 .replace(/^-|-$/g, '') // 移除开头和结尾的-
-            }-${Date.now()}`;
+                .substring(0, 15); // 限制长度
         } else {
-            this.component.id = '';
+            // 如果没有名称，使用默认前缀加上类别信息
+            const categoryPrefix = this.getCategoryPrefix(this.component.category);
+            baseName = `component-${categoryPrefix}`;
         }
+
+        // 生成简化的时间戳（使用更友好的格式）
+        const now = new Date();
+        const timeString = now.getHours().toString().padStart(2, '0') +
+                          now.getMinutes().toString().padStart(2, '0') +
+                          now.getSeconds().toString().padStart(2, '0');
+
+        // 生成最终的ID（包含库前缀）
+        // 注意：前缀将在主进程中根据保存路径自动确定
+        const prefix = this.determineLibraryPrefix();
+        this.component.id = `${prefix}-${baseName}-${timeString}`;
+
+        console.log(`生成的元件ID: ${this.component.id} (基于名称: "${this.component.name || '无名称'}")`);
+        return this.component.id;
+    }
+
+    /**
+     * 确定元件库前缀（用于ID生成）
+     */
+    determineLibraryPrefix() {
+        // 在编辑模式下，如果是编辑现有元件，返回原ID中的前缀
+        if (this.isEditingExisting && this.originalComponentId) {
+            if (this.originalComponentId.startsWith('std-')) {
+                return 'std';
+            } else if (this.originalComponentId.startsWith('ctm-')) {
+                return 'ctm';
+            }
+        }
+
+        // 对于新建或复用模式，默认使用ctm前缀
+        // 实际的前缀将在主进程中根据保存路径重新确定
+        return 'ctm';
+    }
+
+    /**
+     * 获取类别前缀
+     */
+    getCategoryPrefix(category) {
+        const prefixMap = {
+            'microcontroller': 'mcu',
+            'sensor': 'sensor',
+            'actuator': 'act',
+            'power': 'pwr',
+            'communication': 'comm',
+            'auxiliary': 'aux',
+            'other': 'misc'
+        };
+
+        return prefixMap[category] || 'comp';
     }
 
     /**
@@ -1511,15 +1837,24 @@ class ComponentDesigner {
      */
     updateStatus(message) {
         if (this.elements.statusMessage) {
-            // 添加编辑模式指示器
-            const modeIndicator = this.isEditingExisting ? '[编辑模式]' : '[新建模式]';
+            // 添加模式指示器
+            let modeIndicator;
+            if (this.isReuseMode) {
+                modeIndicator = '[复用模式]';
+            } else if (this.isEditingExisting) {
+                modeIndicator = '[编辑模式]';
+            } else {
+                modeIndicator = '[新建模式]';
+            }
             this.elements.statusMessage.textContent = `${modeIndicator} ${message}`;
         }
 
         // 在控制台输出详细状态信息
         console.log('元件设计器状态更新:', {
             message,
+            mode: this.isReuseMode ? 'reuse' : (this.isEditingExisting ? 'edit' : 'new'),
             isEditing: this.isEditingExisting,
+            isReuse: this.isReuseMode,
             originalId: this.originalComponentId,
             componentId: this.component.id,
             pinCount: Object.values(this.component.pins || {}).reduce((sum, pins) => sum + pins.length, 0)

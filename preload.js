@@ -45,6 +45,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveComponentForce: (component, path) => ipcRenderer.invoke('saveComponentForce', component, path),
 
   /**
+   * 编辑模式保存元件（智能查找原文件位置）
+   */
+  saveComponentEditMode: (component) => ipcRenderer.invoke('saveComponentEditMode', component),
+
+  /**
    * 发送消息到主进程
    */
   sendToMain: (channel, ...args) => {

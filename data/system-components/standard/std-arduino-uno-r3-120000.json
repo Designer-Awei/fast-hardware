@@ -1,6 +1,6 @@
 {
   "name": "Arduino Uno R3",
-  "id": "arduino-uno-r3",
+  "id": "std-arduino-uno-r3-120000",
   "description": "Arduino开发板，基于ATmega328P微控制器。工作电压5V，最大电流40mA，具有14个数字引脚、6个模拟引脚，闪存容量32KB。",
   "category": "microcontroller",
   "pins": {

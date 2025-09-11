@@ -1,18 +1,18 @@
 {
-  "name": "OLED显示屏",
-  "id": "oled-128x64",
-  "description": "128x64像素OLED显示屏，I2C接口。工作电压3.3-5V，工作电流20mA，分辨率128x64，默认I2C地址0x3C。",
+  "name": "1.31寸 OLED显示屏",
+  "id": "std-131寸-oled显示屏-120000",
+  "description": "128*64分辨率的OLED显示屏，I2C接口，控制芯片SSH1106，驱动电压3.3V-5V",
   "category": "auxiliary",
   "pins": {
     "side1": [
       {
-        "pinName": "VCC",
-        "type": "power",
+        "pinName": "GND",
+        "type": "ground",
         "order": 1
       },
       {
-        "pinName": "GND",
-        "type": "ground",
+        "pinName": "VCC",
+        "type": "power",
         "order": 2
       },
       {
@@ -31,7 +31,7 @@
     "side4": []
   },
   "dimensions": {
-    "width": 110,
-    "height": 30
+    "width": 160,
+    "height": 40
   }
 }

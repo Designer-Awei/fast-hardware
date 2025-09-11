@@ -473,6 +473,7 @@ class ComponentsManager {
                     <h3>${component.name}</h3>
                     <div class="header-actions">
                         <button class="edit-btn" id="edit-component-btn">编辑</button>
+                        <button class="reuse-btn" id="reuse-component-btn">复用</button>
                         <button class="close-btn">&times;</button>
                     </div>
                 </div>
@@ -507,6 +508,15 @@ class ComponentsManager {
         if (editBtn) {
             editBtn.addEventListener('click', () => {
                 this.editComponent(component);
+                this.closePreviewModal(modal);
+            });
+        }
+
+        // 绑定复用事件
+        const reuseBtn = modal.querySelector('.reuse-btn');
+        if (reuseBtn) {
+            reuseBtn.addEventListener('click', () => {
+                this.reuseComponent(component);
                 this.closePreviewModal(modal);
             });
         }
@@ -865,6 +875,7 @@ class ComponentsManager {
         // 设置编辑模式标识
         designer.isEditingExisting = true;
         designer.originalComponentId = component.id;
+        designer.originalComponentName = component.name;
 
         // 更新元件设计器的数据
         designer.component = {
@@ -991,6 +1002,147 @@ class ComponentsManager {
         // 更新状态
         if (designer.updateStatus) {
             designer.updateStatus(`已加载元件: ${component.name}`);
+        }
+    }
+
+    /**
+     * 复用元件 - 跳转到元件绘制页并加载数据（复用模式）
+     * @param {Object} component - 元件对象
+     */
+    reuseComponent(component) {
+        console.log('复用元件:', component.name);
+
+        // 切换到元件绘制页标签
+        if (window.tabManager) {
+            window.tabManager.switchToSubTab('designer');
+        }
+
+        // 获取元件设计器实例
+        const designer = window.componentDesigner;
+        if (!designer) {
+            throw new Error('元件设计器实例不存在');
+        }
+
+        // 设置复用模式标识（强制生成新ID）
+        designer.isEditingExisting = false; // 不设置为编辑模式
+        designer.originalComponentId = null; // 不保存原始ID
+        designer.originalComponentName = null; // 不保存原始名称
+        designer.isReuseMode = true; // 新增复用模式标识
+
+        // 更新元件设计器的数据
+        designer.component = {
+            name: component.name || '',
+            id: '', // 复用模式下ID留空，保存时会重新生成
+            description: component.description || '',
+            category: component.category || 'other',
+            dimensions: component.dimensions || { width: 100, height: 80 },
+            pins: component.pins || {
+                side1: [],
+                side2: [],
+                side3: [],
+                side4: []
+            }
+        };
+
+        // 更新元件矩形位置和尺寸
+        if (component.dimensions) {
+            const originalWidth = component.dimensions.width;
+            const originalHeight = component.dimensions.height;
+
+            // 首先设置原始尺寸
+            designer.componentRect = {
+                x: 200 - (originalWidth / 2),
+                y: 150 - (originalHeight / 2),
+                width: originalWidth,
+                height: originalHeight
+            };
+
+            console.log('设置复用元件原始尺寸:', { width: originalWidth, height: originalHeight });
+
+            // 运行自动尺寸调整，确保引脚正确显示
+            if (designer.pinCalculator && designer.pinCalculator.adjustComponentSizeForPins) {
+                const sizeChanged = designer.pinCalculator.adjustComponentSizeForPins(designer.component);
+                if (sizeChanged) {
+                    const autoWidth = designer.componentRect.width;
+                    const autoHeight = designer.componentRect.height;
+
+                    console.log('自动调整复用元件尺寸:', {
+                        original: `${originalWidth}x${originalHeight}`,
+                        adjusted: `${autoWidth}x${autoHeight}`
+                    });
+
+                    // 重新计算居中位置
+                    designer.componentRect.x = 200 - (autoWidth / 2);
+                    designer.componentRect.y = 150 - (autoHeight / 2);
+                }
+            }
+
+            // 确保渲染器也更新了尺寸
+            if (designer.renderer && designer.renderer.componentRect) {
+                designer.renderer.componentRect = designer.componentRect;
+            }
+        }
+
+        // 渲染元件
+        try {
+            // 确保渲染器存在
+            if (!designer.renderer) {
+                console.warn('渲染器不存在，尝试重新初始化');
+                designer.setupCanvas();
+
+                if (!designer.renderer) {
+                    throw new Error('渲染器不存在');
+                }
+            }
+
+            // 先清空画布
+            designer.renderer.clearCanvas();
+
+            // 重新渲染元件
+            designer.renderer.render();
+
+            // 确保尺寸输入框同步更新最新的尺寸（可能是自动调整后的尺寸）
+            if (designer.syncDimensionsToInputs) {
+                designer.syncDimensionsToInputs();
+            }
+
+            // 再次填充表单，确保输入框显示正确的尺寸
+            this.populateDesignerForm(component);
+
+            console.log('复用元件渲染完成，最终尺寸:', {
+                width: designer.component.dimensions.width,
+                height: designer.component.dimensions.height
+            });
+        } catch (error) {
+            console.error('渲染复用元件时出错:', error);
+            console.error('渲染器状态:', {
+                rendererExists: !!designer.renderer,
+                designerExists: !!designer,
+                canvasExists: designer.renderer ? !!designer.renderer.canvas : false
+            });
+
+            // 尝试强制渲染
+            if (designer.renderer && designer.renderer.forceRender) {
+                console.log('尝试强制渲染...');
+                setTimeout(() => {
+                    try {
+                        designer.renderer.forceRender();
+                        console.log('强制渲染完成');
+                    } catch (forceError) {
+                        console.error('强制渲染也失败:', forceError);
+                    }
+                }, 100);
+            }
+        }
+
+        // 更新元件信息显示
+        if (designer.updateComponentInfo) {
+            designer.updateComponentInfo();
+        }
+
+        // 更新状态
+        if (designer.updateStatus) {
+            designer.updateStatus(`已复用元件: ${component.name} (将生成新ID)`);
         }
     }
 
