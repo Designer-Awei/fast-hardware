@@ -10,7 +10,7 @@
 
 [🇨🇳 中文](README.md) | [🇺🇸 English](README_EN.md)
 
-[![Version](https://img.shields.io/badge/version-0.1.1-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
+[![Version](https://img.shields.io/badge/version-0.1.3-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
 [![Electron](https://img.shields.io/badge/Electron-27.0.0-47848F.svg)](https://electronjs.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-16+-339933.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -48,30 +48,37 @@
 - **🔍 智能预览**: 缩略图展示，支持搜索和分类筛选
 - **📁 层级管理**: 系统级和项目级元件库分离管理
 
-### ✅ 3. 跨平台兼容性 (已完成)
+### ✅ 3. 窗口尺寸记忆功能 (已完成)
+- **🪟 智能窗口记忆**: 自动保存和恢复窗口尺寸、位置
+- **📐 边界检查**: 防止窗口超出屏幕范围
+- **⚡ 实时同步**: 窗口变化时实时保存配置（防抖优化）
+- **🔄 最大化支持**: 支持最大化状态的保存和恢复
+
+### ✅ 4. 跨平台兼容性 (已完成)
 - **🖥️ 多平台支持**: Windows、macOS、Linux全平台兼容
 - **⚙️ 自动适配**: 智能检测操作系统并执行相应命令
 - **🔧 统一工具链**: 跨平台构建、调试和错误诊断
 - **🌐 UTF-8支持**: 保证中文显示正常
 
-### 🚧 4. 电路设计画布 (开发中)
+### 🚧 5. 电路设计画布 (开发中)
 - **🎯 拖拽操作**: 支持元件拖拽、放置、旋转
 - **🔗 连线系统**: 手动连线功能，支持路径编辑
 - **💾 实时同步**: 画布操作与JSON数据实时同步
 - **⌨️ 快捷键**: Ctrl+S保存，丰富的编辑快捷键
 
-### 🚧 5. LLM智能助手 (规划中)
+### 🚧 6. LLM智能助手 (规划中)
 - **💬 自然语言交互**: 通过对话描述需求
 - **🧠 智能推荐**: LLM分析需求并推荐硬件方案
 - **🎨 自动生成**: 基于对话自动生成电路图
 - **⚡ API集成**: 支持多种LLM服务提供商
 
-## ✨ 最新特性 (v0.1.1)
+## ✨ 最新特性 (v0.1.2)
 
 ### 🎯 智能功能
-- **🎨 智能尺寸调整**: 导入元件时自动调整尺寸确保引脚显示完整
-- **🔧 动态属性绑定**: 渲染器与设计器实时同步，避免尺寸不同步
-- **📋 状态保护机制**: 编辑模式状态保护，防止意外丢失修改
+- **🪟 窗口尺寸记忆**: 自动保存和恢复窗口尺寸、位置，提供专业的桌面应用体验
+- **📐 边界智能检查**: 防止窗口超出屏幕范围，确保窗口始终可见
+- **⚡ 实时同步保存**: 窗口变化时实时保存配置（500ms防抖优化）
+- **🔄 最大化状态支持**: 支持最大化状态的完整保存和恢复
 
 ### 🛠️ 开发工具
 - **🔍 平台检测工具**: 自动检测开发环境兼容性
@@ -132,7 +139,6 @@ fast-hardware/
 ├── 📄 package.json               # 项目配置文件
 ├── 📄 platform-check.js          # 平台兼容性检测工具
 ├── 📄 preload.js                 # 预加载脚本
-├── 📄 test-overwrite.js          # 测试覆盖功能脚本
 ├── 📄 .gitignore                 # Git忽略文件配置
 ├── 📄 edit_prd.md                # 详细开发记录
 ├── 📄 Fast Hardware.txt          # 原始需求文档
@@ -144,13 +150,21 @@ fast-hardware/
 
 | 文件/目录 | 说明 | 重要性 |
 |-----------|------|--------|
-| `main.js` | Electron主进程，应用生命周期管理 | 🔴 核心 |
+| `main.js` | Electron主进程，应用生命周期管理和窗口配置 | 🔴 核心 |
 | `index.html` | 主界面HTML，应用骨架 | 🔴 核心 |
 | `scripts/component-designer.js` | 元件设计器核心功能 | 🔴 核心 |
 | `cross-platform-runner.js` | 跨平台兼容脚本 | 🟡 重要 |
 | `data/system-components/` | 系统元件库数据 | 🟡 重要 |
 | `platform-check.js` | 环境检测工具 | 🟢 工具 |
 | `error-handler.js` | 错误诊断工具 | 🟢 工具 |
+
+### 📊 技术实现详情
+
+#### 窗口配置存储
+- **存储位置**: `~/AppData/fast-hardware/window-config.json` (Windows)
+- **数据格式**: JSON格式，包含尺寸、位置、最大化状态
+- **保存时机**: 窗口变化时实时保存（500ms防抖）
+- **边界检查**: 自动检测多显示器环境，防止窗口超出屏幕范围
 
 ## 🛠️ 快速开始
 
@@ -203,7 +217,7 @@ npm run dev
 **元件设计器界面**
 ```
 ┌─────────────────────────────────────────────────┐
-│ Fast Hardware v0.1.1                     _ □ ✕ │
+│ Fast Hardware v0.1.3                     _ □ ✕ │
 ├─────────────────┬───────────────────────────────┤
 │ 属性面板        │          设计画布              │
 │                 │                               │
@@ -234,19 +248,19 @@ npm run dev
 构建后文件保存在 `dist/` 目录：
 
 **Windows** 🎯
-- `Fast Hardware Setup 0.1.1.exe` - NSIS安装程序
+- `Fast Hardware Setup 0.1.3.exe` - NSIS安装程序
 - `win-unpacked/` - 未打包版本
 - `win-x64.zip` - ZIP压缩包
 
 **macOS** 🍎
-- `Fast Hardware-0.1.1.dmg` - DMG磁盘映像
+- `Fast Hardware-0.1.3.dmg` - DMG磁盘映像
 - `mac/` - 应用程序包
 - `mac-x64.zip` - ZIP压缩包
 
 **Linux** 🐧
-- `Fast Hardware-0.1.1.AppImage` - AppImage可执行文件
-- `fast-hardware_0.1.1_amd64.deb` - Debian包
-- `fast-hardware-0.1.1.x86_64.rpm` - RPM包
+- `Fast Hardware-0.1.3.AppImage` - AppImage可执行文件
+- `fast-hardware_0.1.3_amd64.deb` - Debian包
+- `fast-hardware-0.1.3.x86_64.rpm` - RPM包
 
 ### 🏗️ 构建流程
 
@@ -414,11 +428,12 @@ touch styles/custom-theme.css
 
 ## 📋 开发路线图
 
-### ✅ 已完成 (v0.1.1)
+### ✅ 已完成 (v0.1.3)
 
 #### 🎯 MVP核心功能
 - ✅ **跨平台兼容性**: Windows/macOS/Linux全平台支持
 - ✅ **元件设计器**: 可视化元件设计，智能尺寸调整
+- ✅ **窗口尺寸记忆**: 专业的桌面应用体验，自动保存窗口状态
 - [ ] **实现基础画布功能**: 格点背景、元件拖拽、放置、旋转
 - [ ] **实现手动连线功能**: 引脚连接、路径编辑、连线删除
 - [ ] **实现保存机制**: Ctrl+S触发项目文件夹更新
@@ -583,6 +598,31 @@ SOFTWARE.
 4. **错误诊断**: `npm run error-help`
 
 ## 📝 更新日志
+
+### 🎉 v0.1.3 (2025-09-11)
+- ✅ **输入框焦点问题深度修复**
+  - 彻底解决重置元件后输入框无法使用的问题
+  - 替换原生confirm对话框为自定义对话框，避免焦点丢失
+  - 增强输入框状态管理，确保各种场景下都能正常使用
+  - 智能焦点恢复机制，支持标签页切换和窗口焦点变化
+
+- ✅ **用户体验进一步优化**
+  - 重置操作不再导致输入框失去焦点
+  - 标签页切换时输入框状态自动修复
+  - 窗口焦点变化时输入框状态实时恢复
+  - 更稳定的用户界面交互体验
+
+### 🎉 v0.1.2 (2025-09-11)
+- ✅ **窗口尺寸记忆功能**
+  - 自动保存和恢复窗口尺寸、位置
+  - 智能边界检查防止窗口超出屏幕
+  - 实时同步保存配置（防抖优化）
+  - 完整支持最大化状态保存和恢复
+
+- ✅ **用户体验大幅提升**
+  - 专业的桌面应用体验
+  - 窗口状态持久化
+  - 智能错误恢复机制
 
 ### 🎉 v0.1.1 (2025-09-10)
 - ✅ **跨平台兼容性大幅提升**

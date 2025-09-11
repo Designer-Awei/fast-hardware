@@ -507,7 +507,7 @@
 
 .designer-panel textarea {
     resize: vertical;
-    min-height: 60px;
+    min-height: 100px;
 }
 
 .form-actions {

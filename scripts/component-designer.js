@@ -131,6 +131,24 @@ class ComponentDesigner {
      * 绑定事件监听器
      */
     bindEvents() {
+        console.log('开始绑定元件设计器事件...');
+
+        // 绑定基础表单事件（这些不需要标签页激活）
+        this.bindBasicFormEvents();
+
+        // 绑定按钮事件（需要特殊处理）
+        this.bindButtonEvents();
+
+        // 绑定全局事件监听器
+        this.bindGlobalEventListeners();
+
+        console.log('元件设计器事件绑定完成');
+    }
+
+    /**
+     * 绑定基础表单事件
+     */
+    bindBasicFormEvents() {
         // 表单输入事件
         if (this.elements.nameInput) {
             this.elements.nameInput.addEventListener('input', (e) => {
@@ -138,6 +156,15 @@ class ComponentDesigner {
                 this.generateComponentId();
                 this.updateComponentInfo();
                 this.render(); // 重新渲染以显示新的元件名称
+            });
+
+            // 添加焦点事件监听，确保输入框状态正确
+            this.elements.nameInput.addEventListener('focus', () => {
+                this.ensureInputBoxUsable(this.elements.nameInput);
+            });
+
+            this.elements.nameInput.addEventListener('click', () => {
+                this.ensureInputBoxUsable(this.elements.nameInput);
             });
         }
 
@@ -168,62 +195,176 @@ class ComponentDesigner {
                 this.component.description = e.target.value.trim();
             });
         }
+    }
 
-        // 按钮事件 - 只在元件绘制器页面激活时绑定（避免重复绑定）
-        let eventsBound = false; // 标记是否已经绑定了事件
-
-        const bindDesignerEvents = () => {
-            const designerTab = document.getElementById('designer-sub-tab');
-            if (designerTab && designerTab.classList.contains('active') && !eventsBound) {
-                console.log('绑定元件绘制器事件');
-                eventsBound = true; // 标记已绑定
-
-                if (this.elements.resetBtn) {
-                    this.elements.resetBtn.addEventListener('click', (e) => {
-                        e.stopPropagation(); // 防止事件冒泡
-                        this.resetDesigner();
-                    });
-                }
-
-                if (this.elements.saveBtn) {
-                    this.elements.saveBtn.addEventListener('click', (e) => {
-                        e.stopPropagation(); // 防止事件冒泡
-                        console.log('元件绘制器保存按钮被点击');
-                        this.saveComponent();
-                    });
-                }
-
-                if (this.elements.resetComponentBtn) {
-                    this.elements.resetComponentBtn.addEventListener('click', (e) => {
-                        e.stopPropagation(); // 防止事件冒泡
-                        this.resetComponent();
-                    });
-                }
-            }
-        };
-
-        // 监听标签页切换事件，只在切换到元件绘制器时绑定事件
-        document.addEventListener('subTabActivated', (e) => {
-            if (e.detail.subTabName === 'designer' && !eventsBound) {
-                console.log('检测到切换到元件绘制器页面，绑定事件');
-                setTimeout(bindDesignerEvents, 50);
-            }
-        });
-
-        // 延迟尝试绑定，确保页面初始化完成
-        setTimeout(() => {
-            if (!eventsBound) {
-                bindDesignerEvents();
-            }
-        }, 200);
-
+    /**
+     * 绑定按钮事件
+     */
+    bindButtonEvents() {
         // 重置视图按钮
         const resetViewBtn = document.getElementById('reset-view-designer');
-
         if (resetViewBtn) {
             resetViewBtn.addEventListener('click', () => this.renderer.resetView());
         }
 
+        // 绑定重置设计器按钮
+        if (this.elements.resetBtn) {
+            this.elements.resetBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                console.log('重置设计器按钮被点击');
+                this.resetDesigner();
+            });
+        }
+
+        // 绑定保存按钮
+        if (this.elements.saveBtn) {
+            this.elements.saveBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                console.log('元件绘制器保存按钮被点击');
+                this.saveComponent();
+            });
+        }
+
+        // 绑定重置元件按钮 - 使用更健壮的事件绑定
+        if (this.elements.resetComponentBtn) {
+            // 移除可能存在的事件监听器
+            this.elements.resetComponentBtn.removeEventListener('click', this.resetComponentHandler);
+
+            // 创建新的事件处理器
+            this.resetComponentHandler = (e) => {
+                e.stopPropagation();
+                console.log('重置元件按钮被点击');
+                this.resetComponent();
+            };
+
+            // 绑定新的事件处理器
+            this.elements.resetComponentBtn.addEventListener('click', this.resetComponentHandler);
+
+            console.log('重置元件按钮事件已绑定');
+        }
+    }
+
+    /**
+     * 绑定全局事件监听器
+     */
+    bindGlobalEventListeners() {
+        // 监听标签页切换事件
+        document.addEventListener('subTabActivated', (e) => {
+            if (e.detail.subTabName === 'designer') {
+                console.log('切换到元件绘制器标签页');
+                // 确保输入框状态正确
+                setTimeout(() => {
+                    this.ensureInputBoxUsable();
+                }, 100);
+            }
+        });
+
+        // 监听窗口焦点变化
+        window.addEventListener('focus', () => {
+            console.log('窗口获得焦点');
+            setTimeout(() => {
+                this.ensureInputBoxUsable();
+            }, 50);
+        });
+
+        // 监听页面可见性变化
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                console.log('页面变为可见');
+                setTimeout(() => {
+                    this.ensureInputBoxUsable();
+                }, 100);
+            }
+        });
+    }
+
+    /**
+     * 确保输入框可用状态
+     */
+    ensureInputBoxUsable(inputElement = null) {
+        const targetInput = inputElement || this.elements.nameInput;
+        if (!targetInput) return;
+
+        console.log('检查输入框可用状态...');
+
+        // 保存原始值，避免被意外清除
+        const originalValue = targetInput.value;
+        const wasFocused = document.activeElement === targetInput;
+
+        // 强制设置输入框为可用状态
+        targetInput.disabled = false;
+        targetInput.readOnly = false;
+        targetInput.style.pointerEvents = 'auto';
+        targetInput.style.opacity = '1';
+        targetInput.style.visibility = 'visible';
+        targetInput.style.display = 'block';
+        targetInput.style.cursor = 'text';
+        targetInput.style.backgroundColor = '';
+        targetInput.style.border = '';
+        targetInput.style.zIndex = '';
+
+        // 确保父元素状态正常
+        const parent = targetInput.parentElement;
+        if (parent) {
+            parent.style.pointerEvents = 'auto';
+            parent.style.opacity = '1';
+            parent.style.visibility = 'visible';
+            parent.style.display = 'block';
+        }
+
+        // 移除可能的问题类
+        targetInput.classList.remove('disabled', 'readonly', 'hidden', 'unusable');
+
+        // 恢复原始值
+        if (originalValue && !targetInput.value) {
+            targetInput.value = originalValue;
+        }
+
+        // 重新绑定事件监听器（以防被意外移除）
+        this.rebindInputEvents(targetInput);
+
+        console.log('输入框状态已强制设置为可用', {
+            value: targetInput.value,
+            disabled: targetInput.disabled,
+            readOnly: targetInput.readOnly,
+            wasFocused: wasFocused,
+            nowFocused: document.activeElement === targetInput
+        });
+    }
+
+    /**
+     * 重新绑定输入框事件
+     */
+    rebindInputEvents(inputElement) {
+        if (!inputElement) return;
+
+        // 移除现有的事件监听器（如果有的话）
+        inputElement.removeEventListener('input', this.inputHandler);
+        inputElement.removeEventListener('focus', this.focusHandler);
+        inputElement.removeEventListener('blur', this.blurHandler);
+
+        // 创建新的事件处理器
+        this.inputHandler = (e) => {
+            this.component.name = e.target.value.trim();
+            this.generateComponentId();
+            this.updateComponentInfo();
+            this.render();
+        };
+
+        this.focusHandler = () => {
+            this.ensureInputBoxUsable(inputElement);
+        };
+
+        this.blurHandler = () => {
+            // 失焦时不需要特殊处理
+        };
+
+        // 重新绑定事件
+        inputElement.addEventListener('input', this.inputHandler);
+        inputElement.addEventListener('focus', this.focusHandler);
+        inputElement.addEventListener('blur', this.blurHandler);
+
+        console.log('输入框事件已重新绑定');
     }
 
     /**
@@ -281,21 +422,215 @@ class ComponentDesigner {
      * 重置元件（清除引脚）
      */
     resetComponent() {
-        if (confirm('确定要清除所有引脚吗？')) {
-            this.component.pins = {
-                side1: [],
-                side2: [],
-                side3: [],
-                side4: []
+        console.log('准备重置元件...');
+
+        // 使用Promise包装confirm对话框，确保焦点处理
+        this.showResetConfirmDialog().then((confirmed) => {
+            if (confirmed) {
+                console.log('用户确认重置，开始重置元件...');
+
+                // 保存输入框的当前状态
+                const inputElement = this.elements.nameInput;
+                const wasFocused = inputElement && document.activeElement === inputElement;
+                const currentValue = inputElement ? inputElement.value : '';
+
+                // 重置元件引脚数据
+                this.component.pins = {
+                    side1: [],
+                    side2: [],
+                    side3: [],
+                    side4: []
+                };
+
+                // 清除选中状态
+                this.selectedSide = null;
+
+                // 更新界面
+                this.updateComponentInfo();
+                this.render();
+                this.updateStatus('元件引脚已清除');
+
+                // 确保输入框状态正确 - 使用更全面的方法
+                if (inputElement) {
+                    // 立即确保输入框可用（在DOM更新前）
+                    this.ensureInputBoxUsable(inputElement);
+
+                    // 延迟执行，确保DOM更新完成后再进行焦点恢复
+                    setTimeout(() => {
+                        this.ensureInputBoxUsable(inputElement);
+
+                        // 强制聚焦到输入框
+                        setTimeout(() => {
+                            try {
+                                inputElement.focus();
+                                // 确保焦点确实设置成功
+                                if (document.activeElement === inputElement) {
+                                    console.log('✅ 重置后成功恢复输入框焦点');
+                                } else {
+                                    console.warn('⚠️ 重置后焦点恢复可能失败，重试...');
+                                    // 再次尝试聚焦
+                                    setTimeout(() => {
+                                        inputElement.focus();
+                                        if (document.activeElement === inputElement) {
+                                            console.log('✅ 重置后重试恢复输入框焦点成功');
+                                        } else {
+                                            console.error('❌ 重置后无法恢复输入框焦点');
+                                        }
+                                    }, 50);
+                                }
+                            } catch (error) {
+                                console.warn('无法恢复输入框焦点:', error);
+                            }
+                        }, 20);
+
+                        console.log('重置元件完成，输入框状态:', {
+                            value: inputElement.value,
+                            disabled: inputElement.disabled,
+                            readOnly: inputElement.readOnly,
+                            focused: document.activeElement === inputElement,
+                            activeElement: document.activeElement.tagName + (document.activeElement.id ? '#' + document.activeElement.id : '')
+                        });
+                    }, 10);
+                }
+
+                console.log('元件重置完成');
+            } else {
+                console.log('用户取消了重置操作');
+            }
+        }).catch((error) => {
+            console.error('重置元件过程中出现错误:', error);
+        });
+    }
+
+    /**
+     * 显示重置确认对话框
+     */
+    showResetConfirmDialog() {
+        return new Promise((resolve) => {
+            // 创建自定义确认对话框，避免使用原生confirm（会丢失焦点）
+            const dialog = document.createElement('div');
+            dialog.className = 'reset-confirm-dialog';
+            dialog.innerHTML = `
+                <div class="dialog-backdrop"></div>
+                <div class="dialog-content">
+                    <div class="dialog-header">
+                        <h3>确认重置</h3>
+                    </div>
+                    <div class="dialog-body">
+                        <p>确定要清除所有引脚吗？</p>
+                        <p class="warning-text">此操作将清除元件的所有引脚配置。</p>
+                    </div>
+                    <div class="dialog-footer">
+                        <button class="btn-secondary cancel-btn">取消</button>
+                        <button class="btn-danger confirm-btn">确认重置</button>
+                    </div>
+                </div>
+            `;
+
+            // 添加样式
+            const style = document.createElement('style');
+            style.textContent = `
+                .reset-confirm-dialog {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    z-index: 10000;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+                .reset-confirm-dialog .dialog-backdrop {
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0, 0, 0, 0.5);
+                }
+                .reset-confirm-dialog .dialog-content {
+                    position: relative;
+                    background: white;
+                    border-radius: 8px;
+                    padding: 20px;
+                    max-width: 400px;
+                    width: 90%;
+                    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+                }
+                .reset-confirm-dialog .dialog-header h3 {
+                    margin: 0 0 15px 0;
+                    color: #333;
+                }
+                .reset-confirm-dialog .dialog-body {
+                    margin-bottom: 20px;
+                }
+                .reset-confirm-dialog .dialog-body p {
+                    margin: 0 0 8px 0;
+                    color: #666;
+                }
+                .reset-confirm-dialog .warning-text {
+                    color: #dc3545;
+                    font-size: 14px;
+                }
+                .reset-confirm-dialog .dialog-footer {
+                    display: flex;
+                    gap: 10px;
+                    justify-content: flex-end;
+                }
+                .reset-confirm-dialog .btn-secondary,
+                .reset-confirm-dialog .btn-danger {
+                    padding: 8px 16px;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 14px;
+                }
+                .reset-confirm-dialog .btn-secondary {
+                    background: #6c757d;
+                    color: white;
+                }
+                .reset-confirm-dialog .btn-danger {
+                    background: #dc3545;
+                    color: white;
+                }
+            `;
+            document.head.appendChild(style);
+
+            document.body.appendChild(dialog);
+
+            // 绑定事件
+            dialog.querySelector('.cancel-btn').addEventListener('click', () => {
+                document.body.removeChild(dialog);
+                document.head.removeChild(style);
+                resolve(false);
+            });
+
+            dialog.querySelector('.confirm-btn').addEventListener('click', () => {
+                document.body.removeChild(dialog);
+                document.head.removeChild(style);
+                resolve(true);
+            });
+
+            // ESC键关闭
+            const handleEscape = (e) => {
+                if (e.key === 'Escape') {
+                    document.body.removeChild(dialog);
+                    document.head.removeChild(style);
+                    document.removeEventListener('keydown', handleEscape);
+                    resolve(false);
+                }
             };
+            document.addEventListener('keydown', handleEscape);
 
-            // 清除选中状态
-            this.selectedSide = null;
-
-            this.updateComponentInfo();
-            this.render();
-            this.updateStatus('元件引脚已清除');
-        }
+            // 点击背景关闭
+            dialog.querySelector('.dialog-backdrop').addEventListener('click', () => {
+                document.body.removeChild(dialog);
+                document.head.removeChild(style);
+                document.removeEventListener('keydown', handleEscape);
+                resolve(false);
+            });
+        });
     }
 
     /**

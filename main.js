@@ -3,8 +3,9 @@
  * 纯Electron实现，无React框架
  */
 
-const { app, BrowserWindow, Menu, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, screen } = require('electron');
 const path = require('path');
+const fs = require('fs').promises;
 
 // 设置控制台编码为UTF-8
 if (process.platform === 'win32') {
@@ -24,49 +25,199 @@ console.log('Fast Hardware主进程启动...');
 let mainWindow = null;
 
 /**
+ * 窗口配置存储路径
+ */
+const WINDOW_CONFIG_PATH = path.join(app.getPath('userData'), 'window-config.json');
+
+/**
+ * 默认窗口配置
+ */
+const DEFAULT_WINDOW_CONFIG = {
+  width: 1000,
+  height: 650,
+  x: null, // 居中显示
+  y: null, // 居中显示
+  isMaximized: false
+};
+
+/**
+ * 保存窗口配置
+ */
+async function saveWindowConfig(window) {
+  try {
+    const bounds = window.getBounds();
+    const isMaximized = window.isMaximized();
+
+    const config = {
+      width: bounds.width,
+      height: bounds.height,
+      x: bounds.x,
+      y: bounds.y,
+      isMaximized: isMaximized,
+      timestamp: Date.now()
+    };
+
+    // 确保配置目录存在
+    const configDir = path.dirname(WINDOW_CONFIG_PATH);
+    await fs.mkdir(configDir, { recursive: true });
+
+    await fs.writeFile(WINDOW_CONFIG_PATH, JSON.stringify(config, null, 2), 'utf8');
+    console.log('窗口配置已保存:', config);
+  } catch (error) {
+    console.error('保存窗口配置失败:', error);
+  }
+}
+
+/**
+ * 读取窗口配置
+ */
+async function loadWindowConfig() {
+  try {
+    const configData = await fs.readFile(WINDOW_CONFIG_PATH, 'utf8');
+    const config = JSON.parse(configData);
+
+    // 验证配置数据的有效性
+    if (config.width && config.height) {
+      return config;
+    }
+  } catch (error) {
+    console.log('读取窗口配置失败，使用默认配置:', error.message);
+  }
+
+  return DEFAULT_WINDOW_CONFIG;
+}
+
+/**
+ * 验证窗口位置是否在有效范围内
+ */
+function validateWindowBounds(bounds) {
+  try {
+    const displays = screen.getAllDisplays();
+    const primaryDisplay = screen.getPrimaryDisplay();
+
+    // 检查窗口是否至少部分在某个显示器上
+    const isVisible = displays.some(display => {
+      const displayBounds = display.bounds;
+      return !(bounds.x + bounds.width < displayBounds.x ||
+               bounds.y + bounds.height < displayBounds.y ||
+               bounds.x > displayBounds.x + displayBounds.width ||
+               bounds.y > displayBounds.y + displayBounds.height);
+    });
+
+    if (!isVisible) {
+      console.log('窗口位置超出屏幕范围，使用默认位置');
+      return null;
+    }
+
+    return bounds;
+  } catch (error) {
+    console.error('验证窗口边界失败:', error);
+    return null;
+  }
+}
+
+/**
  * 创建主窗口
  */
-function createWindow() {
+async function createWindow() {
   console.log('正在创建主窗口...');
-  
+
+  // 读取保存的窗口配置
+  const savedConfig = await loadWindowConfig();
+
+  // 验证窗口位置是否有效
+  let windowBounds = null;
+  if (savedConfig.x !== null && savedConfig.y !== null) {
+    windowBounds = validateWindowBounds({
+      x: savedConfig.x,
+      y: savedConfig.y,
+      width: savedConfig.width,
+      height: savedConfig.height
+    });
+  }
+
   // 创建浏览器窗口
-  mainWindow = new BrowserWindow({
-    width: 1000,
-    height: 650,
+  const windowOptions = {
+    width: windowBounds ? windowBounds.width : savedConfig.width,
+    height: windowBounds ? windowBounds.height : savedConfig.height,
     minHeight: 400,
+    minWidth: 600,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,
       preload: path.join(__dirname, 'preload.js')
     },
-    show: true,
+    show: false, // 先隐藏，等配置完成后显示
     titleBarStyle: 'default',
     icon: path.join(__dirname, 'assets/icon.png')
-  });
+  };
+
+  // 如果有有效的窗口位置，设置位置
+  if (windowBounds) {
+    windowOptions.x = windowBounds.x;
+    windowOptions.y = windowBounds.y;
+  }
+
+  mainWindow = new BrowserWindow(windowOptions);
 
   // 加载主页面
   console.log('加载主页面: index.html');
   mainWindow.loadFile('index.html');
+
+  // 页面加载完成后显示窗口
+  mainWindow.webContents.on('did-finish-load', () => {
+    console.log('页面加载完成');
+
+    // 如果配置要求最大化，则最大化窗口
+    if (savedConfig.isMaximized) {
+      mainWindow.maximize();
+    }
+
+    // 显示窗口
+    mainWindow.show();
+
+    // 聚焦窗口
+    mainWindow.focus();
+  });
+
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error('页面加载失败:', errorCode, errorDescription, validatedURL);
+    // 即使加载失败也显示窗口
+    mainWindow.show();
+  });
 
   // 开发模式下打开开发者工具
   if (process.argv.includes('--enable-logging')) {
     mainWindow.webContents.openDevTools();
   }
 
+  // 窗口尺寸变化事件 - 防抖保存
+  let saveTimeout;
+  const debouncedSave = () => {
+    if (saveTimeout) clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(() => {
+      if (!mainWindow.isDestroyed()) {
+        saveWindowConfig(mainWindow);
+      }
+    }, 500); // 500ms防抖
+  };
+
+  mainWindow.on('resize', debouncedSave);
+  mainWindow.on('move', debouncedSave);
+  mainWindow.on('maximize', () => {
+    setTimeout(() => saveWindowConfig(mainWindow), 100);
+  });
+  mainWindow.on('unmaximize', () => {
+    setTimeout(() => saveWindowConfig(mainWindow), 100);
+  });
+
   // 窗口关闭事件
   mainWindow.on('closed', () => {
     console.log('主窗口已关闭');
+    // 最后一次保存配置
+    if (saveTimeout) clearTimeout(saveTimeout);
     mainWindow = null;
-  });
-  
-  // 页面加载完成事件
-  mainWindow.webContents.on('did-finish-load', () => {
-    console.log('页面加载完成');
-  });
-  
-  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
-    console.error('页面加载失败:', errorCode, errorDescription, validatedURL);
   });
 }
 
