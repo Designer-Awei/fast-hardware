@@ -1,0 +1,60 @@
+{
+  "name": "test",
+  "id": "ctm-test-113055",
+  "description": "无",
+  "category": "other",
+  "pins": {
+    "side1": [
+      {
+        "pinName": "上1",
+        "type": "digital_io",
+        "order": 1
+      },
+      {
+        "pinName": "上2",
+        "type": "digital_io",
+        "order": 2
+      }
+    ],
+    "side2": [
+      {
+        "pinName": "右1",
+        "type": "digital_io",
+        "order": 1
+      },
+      {
+        "pinName": "右2",
+        "type": "digital_io",
+        "order": 2
+      }
+    ],
+    "side3": [
+      {
+        "pinName": "下1",
+        "type": "digital_io",
+        "order": 1
+      },
+      {
+        "pinName": "下2",
+        "type": "digital_io",
+        "order": 2
+      }
+    ],
+    "side4": [
+      {
+        "pinName": "左1",
+        "type": "digital_io",
+        "order": 1
+      },
+      {
+        "pinName": "左2",
+        "type": "digital_io",
+        "order": 2
+      }
+    ]
+  },
+  "dimensions": {
+    "width": 100,
+    "height": 80
+  }
+}

@@ -17,7 +17,75 @@ class CanvasManager {
         // 存储画布上的元件实例
         this.components = [];
 
+        // 选中状态管理
+        this.selectedComponent = null; // 当前选中的元件
+        this.isDraggingComponent = false; // 是否正在拖动元件
+        this.dragStartPos = null; // 拖动开始时的鼠标位置
+        this.componentDragStartPos = null; // 拖动开始时元件的位置
+
+        // 连线系统相关属性
+        this.pinInteraction = {
+            activePin: null,        // 当前激活的引脚 {componentId, pinName, position, side}
+            hoveredPin: null,       // 当前悬停的引脚
+            connectionMode: false,  // 是否处于连线模式
+            tempConnection: null,   // 临时连线路径
+            connectorSize: 16,      // 连接器圆圈大小
+            snapDistance: 15,       // 吸附距离（调小为15像素）
+            connectionEditMode: false, // 是否处于连线编辑模式
+            editingConnection: null,   // 正在编辑的连线
+            editingEnd: null          // 编辑的端点 ('source' 或 'target')
+        };
+
+        // 连线管理
+        this.connections = []; // 存储所有连线
+        this.selectedConnection = null; // 当前选中的连线
+
         this.init();
+    }
+
+    /**
+     * 将旋转角度映射为方向标识符
+     * @param {number} rotation - 旋转角度（度）
+     * @returns {string} 方向标识符
+     */
+    getDirectionFromRotation(rotation) {
+        // 标准化角度到0-360范围
+        const normalizedRotation = ((rotation % 360) + 360) % 360;
+
+        switch (normalizedRotation) {
+            case 0:
+                return 'up';
+            case 90:
+                return 'right';  // 逆时针90°从up变为right
+            case 180:
+                return 'down';  // 逆时针180°从up变为down
+            case 270:
+                return 'left';  // 逆时针270°从up变为left
+            default:
+                console.warn(`未知的旋转角度: ${rotation}°, 默认为 'up'`);
+                return 'up';
+        }
+    }
+
+    /**
+     * 将方向标识符映射为旋转角度
+     * @param {string} direction - 方向标识符
+     * @returns {number} 旋转角度（度）
+     */
+    getRotationFromDirection(direction) {
+        switch (direction) {
+            case 'up':
+                return 0;
+            case 'right':
+                return 90;   // right对应90°
+            case 'down':
+                return 180;  // down对应180°
+            case 'left':
+                return 270;  // left对应270°
+            default:
+                console.warn(`未知的方向标识符: ${direction}, 默认为 0°`);
+                return 0;
+        }
     }
 
     /**
@@ -81,6 +149,9 @@ class CanvasManager {
         this.canvas.addEventListener('dragover', (e) => this.handleDragOver(e));
         this.canvas.addEventListener('drop', (e) => this.handleDrop(e));
         this.canvas.addEventListener('dragleave', (e) => this.handleDragLeave(e));
+
+        // 键盘事件
+        document.addEventListener('keydown', (e) => this.handleKeyDown(e));
     }
 
     /**
@@ -88,10 +159,102 @@ class CanvasManager {
      * @param {MouseEvent} e - 鼠标事件
      */
     handleMouseDown(e) {
-        this.isDragging = true;
-        this.lastMouseX = e.clientX;
-        this.lastMouseY = e.clientY;
-        this.canvas.style.cursor = 'grabbing';
+        const mousePos = this.getMousePosition(e);
+        const worldPos = this.screenToWorld(mousePos);
+
+        // 首先检查是否点击了引脚连接器
+        if (this.pinInteraction.activePin) {
+            // 如果有激活的引脚，进入连线模式
+            this.pinInteraction.connectionMode = true;
+            this.pinInteraction.tempConnection = {
+                source: this.pinInteraction.activePin,
+                currentPos: worldPos,
+                path: [this.pinInteraction.activePin.position, worldPos]
+            };
+            this.canvas.style.cursor = 'crosshair';
+            console.log('开始连线:', this.pinInteraction.activePin.pinName);
+            e.preventDefault();
+            this.draw();
+            return;
+        }
+
+        // 首先检查是否点击了连线编辑符号
+        const clickedEditHandle = this.getConnectionEditHandleAtPosition(worldPos);
+        if (clickedEditHandle) {
+            this.pinInteraction.editingEnd = clickedEditHandle.end;
+            this.pinInteraction.connectionMode = true;
+
+            // 创建临时连线用于编辑
+            const connection = clickedEditHandle.connection;
+            const fixedEnd = clickedEditHandle.end === 'source' ? connection.target : connection.source;
+            const movingEnd = clickedEditHandle.end === 'source' ? connection.source : connection.target;
+
+            this.pinInteraction.tempConnection = {
+                source: movingEnd,
+                currentPos: worldPos,
+                path: [movingEnd.position, worldPos],
+                isEditing: true,
+                originalConnection: connection
+            };
+
+            this.canvas.style.cursor = 'crosshair';
+            console.log(`开始编辑连线 ${clickedEditHandle.end} 端`);
+            e.preventDefault();
+            this.draw();
+            return;
+        }
+
+        // 然后检查是否点击了连线（非编辑符号区域）
+        const clickedConnection = this.getConnectionAtPosition(worldPos);
+        if (clickedConnection) {
+            this.selectConnection(clickedConnection);
+            this.canvas.style.cursor = 'pointer';
+            e.preventDefault();
+            this.draw();
+            return;
+        }
+
+        // 检查是否点击了元件
+        const clickedComponent = this.getComponentAtPosition(worldPos);
+
+        if (clickedComponent) {
+            // 检查是否点击了引脚
+            const clickedPin = this.detectPinAtPosition(mousePos);
+
+            if (clickedPin) {
+                // 点击了引脚 - 显示连接器并准备连线
+                this.pinInteraction.activePin = clickedPin;
+                this.selectComponent(clickedComponent); // 确保元件被选中
+                this.canvas.style.cursor = 'pointer';
+                console.log('激活引脚:', clickedPin.pinName);
+                e.preventDefault();
+                this.draw();
+                return;
+            }
+
+            // 点击了元件主体 - 选中元件并准备拖动
+            this.selectComponent(clickedComponent);
+            this.isDraggingComponent = true;
+            this.dragStartPos = mousePos;
+            this.componentDragStartPos = { ...clickedComponent.position };
+            this.canvas.style.cursor = 'grabbing';
+            e.preventDefault();
+        } else {
+            // 点击空白区域 - 取消选中并开始画布拖拽
+            this.deselectComponent();
+            this.deselectConnection();
+            // 清除引脚激活状态
+            this.pinInteraction.activePin = null;
+            this.pinInteraction.connectionMode = false;
+            this.pinInteraction.tempConnection = null;
+
+            this.isDragging = true;
+            this.lastMouseX = e.clientX;
+            this.lastMouseY = e.clientY;
+            this.canvas.style.cursor = 'grabbing';
+        }
+
+        this.draw();
     }
 
     /**
@@ -102,7 +265,44 @@ class CanvasManager {
         // 更新鼠标坐标显示
         this.updateMouseCoordinates(e);
 
-        if (this.isDragging) {
+        const mousePos = this.getMousePosition(e);
+        const worldPos = this.screenToWorld(mousePos);
+
+        // 处理连线模式
+        if (this.pinInteraction.connectionMode && this.pinInteraction.tempConnection) {
+            // 更新临时连线路径
+            this.pinInteraction.tempConnection.currentPos = worldPos;
+            this.pinInteraction.tempConnection.path = [
+                this.pinInteraction.tempConnection.source.position,
+                worldPos
+            ];
+
+            // 检查是否悬停在目标引脚上
+            this.pinInteraction.hoveredPin = this.detectSnapTarget(worldPos);
+
+            this.draw();
+            return;
+        }
+
+        if (this.isDraggingComponent && this.selectedComponent && this.dragStartPos) {
+            // 拖动元件
+            const deltaX = mousePos.x - this.dragStartPos.x;
+            const deltaY = mousePos.y - this.dragStartPos.y;
+
+            // 转换为世界坐标的移动距离
+            const worldDeltaX = deltaX / this.scale;
+            const worldDeltaY = deltaY / this.scale;
+
+            // 更新元件位置
+            this.selectedComponent.position.x = this.componentDragStartPos.x + worldDeltaX;
+            this.selectedComponent.position.y = this.componentDragStartPos.y + worldDeltaY;
+
+            // 实时更新相关连线路径
+            this.updateConnectionsForComponent(this.selectedComponent.id);
+
+            this.draw();
+        } else if (this.isDragging) {
+            // 拖拽画布
             const deltaX = e.clientX - this.lastMouseX;
             const deltaY = e.clientY - this.lastMouseY;
 
@@ -113,15 +313,781 @@ class CanvasManager {
             this.lastMouseY = e.clientY;
 
             this.draw();
+        } else {
+            // 检查鼠标悬停状态
+            const hoveredComponent = this.getComponentAtPosition(worldPos);
+
+            if (this.selectedComponent) {
+                // 如果有选中元件，检查是否悬停在引脚上
+                const hoveredPin = this.detectPinAtPosition(mousePos);
+                if (hoveredPin) {
+                    this.canvas.style.cursor = 'pointer';
+                    // 如果之前没有悬停的引脚，更新状态
+                    if (!this.pinInteraction.activePin ||
+                        this.pinInteraction.activePin.pinName !== hoveredPin.pinName) {
+                        this.pinInteraction.activePin = hoveredPin;
+                        this.draw(); // 重新绘制以显示连接器
+                    }
+                } else if (hoveredComponent && hoveredComponent !== this.selectedComponent) {
+                    this.canvas.style.cursor = 'pointer';
+                    // 清除引脚激活状态
+                    if (this.pinInteraction.activePin) {
+                        this.pinInteraction.activePin = null;
+                        this.draw();
+                    }
+                } else if (hoveredComponent === this.selectedComponent) {
+                    this.canvas.style.cursor = 'pointer';
+                } else {
+                    this.canvas.style.cursor = 'grab';
+                    // 清除引脚激活状态
+                    if (this.pinInteraction.activePin) {
+                        this.pinInteraction.activePin = null;
+                        this.draw();
+                    }
+                }
+            } else {
+                if (hoveredComponent) {
+                    this.canvas.style.cursor = 'pointer';
+                } else {
+                    this.canvas.style.cursor = 'grab';
+                }
+                // 清除引脚激活状态
+                if (this.pinInteraction.activePin) {
+                    this.pinInteraction.activePin = null;
+                    this.draw();
+                }
+            }
         }
+    }
+
+    /**
+     * 检测鼠标位置附近的吸附目标引脚
+     * @param {Object} worldPos - 世界坐标位置
+     * @returns {Object|null} 目标引脚信息或null
+     */
+    detectSnapTarget(worldPos) {
+        // 遍历所有元件（除了源元件）
+        for (const component of this.components) {
+            if (component.id === this.pinInteraction.activePin?.componentId) {
+                continue; // 跳过源元件
+            }
+
+            const { data, position, rotation } = component;
+            const { x: compX, y: compY } = position;
+
+            // 计算元件边界
+            const width = data.dimensions?.width || 80;
+            const height = data.dimensions?.height || 60;
+
+            const componentRect = {
+                x: compX - width / 2,
+                y: compY - height / 2,
+                width: width,
+                height: height
+            };
+
+            // 获取所有引脚位置（未旋转状态下的位置）
+            const pinCalculator = new CanvasPinPositionCalculator(componentRect);
+            const allPins = pinCalculator.calculateAllPositions(data.pins);
+
+            // 检测鼠标是否在某个引脚附近
+            for (const pin of allPins) {
+                // 对引脚位置进行旋转变换
+                const rotatedPosition = this.rotatePoint(pin.position, { x: compX, y: compY }, rotation);
+
+                const distance = Math.sqrt(
+                    Math.pow(worldPos.x - rotatedPosition.x, 2) +
+                    Math.pow(worldPos.y - rotatedPosition.y, 2)
+                );
+
+                // 如果鼠标在引脚吸附距离范围内
+                if (distance <= this.pinInteraction.snapDistance) {
+                    return {
+                        componentId: component.id,
+                        component: component,
+                        pinName: pin.pinName,
+                        position: rotatedPosition, // 返回旋转后的实际位置
+                        side: pin.side,
+                        type: pin.type
+                    };
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
      * 处理鼠标释放事件
      */
     handleMouseUp() {
-        this.isDragging = false;
-        this.canvas.style.cursor = 'grab';
+        // 处理连线完成
+        if (this.pinInteraction.connectionMode && this.pinInteraction.tempConnection) {
+            const tempConnection = this.pinInteraction.tempConnection;
+
+            if (this.pinInteraction.hoveredPin) {
+                // 成功连接到目标引脚
+                if (tempConnection.isEditing) {
+                    // 这是连线编辑模式，更新现有连线
+                    this.updateConnectionEnd(
+                        tempConnection.originalConnection,
+                        this.pinInteraction.editingEnd,
+                        this.pinInteraction.hoveredPin
+                    );
+                    console.log(`连线编辑完成: ${this.pinInteraction.editingEnd} 端连接到 ${this.pinInteraction.hoveredPin.pinName}`);
+                } else {
+                    // 这是新建连线模式
+                    this.createConnection(
+                        tempConnection.source,
+                        this.pinInteraction.hoveredPin
+                    );
+                    console.log(`连线完成: ${tempConnection.source.pinName} -> ${this.pinInteraction.hoveredPin.pinName}`);
+                }
+            } else {
+                // 未连接到目标，取消连线
+                console.log('连线取消');
+            }
+
+            // 清理连线状态
+            this.pinInteraction.connectionMode = false;
+            this.pinInteraction.tempConnection = null;
+            this.pinInteraction.hoveredPin = null;
+            this.pinInteraction.editingEnd = null;
+            this.canvas.style.cursor = 'pointer';
+            this.draw();
+            return;
+        }
+
+        if (this.isDraggingComponent) {
+            // 结束元件拖动
+            this.isDraggingComponent = false;
+            this.dragStartPos = null;
+            this.componentDragStartPos = null;
+            this.canvas.style.cursor = 'pointer';
+
+            // 最终确认连线路径（虽然拖拽过程中已实时更新，但这里确保最终状态正确）
+            if (this.selectedComponent) {
+                this.updateConnectionsForComponent(this.selectedComponent.id);
+            }
+        } else if (this.isDragging) {
+            // 结束画布拖拽
+            this.isDragging = false;
+            this.canvas.style.cursor = 'grab';
+        }
+    }
+
+    /**
+     * 获取鼠标位置
+     * @param {MouseEvent} e - 鼠标事件
+     * @returns {Object} 鼠标位置 {x, y}
+     */
+    getMousePosition(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        return {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top
+        };
+    }
+
+    /**
+     * 屏幕坐标转换为世界坐标
+     * @param {Object} screenPos - 屏幕坐标 {x, y}
+     * @returns {Object} 世界坐标 {x, y}
+     */
+    screenToWorld(screenPos) {
+        return {
+            x: (screenPos.x - this.offsetX) / this.scale,
+            y: (screenPos.y - this.offsetY) / this.scale
+        };
+    }
+
+    /**
+     * 获取指定位置的元件
+     * @param {Object} worldPos - 世界坐标 {x, y}
+     * @returns {Object|null} 元件实例或null
+     */
+    getComponentAtPosition(worldPos) {
+        // 从后往前遍历，确保后添加的元件优先被选中
+        for (let i = this.components.length - 1; i >= 0; i--) {
+            const component = this.components[i];
+            if (this.isPointInComponent(worldPos, component)) {
+                return component;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 检查点是否在元件内
+     * @param {Object} point - 世界坐标点 {x, y}
+     * @param {Object} component - 元件实例
+     * @returns {boolean} 是否在元件内
+     */
+    isPointInComponent(point, component) {
+        const { data, position } = component;
+        const width = data.dimensions?.width || 80;
+        const height = data.dimensions?.height || 60;
+
+        const left = position.x - width / 2;
+        const right = position.x + width / 2;
+        const top = position.y - height / 2;
+        const bottom = position.y + height / 2;
+
+        return point.x >= left && point.x <= right &&
+               point.y >= top && point.y <= bottom;
+    }
+
+    /**
+     * 选中元件
+     * @param {Object} component - 要选中的元件
+     */
+    selectComponent(component) {
+        // 如果已经选中了其他元件，先取消选中
+        if (this.selectedComponent && this.selectedComponent !== component) {
+            this.selectedComponent.selected = false;
+        }
+
+        // 选中新元件
+        this.selectedComponent = component;
+        component.selected = true;
+
+        const direction = this.getDirectionFromRotation(component.rotation || 0);
+        console.log(`选中元件: ${component.data.name} (${direction})`);
+    }
+
+    /**
+     * 取消选中元件
+     */
+    deselectComponent() {
+        if (this.selectedComponent) {
+            const direction = this.getDirectionFromRotation(this.selectedComponent.rotation || 0);
+            this.selectedComponent.selected = false;
+            console.log(`取消选中元件: ${this.selectedComponent.data.name} (${direction})`);
+        }
+        this.selectedComponent = null;
+    }
+
+    /**
+     * 处理键盘按下事件
+     * @param {KeyboardEvent} e - 键盘事件
+     */
+    handleKeyDown(e) {
+        // 只有在画布获得焦点时才处理键盘事件
+        if (!this.canvas.contains(document.activeElement) &&
+            document.activeElement !== document.body) {
+            return;
+        }
+
+        switch (e.key.toLowerCase()) {
+            case 'delete':
+            case 'backspace':
+                if (this.selectedConnection) {
+                    this.deleteSelectedConnection();
+                } else {
+                    this.deleteSelectedComponent();
+                }
+                e.preventDefault();
+                break;
+            case 'r':
+                if (this.selectedComponent) {
+                    this.rotateSelectedComponent();
+                    e.preventDefault();
+                }
+                break;
+            case 'escape':
+                this.deselectComponent();
+                this.deselectConnection();
+                this.draw();
+                e.preventDefault();
+                break;
+        }
+    }
+
+    /**
+     * 删除选中的元件
+     */
+    deleteSelectedComponent() {
+        if (!this.selectedComponent) return;
+
+        const componentName = this.selectedComponent.data.name;
+        const direction = this.getDirectionFromRotation(this.selectedComponent.rotation || 0);
+        const index = this.components.indexOf(this.selectedComponent);
+
+        if (index > -1) {
+            // 删除与此元件相关的所有连线
+            this.deleteConnectionsForComponent(this.selectedComponent.id);
+            this.components.splice(index, 1);
+            console.log(`删除元件: ${componentName} (${direction})`);
+        }
+
+        this.selectedComponent = null;
+        this.draw();
+    }
+
+    /**
+     * 删除与指定元件相关的所有连线
+     * @param {string} componentId - 元件ID
+     */
+    deleteConnectionsForComponent(componentId) {
+        const connectionsToDelete = this.connections.filter(conn =>
+            conn.source.componentId === componentId || conn.target.componentId === componentId
+        );
+
+        connectionsToDelete.forEach(conn => {
+            const index = this.connections.indexOf(conn);
+            if (index > -1) {
+                this.connections.splice(index, 1);
+                console.log(`删除相关连线: ${conn.source.pinName} -> ${conn.target.pinName}`);
+            }
+        });
+    }
+
+    /**
+     * 删除选中的连线
+     */
+    deleteSelectedConnection() {
+        if (!this.selectedConnection) return;
+
+        const sourcePin = this.selectedConnection.source.pinName;
+        const targetPin = this.selectedConnection.target.pinName;
+        const index = this.connections.indexOf(this.selectedConnection);
+
+        if (index > -1) {
+            this.connections.splice(index, 1);
+            console.log(`删除连线: ${sourcePin} -> ${targetPin}`);
+        }
+
+        this.selectedConnection = null;
+        this.draw();
+    }
+
+    /**
+     * 取消选中连线
+     */
+    deselectConnection() {
+        if (this.selectedConnection) {
+            this.selectedConnection.selected = false;
+            this.selectedConnection = null;
+        }
+
+        // 退出连线编辑模式
+        this.pinInteraction.connectionEditMode = false;
+        this.pinInteraction.editingConnection = null;
+        this.pinInteraction.editingEnd = null;
+    }
+
+    /**
+     * 更新与指定元件相关的所有连线路径
+     * @param {string} componentId - 元件ID
+     */
+    updateConnectionsForComponent(componentId) {
+        // 找到与此元件相关的所有连线
+        const relatedConnections = this.connections.filter(conn =>
+            conn.source.componentId === componentId || conn.target.componentId === componentId
+        );
+
+        // 为每个相关连线更新路径
+        relatedConnections.forEach(connection => {
+            this.updateConnectionPath(connection);
+        });
+    }
+
+    /**
+     * 更新单条连线的路径
+     * @param {Object} connection - 连线对象
+     */
+    updateConnectionPath(connection) {
+        // 获取源元件和目标元件
+        const sourceComponent = this.components.find(comp => comp.id === connection.source.componentId);
+        const targetComponent = this.components.find(comp => comp.id === connection.target.componentId);
+
+        if (!sourceComponent || !targetComponent) {
+            console.warn('无法找到连线相关的元件:', connection);
+            return;
+        }
+
+        // 重新计算源引脚和目标引脚的当前位置（考虑旋转）
+        const sourcePinPos = this.getRotatedPinPosition(sourceComponent, connection.source.pinName);
+        const targetPinPos = this.getRotatedPinPosition(targetComponent, connection.target.pinName);
+
+        if (sourcePinPos && targetPinPos) {
+            // 更新连线中的位置信息
+            connection.source.position = sourcePinPos;
+            connection.target.position = targetPinPos;
+
+            // 重新计算连线路径
+            connection.path = this.calculateConnectionPath(sourcePinPos, targetPinPos);
+        }
+    }
+
+    /**
+     * 获取元件中指定引脚的旋转后位置
+     * @param {Object} component - 元件对象
+     * @param {string} pinName - 引脚名称
+     * @returns {Object|null} 旋转后的引脚位置或null
+     */
+    getRotatedPinPosition(component, pinName) {
+        const { data, position, rotation } = component;
+        const { x: compX, y: compY } = position;
+
+        // 计算元件边界
+        const width = data.dimensions?.width || 80;
+        const height = data.dimensions?.height || 60;
+
+        const componentRect = {
+            x: compX - width / 2,
+            y: compY - height / 2,
+            width: width,
+            height: height
+        };
+
+        // 获取引脚位置（未旋转状态）
+        const pinCalculator = new CanvasPinPositionCalculator(componentRect);
+        const allPins = pinCalculator.calculateAllPositions(data.pins);
+
+        // 找到指定的引脚
+        const targetPin = allPins.find(pin => pin.pinName === pinName);
+
+        if (targetPin) {
+            // 对引脚位置进行旋转变换
+            return this.rotatePoint(targetPin.position, { x: compX, y: compY }, rotation);
+        }
+
+        return null;
+    }
+
+    /**
+     * 更新连线的端点连接
+     * @param {Object} connection - 要更新的连线
+     * @param {string} end - 要更新的端点 ('source' 或 'target')
+     * @param {Object} newPin - 新的引脚信息
+     */
+    updateConnectionEnd(connection, end, newPin) {
+        // 更新连线端点信息
+        if (end === 'source') {
+            connection.source = {
+                componentId: newPin.componentId,
+                pinName: newPin.pinName,
+                position: { ...newPin.position }
+            };
+        } else if (end === 'target') {
+            connection.target = {
+                componentId: newPin.componentId,
+                pinName: newPin.pinName,
+                position: { ...newPin.position }
+            };
+        }
+
+        // 重新计算连线路径
+        connection.path = this.calculateConnectionPath(
+            connection.source.position,
+            connection.target.position
+        );
+
+        console.log(`连线端点更新: ${connection.source.pinName} -> ${connection.target.pinName}`);
+    }
+
+    /**
+     * 旋转选中的元件 (逆时针90度)
+     */
+    rotateSelectedComponent() {
+        if (!this.selectedComponent) return;
+
+        // 初始化旋转角度和方向
+        if (typeof this.selectedComponent.rotation === 'undefined') {
+            this.selectedComponent.rotation = 0;
+            this.selectedComponent.direction = 'up';
+        }
+
+        // 逆时针旋转90度 (每次减少90度)
+        this.selectedComponent.rotation = (this.selectedComponent.rotation - 90 + 360) % 360;
+
+        // 根据新的旋转角度更新方向
+        this.selectedComponent.direction = this.getDirectionFromRotation(this.selectedComponent.rotation);
+
+        // 旋转后更新相关连线路径
+        this.updateConnectionsForComponent(this.selectedComponent.id);
+
+        console.log(`逆时针旋转元件 ${this.selectedComponent.data.name} 到 ${this.selectedComponent.rotation}° (${this.selectedComponent.direction})`);
+        this.draw();
+    }
+
+    /**
+     * 检测鼠标位置是否在连线上
+     * @param {Object} worldPos - 世界坐标位置
+     * @returns {Object|null} 连线对象或null
+     */
+    getConnectionAtPosition(worldPos) {
+        // 遍历所有连线，检测鼠标是否在连线附近
+        for (const connection of this.connections) {
+            if (this.isPointNearConnection(worldPos, connection)) {
+                return connection;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 检测鼠标是否在连线编辑符号上
+     * @param {Object} worldPos - 世界坐标位置
+     * @returns {Object|null} 编辑符号信息或null {connection, end}
+     */
+    getConnectionEditHandleAtPosition(worldPos) {
+        if (!this.pinInteraction.connectionEditMode || !this.selectedConnection) {
+            return null;
+        }
+
+        const connection = this.selectedConnection;
+        const detectionRadius = 20; // 编辑符号的检测半径
+
+        // 检查是否点击了源端编辑符号
+        const sourceDistance = Math.sqrt(
+            Math.pow(worldPos.x - connection.source.position.x, 2) +
+            Math.pow(worldPos.y - connection.source.position.y, 2)
+        );
+
+        if (sourceDistance <= detectionRadius) {
+            return { connection, end: 'source' };
+        }
+
+        // 检查是否点击了目标端编辑符号
+        const targetDistance = Math.sqrt(
+            Math.pow(worldPos.x - connection.target.position.x, 2) +
+            Math.pow(worldPos.y - connection.target.position.y, 2)
+        );
+
+        if (targetDistance <= detectionRadius) {
+            return { connection, end: 'target' };
+        }
+
+        return null;
+    }
+
+    /**
+     * 检测点是否在连线附近
+     * @param {Object} point - 检测点
+     * @param {Object} connection - 连线对象
+     * @returns {boolean} 是否在连线附近
+     */
+    isPointNearConnection(point, connection) {
+        if (!connection.path || connection.path.length < 2) return false;
+
+        // 计算鼠标与连线的最近距离
+        for (let i = 0; i < connection.path.length - 1; i++) {
+            const start = connection.path[i];
+            const end = connection.path[i + 1];
+
+            if (this.distanceToLineSegment(point, start, end) <= 8) { // 8像素容差
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * 计算点到线段的距离
+     * @param {Object} point - 点坐标
+     * @param {Object} lineStart - 线段起点
+     * @param {Object} lineEnd - 线段终点
+     * @returns {number} 距离
+     */
+    distanceToLineSegment(point, lineStart, lineEnd) {
+        const A = point.x - lineStart.x;
+        const B = point.y - lineStart.y;
+        const C = lineEnd.x - lineStart.x;
+        const D = lineEnd.y - lineStart.y;
+
+        const dot = A * C + B * D;
+        const lenSq = C * C + D * D;
+        let param = -1;
+
+        if (lenSq !== 0) {
+            param = dot / lenSq;
+        }
+
+        let xx, yy;
+
+        if (param < 0) {
+            xx = lineStart.x;
+            yy = lineStart.y;
+        } else if (param > 1) {
+            xx = lineEnd.x;
+            yy = lineEnd.y;
+        } else {
+            xx = lineStart.x + param * C;
+            yy = lineStart.y + param * D;
+        }
+
+        const dx = point.x - xx;
+        const dy = point.y - yy;
+
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    /**
+     * 选中连线
+     * @param {Object} connection - 连线对象
+     */
+    selectConnection(connection) {
+        // 如果已经选中了其他连线，先取消选中
+        if (this.selectedConnection && this.selectedConnection !== connection) {
+            this.selectedConnection.selected = false;
+            this.pinInteraction.connectionEditMode = false;
+            this.pinInteraction.editingConnection = null;
+            this.pinInteraction.editingEnd = null;
+        }
+
+        // 选中新连线
+        this.selectedConnection = connection;
+        connection.selected = true;
+
+        // 进入连线编辑模式
+        this.pinInteraction.connectionEditMode = true;
+        this.pinInteraction.editingConnection = connection;
+
+        const sourcePin = connection.source.pinName;
+        const targetPin = connection.target.pinName;
+        console.log(`选中连线 (可编辑): ${sourcePin} -> ${targetPin}`);
+    }
+
+    /**
+     * 检测鼠标位置是否在引脚附近
+     * @param {Object} mousePos - 鼠标位置 {x, y}
+     * @returns {Object|null} 引脚信息或null
+     */
+    detectPinAtPosition(mousePos) {
+        // 只有在有选中元件时才检测引脚
+        if (!this.selectedComponent) return null;
+
+        const worldPos = this.screenToWorld(mousePos);
+        const component = this.selectedComponent;
+        const { data, position, rotation } = component;
+        const { x: compX, y: compY } = position;
+
+        // 计算元件边界
+        const width = data.dimensions?.width || 80;
+        const height = data.dimensions?.height || 60;
+        const halfWidth = width / 2;
+        const halfHeight = height / 2;
+
+        // 创建元件矩形区域（未旋转状态）
+        const componentRect = {
+            x: compX - halfWidth,
+            y: compY - halfHeight,
+            width: width,
+            height: height
+        };
+
+        // 获取所有引脚位置（未旋转状态下的位置）
+        const pinCalculator = new CanvasPinPositionCalculator(componentRect);
+        const allPins = pinCalculator.calculateAllPositions(data.pins);
+
+        // 检测鼠标是否在某个引脚附近
+        for (const pin of allPins) {
+            // 对引脚位置进行旋转变换
+            const rotatedPosition = this.rotatePoint(pin.position, { x: compX, y: compY }, rotation);
+
+            const distance = Math.sqrt(
+                Math.pow(worldPos.x - rotatedPosition.x, 2) +
+                Math.pow(worldPos.y - rotatedPosition.y, 2)
+            );
+
+            // 如果鼠标在引脚15像素范围内
+            if (distance <= 15) {
+                return {
+                    componentId: component.id,
+                    component: component,
+                    pinName: pin.pinName,
+                    position: rotatedPosition, // 返回旋转后的实际位置
+                    side: pin.side,
+                    type: pin.type
+                };
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * 围绕指定点旋转一个点
+     * @param {Object} point - 要旋转的点 {x, y}
+     * @param {Object} center - 旋转中心点 {x, y}
+     * @param {number} angle - 旋转角度（度）
+     * @returns {Object} 旋转后的点 {x, y}
+     */
+    rotatePoint(point, center, angle) {
+        const radian = (angle * Math.PI) / 180;
+        const cos = Math.cos(radian);
+        const sin = Math.sin(radian);
+
+        // 平移到原点
+        const translatedX = point.x - center.x;
+        const translatedY = point.y - center.y;
+
+        // 旋转
+        const rotatedX = translatedX * cos - translatedY * sin;
+        const rotatedY = translatedX * sin + translatedY * cos;
+
+        // 平移回原位置
+        return {
+            x: rotatedX + center.x,
+            y: rotatedY + center.y
+        };
+    }
+
+    /**
+     * 绘制引脚连接器（圆圈+号）
+     * @param {Object} pin - 引脚信息
+     * @param {string} state - 状态 ('normal', 'hover', 'active')
+     */
+    drawPinConnector(pin, state = 'normal') {
+        if (!pin || !pin.position) return;
+
+        this.ctx.save();
+
+        // 根据状态设置颜色
+        let color;
+        switch (state) {
+            case 'hover':
+                color = '#1976d2'; // 深蓝
+                break;
+            case 'active':
+                color = '#4caf50'; // 绿色
+                break;
+            default:
+                color = '#2196f3'; // 蓝色
+        }
+
+        const { x, y } = pin.position;
+        const size = this.pinInteraction.connectorSize / this.scale;
+        const crossSize = 12 / this.scale; // +号大小
+
+        // 绘制圆圈
+        this.ctx.strokeStyle = color;
+        this.ctx.lineWidth = 2 / this.scale;
+        this.ctx.beginPath();
+        this.ctx.arc(x, y, size / 2, 0, 2 * Math.PI);
+        this.ctx.stroke();
+
+        // 绘制+号
+        this.ctx.strokeStyle = color;
+        this.ctx.lineWidth = 2 / this.scale;
+        this.ctx.lineCap = 'round';
+
+        // 水平线
+        this.ctx.beginPath();
+        this.ctx.moveTo(x - crossSize / 2, y);
+        this.ctx.lineTo(x + crossSize / 2, y);
+        this.ctx.stroke();
+
+        // 垂直线
+        this.ctx.beginPath();
+        this.ctx.moveTo(x, y - crossSize / 2);
+        this.ctx.lineTo(x, y + crossSize / 2);
+        this.ctx.stroke();
+
+        this.ctx.restore();
     }
 
     /**
@@ -362,10 +1328,33 @@ class CanvasManager {
      * 绘制画布内容
      */
     drawContent() {
+        // 绘制所有连线
+        this.drawConnections();
+
+        // 绘制临时连线（如果在连线模式）
+        if (this.pinInteraction.connectionMode && this.pinInteraction.tempConnection) {
+            this.drawTempConnection();
+        }
+
         // 绘制所有元件
         this.components.forEach(component => {
             this.drawComponent(component);
         });
+
+        // 绘制连线编辑符号（如果处于编辑模式）
+        if (this.pinInteraction.connectionEditMode && this.selectedConnection) {
+            this.drawConnectionEditHandles(this.selectedConnection);
+        }
+
+        // 绘制引脚连接器（如果有激活的引脚）
+        if (this.pinInteraction.activePin) {
+            this.drawPinConnector(this.pinInteraction.activePin, 'normal');
+        }
+
+        // 绘制吸附目标连接器（如果有悬停的目标引脚）
+        if (this.pinInteraction.hoveredPin) {
+            this.drawPinConnector(this.pinInteraction.hoveredPin, 'active');
+        }
     }
 
     /**
@@ -373,12 +1362,19 @@ class CanvasManager {
      * @param {Object} component - 元件实例
      */
     drawComponent(component) {
-        const { data, position } = component;
+        const { data, position, selected, rotation } = component;
         const { x, y } = position;
 
         if (!this.ctx) return;
 
         this.ctx.save();
+
+        // 应用旋转变换
+        if (rotation && rotation !== 0) {
+            this.ctx.translate(x, y);
+            this.ctx.rotate((rotation * Math.PI) / 180);
+            this.ctx.translate(-x, -y);
+        }
 
         // 创建元件矩形区域（以元件中心为基准）
         const width = data.dimensions?.width || 80;
@@ -392,10 +1388,24 @@ class CanvasManager {
         };
 
         // 绘制元件主体
-        this.drawComponentBody(componentRect, data.name);
+        this.drawComponentBody(componentRect, data.name, selected);
 
         // 绘制引脚
         this.drawComponentPins(componentRect, data.pins);
+
+        // 如果元件被选中，绘制选中框
+        if (selected) {
+            this.drawSelectionBox(componentRect);
+        }
+
+        // 恢复上下文状态，确保元件名称不跟随元件旋转
+        this.ctx.restore();
+
+        // 重新保存上下文，用于绘制元件名称
+        this.ctx.save();
+
+        // 绘制元件名称（不跟随元件旋转）
+        this.drawComponentName(componentRect, data.name, rotation || 0);
 
         this.ctx.restore();
     }
@@ -404,12 +1414,20 @@ class CanvasManager {
      * 绘制元件主体（带圆角）
      * @param {Object} rect - 元件矩形区域
      * @param {string} name - 元件名称
+     * @param {boolean} selected - 是否被选中
      */
-    drawComponentBody(rect, name) {
+    drawComponentBody(rect, name, selected = false) {
         // 绘制元件主体矩形（带圆角）
-        this.ctx.fillStyle = '#f0f0f0';
-        this.ctx.strokeStyle = '#333';
-        this.ctx.lineWidth = 2 / this.scale;
+        if (selected) {
+            // 选中状态使用不同的颜色
+            this.ctx.fillStyle = '#e3f2fd';
+            this.ctx.strokeStyle = '#2196f3';
+            this.ctx.lineWidth = 3 / this.scale;
+        } else {
+            this.ctx.fillStyle = '#f0f0f0';
+            this.ctx.strokeStyle = '#333';
+            this.ctx.lineWidth = 2 / this.scale;
+        }
 
         // 计算圆角半径（参照元件预览SVG的4px，考虑缩放）
         const radius = 4 / this.scale;
@@ -419,9 +1437,31 @@ class CanvasManager {
 
         this.ctx.fill();
         this.ctx.stroke();
+    }
 
-        // 绘制元件名称
-        this.drawComponentName(rect, name);
+    /**
+     * 绘制选中框
+     * @param {Object} rect - 元件矩形区域
+     */
+    drawSelectionBox(rect) {
+        const padding = 6 / this.scale; // 选中框与元件之间的间距
+
+        this.ctx.strokeStyle = '#2196f3';
+        this.ctx.lineWidth = 2 / this.scale;
+        this.ctx.setLineDash([5 / this.scale, 5 / this.scale]); // 虚线
+
+        const selectionRect = {
+            x: rect.x - padding,
+            y: rect.y - padding,
+            width: rect.width + 2 * padding,
+            height: rect.height + 2 * padding
+        };
+
+        // 绘制虚线框
+        this.ctx.strokeRect(selectionRect.x, selectionRect.y, selectionRect.width, selectionRect.height);
+
+        // 重置线条样式
+        this.ctx.setLineDash([]);
     }
 
     /**
@@ -447,27 +1487,289 @@ class CanvasManager {
     }
 
     /**
+     * 创建连线
+     * @param {Object} sourcePin - 源引脚
+     * @param {Object} targetPin - 目标引脚
+     */
+    createConnection(sourcePin, targetPin) {
+        const connection = {
+            id: `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            source: {
+                componentId: sourcePin.componentId,
+                pinName: sourcePin.pinName,
+                position: { ...sourcePin.position }
+            },
+            target: {
+                componentId: targetPin.componentId,
+                pinName: targetPin.pinName,
+                position: { ...targetPin.position }
+            },
+            path: this.calculateConnectionPath(sourcePin.position, targetPin.position),
+            style: {
+                color: '#2196f3',
+                width: 2
+            },
+            createdAt: new Date()
+        };
+
+        this.connections.push(connection);
+        return connection;
+    }
+
+    /**
+     * 计算连线路径（智能折线）
+     * @param {Object} startPos - 起始位置
+     * @param {Object} endPos - 结束位置
+     * @returns {Array} 路径点数组
+     */
+    calculateConnectionPath(startPos, endPos) {
+        const points = [];
+
+        // 计算水平和垂直距离
+        const dx = endPos.x - startPos.x;
+        const dy = endPos.y - startPos.y;
+
+        // 如果水平或垂直距离很小，使用直线
+        if (Math.abs(dx) < 20 || Math.abs(dy) < 20) {
+            return [startPos, endPos];
+        }
+
+        // 计算中间点（使用曼哈顿距离的折线）
+        const midX = startPos.x + dx / 2;
+        const midY = startPos.y + dy / 2;
+
+        // 根据距离大小决定折线策略
+        if (Math.abs(dx) > Math.abs(dy)) {
+            // 水平距离更大：先水平移动，再垂直移动
+            points.push(startPos);
+            points.push({ x: midX, y: startPos.y });
+            points.push({ x: midX, y: endPos.y });
+            points.push(endPos);
+        } else {
+            // 垂直距离更大：先垂直移动，再水平移动
+            points.push(startPos);
+            points.push({ x: startPos.x, y: midY });
+            points.push({ x: endPos.x, y: midY });
+            points.push(endPos);
+        }
+
+        return points;
+    }
+
+    /**
+     * 绘制所有连线
+     */
+    drawConnections() {
+        this.connections.forEach(connection => {
+            this.drawConnection(connection);
+        });
+    }
+
+    /**
+     * 绘制单条连线
+     * @param {Object} connection - 连线对象
+     */
+    drawConnection(connection) {
+        if (!connection.path || connection.path.length < 2) return;
+
+        this.ctx.save();
+
+        // 根据选中状态设置样式
+        if (connection.selected) {
+            this.ctx.strokeStyle = '#ff4444'; // 红色（选中状态）
+            this.ctx.lineWidth = (connection.style.width + 2) / this.scale; // 更粗
+            this.ctx.setLineDash([8 / this.scale, 4 / this.scale]); // 虚线
+        } else {
+            this.ctx.strokeStyle = connection.style.color;
+            this.ctx.lineWidth = connection.style.width / this.scale;
+        }
+
+        this.ctx.lineCap = 'round';
+        this.ctx.lineJoin = 'round';
+
+        this.ctx.beginPath();
+        connection.path.forEach((point, index) => {
+            if (index === 0) {
+                this.ctx.moveTo(point.x, point.y);
+            } else {
+                this.ctx.lineTo(point.x, point.y);
+            }
+        });
+        this.ctx.stroke();
+
+        // 恢复线条样式
+        this.ctx.setLineDash([]);
+
+        this.ctx.restore();
+    }
+
+    /**
+     * 绘制临时连线（拖拽过程中的连线）
+     */
+    drawTempConnection() {
+        if (!this.pinInteraction.tempConnection) return;
+
+        const tempConn = this.pinInteraction.tempConnection;
+        if (!tempConn.path || tempConn.path.length < 2) return;
+
+        this.ctx.save();
+
+        // 设置虚线样式
+        this.ctx.strokeStyle = '#2196f3';
+        this.ctx.lineWidth = 2 / this.scale;
+        this.ctx.lineCap = 'round';
+        this.ctx.lineJoin = 'round';
+        this.ctx.setLineDash([5 / this.scale, 5 / this.scale]);
+
+        this.ctx.beginPath();
+
+        if (tempConn.isEditing && tempConn.originalConnection) {
+            // 编辑模式：从固定端点指向新位置
+            const fixedEnd = this.pinInteraction.editingEnd === 'source'
+                ? tempConn.originalConnection.target.position
+                : tempConn.originalConnection.source.position;
+
+            // 绘制从固定端点到鼠标当前位置的线
+            this.ctx.moveTo(fixedEnd.x, fixedEnd.y);
+            this.ctx.lineTo(tempConn.currentPos.x, tempConn.currentPos.y);
+        } else {
+            // 新建连线模式：绘制完整路径
+            tempConn.path.forEach((point, index) => {
+                if (index === 0) {
+                    this.ctx.moveTo(point.x, point.y);
+                } else {
+                    this.ctx.lineTo(point.x, point.y);
+                }
+            });
+        }
+
+        this.ctx.stroke();
+
+        // 恢复线条样式
+        this.ctx.setLineDash([]);
+
+        this.ctx.restore();
+    }
+
+    /**
+     * 绘制连线编辑符号
+     * @param {Object} connection - 连线对象
+     */
+    drawConnectionEditHandles(connection) {
+        if (!connection) return;
+
+        this.ctx.save();
+
+        // 设置编辑符号样式
+        const handleSize = 14; // 编辑符号大小
+        const crossSize = 10;  // +号大小
+
+        // 绘制源端编辑符号
+        this.drawEditHandle(connection.source.position, 'source');
+
+        // 绘制目标端编辑符号
+        this.drawEditHandle(connection.target.position, 'target');
+
+        this.ctx.restore();
+    }
+
+    /**
+     * 绘制单个编辑符号
+     * @param {Object} position - 位置 {x, y}
+     * @param {string} type - 类型 ('source' 或 'target')
+     */
+    drawEditHandle(position, type) {
+        const { x, y } = position;
+        const handleSize = 14;
+        const crossSize = 10;
+
+        // 设置颜色：源端绿色，目标端橙色
+        const color = type === 'source' ? '#4caf50' : '#ff9800';
+
+        // 绘制圆圈背景
+        this.ctx.strokeStyle = color;
+        this.ctx.lineWidth = 2 / this.scale;
+        this.ctx.beginPath();
+        this.ctx.arc(x, y, handleSize / 2 / this.scale, 0, 2 * Math.PI);
+        this.ctx.stroke();
+
+        // 绘制+号
+        this.ctx.strokeStyle = color;
+        this.ctx.lineWidth = 2 / this.scale;
+        this.ctx.lineCap = 'round';
+
+        // 水平线
+        this.ctx.beginPath();
+        this.ctx.moveTo(x - crossSize / 2 / this.scale, y);
+        this.ctx.lineTo(x + crossSize / 2 / this.scale, y);
+        this.ctx.stroke();
+
+        // 垂直线
+        this.ctx.beginPath();
+        this.ctx.moveTo(x, y - crossSize / 2 / this.scale);
+        this.ctx.lineTo(x, y + crossSize / 2 / this.scale);
+        this.ctx.stroke();
+    }
+
+    /**
      * 绘制元件名称
      * @param {Object} rect - 元件矩形区域
      * @param {string} name - 元件名称
+     * @param {number} rotation - 元件旋转角度（度）
      */
-    drawComponentName(rect, name) {
+    drawComponentName(rect, name, rotation = 0) {
         const componentName = name || '未命名元件';
 
-        // 设置文字样式
+        // 保存当前上下文状态
+        this.ctx.save();
+
+        // 设置文字样式（与元件设计器保持一致，不跟随画布缩放）
         this.ctx.fillStyle = '#333';
-        // 考虑缩放因子，确保文字大小与元件设计器完全一致
         const baseFontSize = Math.max(12, Math.min(16, rect.width / 8));
-        this.ctx.font = `${baseFontSize / this.scale}px Arial`;
+        this.ctx.font = `${baseFontSize}px Arial`;
         this.ctx.textAlign = 'center';
         this.ctx.textBaseline = 'middle';
 
-        // 计算文字位置
+        // 计算文字位置（元件中心）
         const textX = rect.x + rect.width / 2;
         const textY = rect.y + rect.height / 2;
 
-        // 绘制文字
-        this.ctx.fillText(componentName, textX, textY);
+        // 根据旋转角度决定文字方向，确保文字始终保持水平可读
+        let textRotation = 0;
+
+        // 根据元件旋转角度调整文字方向，使文字始终水平显示
+        switch (rotation) {
+            case 0:
+                textRotation = 0; // 水平显示
+                break;
+            case 90:
+                textRotation = -Math.PI / 2; // 逆时针旋转90度，保持水平可读
+                break;
+            case 180:
+                textRotation = 0; // 水平显示
+                break;
+            case 270:
+                textRotation = -Math.PI / 2; // 逆时针旋转90度，保持水平可读
+                break;
+            default:
+                textRotation = 0;
+        }
+
+        // 添加旋转和方向的日志
+        const direction = this.getDirectionFromRotation(rotation);
+        console.log(`元件 "${componentName}" 旋转角度: ${rotation}°, 方向: ${direction}, 文字旋转角度: ${(textRotation * 180 / Math.PI).toFixed(1)}°`);
+
+        // 应用文字旋转
+        if (textRotation !== 0) {
+            this.ctx.translate(textX, textY);
+            this.ctx.rotate(textRotation);
+            this.ctx.fillText(componentName, 0, 0);
+        } else {
+            this.ctx.fillText(componentName, textX, textY);
+        }
+
+        // 恢复上下文状态
+        this.ctx.restore();
     }
 
     /**
@@ -563,9 +1865,9 @@ class CanvasManager {
         const textOffset = pinHeight * 2 + 4 / this.scale; // 两个引脚高度 + 额外间距
 
         switch (side) {
-            case 'side1': // 上边 - 文字逆时针旋转90度（纵向向上）
+            case 'side1': // 上边 - 文字顺时针旋转90度（纵向向上）
                 labelY -= textOffset;
-                rotation = -Math.PI / 2; // 逆时针90度
+                rotation = Math.PI / 2; // 顺时针90度
                 this.ctx.textAlign = 'center';
                 this.ctx.textBaseline = 'middle';
                 break;
@@ -575,9 +1877,9 @@ class CanvasManager {
                 this.ctx.textAlign = 'left';
                 this.ctx.textBaseline = 'middle';
                 break;
-            case 'side3': // 下边 - 文字顺时针旋转90度（纵向向下）
+            case 'side3': // 下边 - 文字逆时针旋转90度（纵向向下）
                 labelY += textOffset;
-                rotation = Math.PI / 2; // 顺时针90度
+                rotation = -Math.PI / 2; // 逆时针90度
                 this.ctx.textAlign = 'center';
                 this.ctx.textBaseline = 'middle';
                 break;
@@ -701,7 +2003,9 @@ class CanvasManager {
             data: componentData,
             position: { x, y },
             rotation: 0,
-            scale: 1
+            direction: 'up', // 默认方向为向上
+            scale: 1,
+            selected: false // 初始状态为未选中
         };
 
         // 添加到元件列表

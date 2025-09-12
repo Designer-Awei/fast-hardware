@@ -1458,8 +1458,9 @@ class ComponentDesigner {
                 }
             }
 
-            if (!component.description || typeof component.description !== 'string' || component.description.trim() === '') {
-                errors.push('元件描述不能为空且必须是字符串');
+            // 元件描述为可选字段
+            if (component.description !== undefined && typeof component.description !== 'string') {
+                errors.push('元件描述必须是字符串');
             }
 
             if (!component.category || typeof component.category !== 'string' || component.category.trim() === '') {
@@ -1505,21 +1506,7 @@ class ComponentDesigner {
                 }
             }
 
-            // 检查引脚名称唯一性
-            const allPinNames = [];
-            Object.values(component.pins).forEach(sidePins => {
-                sidePins.forEach(pin => {
-                    if (pin.pinName) {
-                        allPinNames.push(pin.pinName);
-                    }
-                });
-            });
-
-            const duplicateNames = allPinNames.filter((name, index) => allPinNames.indexOf(name) !== index);
-            if (duplicateNames.length > 0) {
-                const uniqueDuplicates = [...new Set(duplicateNames)];
-                errors.push(`发现重复的引脚名称: ${uniqueDuplicates.join(', ')}`);
-            }
+            // 允许引脚名称重复（部分元件存在多个相同名称的引脚）
 
             return {
                 valid: errors.length === 0,
@@ -1612,15 +1599,9 @@ class ComponentDesigner {
             const sideName = this.getSideDisplayName(side);
 
             sidePins.forEach((pin, index) => {
-                // 检查引脚名称
+                // 检查引脚名称（允许为空）
                 if (!pin.pinName || pin.pinName.trim() === '') {
                     errors.push(`${sideName}的第${index + 1}个引脚名称不能为空`);
-                }
-
-                // 检查引脚名称唯一性（全局唯一）
-                const duplicate = this.findDuplicatePinName(pin.pinName, side, index);
-                if (duplicate) {
-                    errors.push(`引脚名称 "${pin.pinName}" 重复`);
                 }
 
                 // 检查引脚类型
@@ -1634,20 +1615,6 @@ class ComponentDesigner {
         return errors;
     }
 
-    /**
-     * 查找重复的引脚名称
-     */
-    findDuplicatePinName(pinName, currentSide, currentIndex) {
-        for (const [side, pins] of Object.entries(this.component.pins)) {
-            for (let i = 0; i < pins.length; i++) {
-                if (pins[i].pinName === pinName &&
-                    !(side === currentSide && i === currentIndex)) {
-                    return { side, index: i };
-                }
-            }
-        }
-        return null;
-    }
 
     /**
      * 保存元件到文件
@@ -2633,9 +2600,9 @@ class SimpleCanvasRenderer {
         const pinHeight = 12 / this.scale; // 引脚高度（中等尺寸）
         const textOffset = pinHeight * 2 + 4 / this.scale; // 两个引脚高度 + 额外间距
         switch (side) {
-            case 'side1': // 上边 - 文字逆时针旋转90度（纵向向上）
+            case 'side1': // 上边 - 文字顺时针旋转90度（纵向向上）
                 labelY -= textOffset;
-                rotation = -Math.PI / 2; // 逆时针90度
+                rotation = Math.PI / 2; // 顺时针90度
                 this.ctx.textAlign = 'center';
                 this.ctx.textBaseline = 'middle';
                 break;
@@ -2645,9 +2612,9 @@ class SimpleCanvasRenderer {
                 this.ctx.textAlign = 'left';
                 this.ctx.textBaseline = 'middle';
                 break;
-            case 'side3': // 下边 - 文字顺时针旋转90度（纵向向下）
+            case 'side3': // 下边 - 文字逆时针旋转90度（纵向向下）
                 labelY += textOffset;
-                rotation = Math.PI / 2; // 顺时针90度
+                rotation = -Math.PI / 2; // 逆时针90度
                 this.ctx.textAlign = 'center';
                 this.ctx.textBaseline = 'middle';
                 break;

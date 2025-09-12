@@ -91,6 +91,251 @@
 
 ---
 
+## 🔗 连线系统详细设计
+
+### 连线交互流程
+
+#### 1. 引脚激活阶段
+```
+选中元件 → 点击引脚 → 显示圆圈+号 → 鼠标悬停变色
+```
+
+#### 2. 连线创建阶段
+```
+点击+号 → 开始拖拽 → 实时绘制折线 → 移动到目标引脚
+```
+
+#### 3. 吸附连接阶段
+```
+进入吸附范围 → 目标引脚显示+号 → 释放鼠标 → 完成连接
+```
+
+#### 4. 连线编辑阶段
+```
+点击连线 → 显示控制点 → 拖拽调整路径 → 保存修改
+```
+
+### 核心技术组件
+
+#### 1. 引脚交互管理器 (PinInteractionManager)
+```javascript
+class PinInteractionManager {
+  constructor(canvas, renderer) {
+    this.canvas = canvas;
+    this.renderer = renderer;
+    this.activePin = null;     // 当前激活的引脚
+    this.connectionMode = false; // 连线模式
+    this.tempConnection = null;  // 临时连线
+  }
+
+  // 检测引脚点击
+  detectPinClick(mousePos) {
+    // 计算鼠标位置与引脚的距离
+    // 返回最近的引脚信息
+  }
+
+  // 显示引脚+号
+  showPinConnector(pin) {
+    // 在引脚位置绘制圆圈和+号
+    // 添加悬停效果
+  }
+
+  // 隐藏引脚+号
+  hidePinConnector(pin) {
+    // 清除视觉元素
+  }
+}
+```
+
+#### 2. 连线管理器 (ConnectionManager)
+```javascript
+class ConnectionManager {
+  constructor(canvas, renderer) {
+    this.canvas = canvas;
+    this.renderer = renderer;
+    this.connections = [];     // 连线列表
+    this.selectedConnection = null; // 选中的连线
+  }
+
+  // 创建连线
+  createConnection(sourcePin, targetPin) {
+    const connection = {
+      id: generateId(),
+      source: sourcePin,
+      target: targetPin,
+      path: this.calculatePath(sourcePin, targetPin),
+      style: { color: '#2196f3', width: 2 }
+    };
+    this.connections.push(connection);
+    return connection;
+  }
+
+  // 计算折线路径
+  calculatePath(sourcePin, targetPin) {
+    // 实现基础的折线路径计算
+    // source -> 中间点 -> target
+  }
+
+  // 渲染连线
+  renderConnections() {
+    this.connections.forEach(conn => {
+      this.drawFoldedLine(conn.path, conn.style);
+    });
+  }
+}
+```
+
+#### 3. 吸附检测系统 (SnapDetection)
+```javascript
+class SnapDetection {
+  constructor() {
+    this.snapDistance = 15; // 吸附距离（像素）- 已优化为15像素
+    this.snapRadius = 15;   // 吸附半径
+  }
+
+  // 检测目标引脚
+  detectSnapTarget(mousePos, sourcePin) {
+    // 遍历所有引脚
+    // 计算距离
+    // 返回最近的有效目标
+  }
+
+  // 计算吸附位置
+  calculateSnapPosition(mousePos, targetPin) {
+    // 返回精确的吸附坐标
+  }
+}
+```
+
+### 数据结构设计
+
+#### 连线数据结构
+```javascript
+interface Connection {
+  id: string;
+  source: {
+    componentId: string;
+    pinName: string;
+    position: { x: number, y: number };
+  };
+  target: {
+    componentId: string;
+    pinName: string;
+    position: { x: number, y: number };
+  };
+  path: Array<{ x: number, y: number }>; // 折线路径点
+  style: {
+    color: string;
+    width: number;
+    dash?: Array<number>;
+  };
+  metadata: {
+    createdAt: Date;
+    connectionType: 'digital' | 'analog' | 'power';
+  };
+}
+```
+
+#### 电路配置JSON扩展
+```json
+{
+  "projectName": "示例电路",
+  "components": [...],
+  "connections": [
+    {
+      "id": "wire_001",
+      "source": {
+        "componentId": "arduino_1",
+        "pinName": "D13"
+      },
+      "target": {
+        "componentId": "led_1",
+        "pinName": "正极"
+      },
+      "path": [
+        { "x": 250, "y": 180 },
+        { "x": 320, "y": 180 },
+        { "x": 320, "y": 220 }
+      ],
+      "style": {
+        "color": "#2196f3",
+        "width": 2
+      },
+      "connectionType": "digital"
+    }
+  ]
+}
+```
+
+### 实现优先级和复杂度评估
+
+#### 高优先级 (第一周) ✅
+- [x] 引脚检测和+号显示
+- [x] 基础连线创建和直线绘制
+- [x] 鼠标吸附检测
+
+#### 中优先级 (第二周) ✅
+- [x] 折线路径计算（曼哈顿距离算法）
+- [x] 连线选择和删除
+- [x] 连线样式管理和选中状态
+- [x] 连线实时跟随元件移动
+- [x] 元件旋转时连线路径更新
+- [x] 连线编辑符号和拖拽重连功能
+
+#### 低优先级 (第三周)
+- [ ] 智能路径避让（A*寻路算法）
+- [ ] 连线编辑控制点
+- [ ] 性能优化
+
+### 技术挑战和解决方案
+
+#### 挑战1: 引脚精确定位
+**问题**: Canvas缩放和平移影响引脚位置计算
+**解决方案**: 使用世界坐标系，统一缩放和平移变换
+
+#### 挑战2: 折线路径优化
+**问题**: 如何生成美观且实用的折线路径
+**解决方案**: 基于引脚相对位置的规则化路径生成
+
+#### 挑战3: 多连线管理
+**问题**: 大量连线时的性能和交互问题
+**解决方案**: 分层渲染，空间索引优化查找
+
+### 视觉设计规范
+
+#### 引脚连接器样式
+- 圆圈直径: 16px (未缩放)
+- +号尺寸: 12px
+- 默认颜色: #2196f3 (蓝色)
+- 悬停颜色: #1976d2 (深蓝)
+- 吸附时颜色: #4caf50 (绿色)
+
+#### 连线样式
+- 默认颜色: #2196f3
+- 线宽: 2px
+- 选中状态: 线宽4px，高亮色
+- 折线转角: 圆角半径3px
+
+#### 吸附检测参数
+- 吸附距离: 15px (优化后的精确距离)
+- 引脚检测范围: 15px
+- 连接器大小: 16px圆圈 + 12px+号
+
+#### 连线跟随功能
+- **实时跟随**: 拖拽元件时连线路径实时更新
+- **旋转同步**: 元件旋转时连线路径自动调整
+- **位置跟踪**: 精确跟踪引脚的旋转后位置
+- **性能优化**: 仅更新相关连线，避免全量重绘
+
+#### 连线编辑功能
+- **编辑符号**: 选中连线后两端显示可拖拽的编辑符号
+- **拖拽重连**: 拖动编辑符号到新引脚重新建立连接
+- **智能预览**: 编辑时显示从固定端点到新位置的预览线
+- **视觉反馈**: 源端绿色符号，目标端橙色符号
+- **智能吸附**: 支持与新建连线相同的吸附检测机制
+
+---
+
 ## 📊 数据结构设计
 
 ### 画布状态数据结构
@@ -590,19 +835,30 @@ class DataManager {
 - [x] 悬浮面板设计和交互实现（默认收起状态）
 - [x] 悬浮面板元件拖拽和放置功能
 - [x] 简单的元件渲染（矩形+引脚）
-- [ ] 连线系统基础实现
+- [x] 元件交互功能（点击选中、拖动、旋转）
+- [x] 旋转方向映射（up/left/down/right）
+- [x] 元件名称智能旋转和显示
+- [x] 键盘快捷键支持（R旋转、Delete删除、Escape取消选中）
+- [x] 鼠标悬停反馈和视觉效果
+- [x] 连线系统基础实现
 - [ ] 数据同步机制
 
-### 阶段二：连线和交互完善 (2周)
-- [ ] 手动连线功能（直线和折线）
-- [ ] 连线编辑和删除
-- [ ] 引脚兼容性检查
-- [ ] 路径优化算法
+### 阶段二：连线和交互完善 (3周)
+- [x] 引脚交互检测和视觉反馈（圆圈+号）
+- [x] 连线创建和拖拽系统
+- [x] 引脚吸附检测和连接
+- [x] 折线路径绘制和编辑
+- [x] 连线删除和选择
+- [x] 智能折线路径算法（曼哈顿距离）
+- [x] 连线样式和选中状态
+- [ ] 高级路径避让算法（A*寻路）
 - [ ] 撤销/重做功能
 
-### 阶段三：高级功能和测试 (3周)
+### 阶段三：高级功能和测试 (4周)
+- [ ] 智能路径规划算法（A*寻路避让）
+- [ ] 连线批量操作和样式管理
+- [ ] 引脚兼容性检查和错误提示
 - [ ] 键盘快捷键系统 (Ctrl+S保存, Ctrl+Z撤销等)
-- [ ] 批量操作功能 (多选、批量移动、批量删除)
 - [ ] 项目导入导出 (支持标准JSON格式)
 - [ ] 性能优化 (大电路渲染优化)
 - [ ] 完整测试覆盖 (单元测试、集成测试)
@@ -612,8 +868,17 @@ class DataManager {
 
 ## 🎯 成功指标
 
-### 功能指标
-- [ ] 用户能够在5分钟内完成简单电路搭建
+### 已实现功能指标 ✅
+- [x] 用户能够在2分钟内完成元件放置和基本交互操作
+- [x] 支持元件点击选中、拖拽移动和旋转操作
+- [x] 实现完整的方向映射系统（up/left/down/right）
+- [x] 元件名称智能旋转，始终保持水平可读
+- [x] 键盘快捷键系统（R旋转、Delete删除、Escape取消选中）
+- [x] 鼠标悬停反馈和视觉选中效果
+- [x] 支持悬浮面板元件拖拽到画布的功能
+
+### 待实现功能指标 📋
+- [ ] 用户能够在5分钟内完成简单电路搭建（需要连线功能）
 - [ ] 支持至少20种常用电子元件
 - [ ] 连线创建成功率 > 95%
 - [ ] 项目文件兼容性 > 95%
@@ -667,17 +932,32 @@ class DataManager {
 ### 当前状态总结 ✅
 **已完成功能**:
 - ✅ 基础画布框架搭建
-- ✅ 元件库集成
-- ✅ 元件拖拽基础功能
-- ✅ 简单元件渲染
+- ✅ 元件库集成和悬浮面板
+- ✅ 元件拖拽到画布功能
+- ✅ 元件完整渲染（矩形主体+彩色引脚）
+- ✅ 元件交互功能（点击选中、拖拽、旋转）
+- ✅ 旋转方向映射系统（up/left/down/right）
+- ✅ 元件名称智能旋转和显示
+- ✅ 键盘快捷键系统（R旋转、Delete删除、Escape取消选中）
+- ✅ 鼠标悬停反馈和视觉效果
 - ✅ 项目数据结构设计
 
-**开发中功能**:
-- 🚧 连线系统实现 (直线和折线路径)
-- 🚧 高级交互功能 (多选、撤销重做)
-- 🚧 项目管理功能 (保存加载)
+**已完成功能**:
+- ✅ 连线系统基础实现 (直线和智能折线路径)
+- ✅ 连线编辑和删除功能
+- ✅ 引脚吸附检测和连接
+- ✅ 连线选择和视觉反馈
+- ✅ 连线样式管理和选中状态
 
-**下一阶段目标**: 实现完整的连线系统和交互功能，为用户提供流畅的电路设计体验。LLM集成功能将在后续版本中实现。
+**开发中功能**:
+- 🚧 高级路径避让算法（A*寻路）
+- 🚧 引脚兼容性检查
+- 🚧 项目保存加载功能
+- 🚧 撤销重做功能
+
+**下一阶段目标**: 实现高级路径规划和项目数据同步功能。LLM集成功能将在后续版本中实现。
+
+**阶段二完成度**: 80% (高级算法和数据同步待实现)
 
 ---
 
