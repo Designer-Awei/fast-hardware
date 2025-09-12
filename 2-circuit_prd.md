@@ -282,10 +282,296 @@ interface Connection {
 - [x] 元件旋转时连线路径更新
 - [x] 连线编辑符号和拖拽重连功能
 
-#### 低优先级 (第三周)
-- [ ] 智能路径避让（A*寻路算法）
+#### 第三阶段：高级功能 (4周)
+- [ ] **自动布线系统** - 连线智能避障
 - [ ] 连线编辑控制点
-- [ ] 性能优化
+- [ ] 性能优化和渲染优化
+
+### 📋 自动布线方案分析
+
+#### 🎯 设计目标
+- **智能避障**: 连线自动避开元件和已有连线
+- **美观路径**: 生成规整的折线或曲线路径
+- **性能高效**: 实时计算不影响交互流畅性
+- **易于集成**: 与现有Canvas架构无缝融合
+
+---
+
+#### 📚 方案一：集成PathFinding.js库 ⭐⭐⭐⭐⭐
+
+**推荐指数**: ⭐⭐⭐⭐⭐ (首选方案)
+
+```javascript
+// 轻量级A*寻路算法库
+import PF from 'pathfinding';
+
+// 创建避障网格
+const grid = new PF.Grid(canvasWidth, canvasHeight);
+
+// 标记元件区域为障碍物
+components.forEach(comp => {
+    const bounds = getComponentBounds(comp);
+    for (let x = bounds.left; x <= bounds.right; x++) {
+        for (let y = bounds.top; y <= bounds.bottom; y++) {
+            grid.setWalkableAt(x, y, false);
+        }
+    }
+});
+
+// 使用A*算法计算路径
+const finder = new PF.AStarFinder({
+    allowDiagonal: false,
+    dontCrossCorners: true
+});
+
+const path = finder.findPath(startX, startY, endX, endY, grid);
+```
+
+**核心优势**:
+- ✅ **轻量级**: 仅8KB gzipped，加载迅速
+- ✅ **专业算法**: A*寻路算法最优路径保证
+- ✅ **高度可控**: 可自定义网格大小和避障规则
+- ✅ **性能优秀**: 实时计算毫秒级响应
+- ✅ **CDN加载**: 无需本地构建，易于集成
+
+**技术实现**:
+```javascript
+class AutoRouter {
+    constructor(canvas) {
+        this.canvas = canvas;
+        this.gridSize = 10; // 网格单元大小
+        this.finder = new PF.AStarFinder({
+            allowDiagonal: false,
+            heuristic: PF.Heuristic.manhattan
+        });
+    }
+
+    // 将Canvas坐标转换为网格坐标
+    worldToGrid(worldPos) {
+        return {
+            x: Math.floor(worldPos.x / this.gridSize),
+            y: Math.floor(worldPos.y / this.gridSize)
+        };
+    }
+
+    // 创建避障网格
+    createObstacleGrid() {
+        const width = Math.ceil(this.canvas.width / this.gridSize);
+        const height = Math.ceil(this.canvas.height / this.gridSize);
+        const grid = new PF.Grid(width, height);
+
+        // 标记元件为障碍物
+        this.canvas.components.forEach(comp => {
+            this.markComponentAsObstacle(grid, comp);
+        });
+
+        return grid;
+    }
+
+    // 计算自动路径
+    calculateAutoPath(startPos, endPos) {
+        const grid = this.createObstacleGrid();
+        const start = this.worldToGrid(startPos);
+        const end = this.worldToGrid(endPos);
+
+        const path = this.finder.findPath(start.x, start.y, end.x, end.y, grid);
+        return this.gridPathToWorldPath(path);
+    }
+}
+```
+
+---
+
+#### 🎨 方案二：使用JointJS ⭐⭐⭐⭐
+
+**推荐指数**: ⭐⭐⭐⭐ (备选方案)
+
+```javascript
+// 专业的图表绘制库
+import { dia, shapes, linkTools } from 'jointjs';
+
+const graph = new dia.Graph();
+const paper = new dia.Paper({
+    el: document.getElementById('canvas'),
+    model: graph,
+    width: 800,
+    height: 600,
+
+    // 自动布线配置
+    defaultLink: new shapes.standard.Link({
+        router: {
+            name: 'manhattan',
+            args: {
+                step: 20,           // 网格步长
+                padding: 30,        // 元件间距
+                maximumLoops: 500,  // 最大循环次数
+                maxAllowedDirectionChange: 90  // 最大转向角度
+            }
+        },
+        connector: {
+            name: 'rounded',
+            args: { radius: 10 }
+        }
+    }),
+
+    // 交互配置
+    interactive: { addLinkFromMagnet: false },
+    linkPinning: false
+});
+```
+
+**核心优势**:
+- ✅ **开箱即用**: 内置多种布线算法
+- ✅ **专业品质**: 企业级图表库
+- ✅ **丰富样式**: 支持曲线、折线等多种样式
+- ✅ **事件系统**: 完整的交互事件支持
+
+**集成考虑**:
+```javascript
+// 与现有架构的集成方式
+class JointJSAdapter {
+    constructor(canvasElement) {
+        this.jointPaper = this.createJointPaper(canvasElement);
+        this.syncWithCanvas();
+    }
+
+    // 同步现有元件到JointJS
+    syncComponents() {
+        this.canvas.components.forEach(comp => {
+            const jointElement = this.createJointElement(comp);
+            this.jointPaper.model.addCell(jointElement);
+        });
+    }
+
+    // 同步连线
+    syncConnections() {
+        this.canvas.connections.forEach(conn => {
+            const jointLink = this.createJointLink(conn);
+            this.jointPaper.model.addCell(jointLink);
+        });
+    }
+}
+```
+
+---
+
+#### ⚡ 方案三：Konva.js + 自定义算法 ⭐⭐⭐
+
+**推荐指数**: ⭐⭐⭐ (轻量方案)
+
+```javascript
+// 高性能Canvas库
+import Konva from 'konva';
+
+// 创建舞台
+const stage = new Konva.Stage({
+    container: 'canvas-container',
+    width: 800,
+    height: 600
+});
+
+// 创建连线层
+const connectionLayer = new Konva.Layer();
+
+// 自定义避障算法
+class KonvaAutoRouter {
+    constructor(stage) {
+        this.stage = stage;
+        this.obstacles = [];
+    }
+
+    // 检测碰撞
+    detectCollisions(linePoints) {
+        // 使用Konva的边界检测API
+        return linePoints.some(point => {
+            return this.obstacles.some(obstacle => {
+                return obstacle.getClientRect().contains(point);
+            });
+        });
+    }
+
+    // 计算避障路径
+    calculatePath(start, end) {
+        // 实现简化的避障算法
+        const directPath = [start, end];
+
+        if (!this.detectCollisions(directPath)) {
+            return directPath; // 直接连线
+        }
+
+        // 计算避障路径
+        return this.calculateDetourPath(start, end);
+    }
+}
+```
+
+---
+
+#### 📊 方案对比分析
+
+| 方案 | 库大小 | 学习成本 | 定制性 | 性能 | 集成难度 | 推荐指数 |
+|------|--------|----------|--------|------|----------|----------|
+| PathFinding.js | 8KB | 低 | 高 | 优秀 | 低 | ⭐⭐⭐⭐⭐ |
+| JointJS | 500KB | 中 | 中 | 良好 | 中 | ⭐⭐⭐⭐ |
+| Konva.js | 150KB | 中 | 高 | 优秀 | 中 | ⭐⭐⭐ |
+| 自定义算法 | 0KB | 高 | 高 | 视实现 | 高 | ⭐⭐ |
+
+---
+
+### 🎯 最终推荐方案
+
+#### **首选: PathFinding.js + 当前Canvas架构** ⭐⭐⭐⭐⭐
+
+**推荐理由**:
+1. **轻量高效**: 最小化对现有架构的影响
+2. **专业算法**: A*算法保证最优路径
+3. **完全控制**: 可根据电路特点定制避障规则
+4. **渐进升级**: 可逐步添加高级功能
+
+**实施计划**:
+```javascript
+// 第一阶段：基础避障
+npm install pathfinding
+
+// 第二阶段：智能路径优化
+// 第三阶段：多连线冲突解决
+```
+
+**集成步骤**:
+1. 安装PathFinding.js库
+2. 创建避障网格生成器
+3. 实现A*路径计算
+4. 集成到现有连线系统
+5. 添加路径平滑和优化
+
+**预期效果**:
+- ✅ 连线自动避开元件
+- ✅ 生成美观的折线路径
+- ✅ 保持现有交互体验
+- ✅ 支持实时路径重计算
+
+---
+
+### 🚫 不推荐的方案
+
+#### **避免完全更换画布库**
+**原因**:
+- ❌ **迁移成本高**: 需要重写所有现有功能
+- ❌ **学习曲线陡**: 新库的学习和调试时间
+- ❌ **功能冗余**: 大部分功能在当前架构中已实现
+- ❌ **定制困难**: 难以满足电路设计的特殊需求
+
+**替代建议**: 保持当前Canvas架构，集成专业算法库
+
+---
+
+### 💡 技术建议
+
+1. **渐进式实现**: 先实现基础避障，再优化高级功能
+2. **性能监控**: 实时监测路径计算性能
+3. **用户选项**: 提供手动/自动布线模式切换
+4. **缓存优化**: 缓存常用路径计算结果
+5. **测试充分**: 各种复杂场景的测试覆盖
 
 ### 技术挑战和解决方案
 
