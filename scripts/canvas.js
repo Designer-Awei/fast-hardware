@@ -529,17 +529,30 @@ class CanvasManager {
      * @returns {boolean} 是否在元件内
      */
     isPointInComponent(point, component) {
-        const { data, position } = component;
+        const { data, position, rotation = 0 } = component;
         const width = data.dimensions?.width || 80;
         const height = data.dimensions?.height || 60;
 
-        const left = position.x - width / 2;
-        const right = position.x + width / 2;
-        const top = position.y - height / 2;
-        const bottom = position.y + height / 2;
+        // 如果元件没有旋转，使用简单的边界框检测
+        if (rotation === 0) {
+            const left = position.x - width / 2;
+            const right = position.x + width / 2;
+            const top = position.y - height / 2;
+            const bottom = position.y + height / 2;
 
-        return point.x >= left && point.x <= right &&
-               point.y >= top && point.y <= bottom;
+            return point.x >= left && point.x <= right &&
+                   point.y >= top && point.y <= bottom;
+        }
+
+        // 对于旋转的元件，将世界坐标转换为元件本地坐标
+        const localPoint = this.inverseRotatePoint(point, position, rotation);
+
+        // 在本地坐标系中进行边界框检测
+        const halfWidth = width / 2;
+        const halfHeight = height / 2;
+
+        return localPoint.x >= -halfWidth && localPoint.x <= halfWidth &&
+               localPoint.y >= -halfHeight && localPoint.y <= halfHeight;
     }
 
     /**
@@ -1057,6 +1070,33 @@ class CanvasManager {
         return {
             x: rotatedX + center.x,
             y: rotatedY + center.y
+        };
+    }
+
+    /**
+     * 逆向旋转一个点（从世界坐标转换为本地坐标）
+     * @param {Object} point - 世界坐标点 {x, y}
+     * @param {Object} center - 旋转中心点 {x, y}
+     * @param {number} angle - 旋转角度（度）
+     * @returns {Object} 本地坐标点 {x, y}
+     */
+    inverseRotatePoint(point, center, angle) {
+        const radian = (angle * Math.PI) / 180;
+        const cos = Math.cos(radian);
+        const sin = Math.sin(radian);
+
+        // 平移到原点
+        const translatedX = point.x - center.x;
+        const translatedY = point.y - center.y;
+
+        // 逆向旋转（使用转置矩阵）
+        const rotatedX = translatedX * cos + translatedY * sin;
+        const rotatedY = -translatedX * sin + translatedY * cos;
+
+        // 返回本地坐标（不需要平移回原位置）
+        return {
+            x: rotatedX,
+            y: rotatedY
         };
     }
 
