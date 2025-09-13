@@ -388,50 +388,115 @@ class ComponentDesigner {
      * 重置设计器
      */
     resetDesigner() {
-        if (confirm('确定要重置整个设计器吗？这将清除所有未保存的内容。')) {
-            this.component = {
-                name: '',
-                id: '',
-                description: '',
-                category: 'other',
-                dimensions: { width: 100, height: 80 },
-                pins: {
-                    side1: [],
-                    side2: [],
-                    side3: [],
-                    side4: []
+        // 使用Promise包装自定义确认对话框，确保焦点处理
+        this.showResetConfirmDialog(
+            '确认重置设计器',
+            '确定要重置整个设计器吗？',
+            '此操作将清除所有未保存的内容，包括元件名称、描述、尺寸和所有引脚配置。'
+        ).then((confirmed) => {
+            if (confirmed) {
+                console.log('用户确认重置设计器，开始重置...');
+
+                // 保存输入框的当前状态
+                const inputElement = this.elements.nameInput;
+                const wasFocused = inputElement && document.activeElement === inputElement;
+                const currentValue = inputElement ? inputElement.value : '';
+
+                // 重置元件数据
+                this.component = {
+                    name: '',
+                    id: '',
+                    description: '',
+                    category: 'other',
+                    dimensions: { width: 100, height: 80 },
+                    pins: {
+                        side1: [],
+                        side2: [],
+                        side3: [],
+                        side4: []
+                    }
+                };
+
+                // 如果是复用模式，重置到新建状态
+                if (this.isReuseMode) {
+                    console.log('属性面板重置：复用模式下清除复用状态，回到新建模式');
+                    this.isReuseMode = false;
+                    this.originalComponentId = null;
+                    this.originalComponentName = null;
+                    this.isEditingExisting = false;
+                    this.updateStatus('已从复用模式重置到新建模式');
                 }
-            };
 
-            // 如果是复用模式，重置到新建状态
-            if (this.isReuseMode) {
-                console.log('属性面板重置：复用模式下清除复用状态，回到新建模式');
-                this.isReuseMode = false;
-                this.originalComponentId = null;
-                this.originalComponentName = null;
-                this.isEditingExisting = false;
-                this.updateStatus('已从复用模式重置到新建模式');
+                // 注意：不清除编辑模式标识，以防用户是在编辑现有元件时点击重置
+                // 只有在真正新建元件或明确保存后才清除编辑模式
+                // this.isEditingExisting = false;
+                // this.originalComponentId = null;
+
+                // 清空表单
+                if (this.elements.nameInput) this.elements.nameInput.value = '';
+                if (this.elements.categorySelect) this.elements.categorySelect.value = 'other';
+                if (this.elements.widthInput) this.elements.widthInput.value = '100';
+                if (this.elements.heightInput) this.elements.heightInput.value = '80';
+                if (this.elements.descriptionTextarea) this.elements.descriptionTextarea.value = '';
+
+                // 清除选中状态
+                this.selectedSide = null;
+
+                // 更新界面
+                this.updateComponentInfo();
+                this.render();
+                this.updateStatus('设计器已重置');
+
+                // 确保输入框状态正确 - 使用更全面的方法
+                if (inputElement) {
+                    // 立即确保输入框可用（在DOM更新前）
+                    this.ensureInputBoxUsable(inputElement);
+
+                    // 延迟执行，确保DOM更新完成后再进行焦点恢复
+                    setTimeout(() => {
+                        this.ensureInputBoxUsable(inputElement);
+
+                        // 强制聚焦到输入框
+                        setTimeout(() => {
+                            try {
+                                inputElement.focus();
+                                // 确保焦点确实设置成功
+                                if (document.activeElement === inputElement) {
+                                    console.log('✅ 重置设计器后成功恢复输入框焦点');
+                                } else {
+                                    console.warn('⚠️ 重置设计器后焦点恢复可能失败，重试...');
+                                    // 再次尝试聚焦
+                                    setTimeout(() => {
+                                        inputElement.focus();
+                                        if (document.activeElement === inputElement) {
+                                            console.log('✅ 重置设计器后重试恢复输入框焦点成功');
+                                        } else {
+                                            console.error('❌ 重置设计器后无法恢复输入框焦点');
+                                        }
+                                    }, 50);
+                                }
+                            } catch (error) {
+                                console.warn('无法恢复输入框焦点:', error);
+                            }
+                        }, 20);
+
+                        console.log('重置设计器完成，输入框状态:', {
+                            value: inputElement.value,
+                            disabled: inputElement.disabled,
+                            readOnly: inputElement.readOnly,
+                            focused: document.activeElement === inputElement,
+                            activeElement: document.activeElement.tagName + (document.activeElement.id ? '#' + document.activeElement.id : '')
+                        });
+                    }, 10);
+                }
+
+                console.log('设计器重置完成');
+            } else {
+                console.log('用户取消了重置设计器操作');
             }
-
-            // 注意：不清除编辑模式标识，以防用户是在编辑现有元件时点击重置
-            // 只有在真正新建元件或明确保存后才清除编辑模式
-            // this.isEditingExisting = false;
-            // this.originalComponentId = null;
-
-            // 清空表单
-            if (this.elements.nameInput) this.elements.nameInput.value = '';
-            if (this.elements.categorySelect) this.elements.categorySelect.value = 'other';
-            if (this.elements.widthInput) this.elements.widthInput.value = '100';
-            if (this.elements.heightInput) this.elements.heightInput.value = '80';
-            if (this.elements.descriptionTextarea) this.elements.descriptionTextarea.value = '';
-
-            // 清除选中状态
-            this.selectedSide = null;
-
-            this.updateComponentInfo();
-            this.render();
-            this.updateStatus('设计器已重置');
-        }
+        }).catch((error) => {
+            console.error('重置设计器过程中出现错误:', error);
+        });
     }
 
     /**
@@ -441,7 +506,11 @@ class ComponentDesigner {
         console.log('准备重置元件...');
 
         // 使用Promise包装confirm对话框，确保焦点处理
-        this.showResetConfirmDialog().then((confirmed) => {
+        this.showResetConfirmDialog(
+            '确认重置元件',
+            '确定要清除所有引脚吗？',
+            '此操作将清除元件的所有引脚配置，但保留元件的基本信息。'
+        ).then((confirmed) => {
             if (confirmed) {
                 console.log('用户确认重置，开始重置元件...');
 
@@ -530,8 +599,11 @@ class ComponentDesigner {
 
     /**
      * 显示重置确认对话框
+     * @param {string} title - 对话框标题
+     * @param {string} message - 确认消息
+     * @param {string} warning - 警告消息
      */
-    showResetConfirmDialog() {
+    showResetConfirmDialog(title = '确认重置', message = '确定要清除所有引脚吗？', warning = '此操作将清除元件的所有引脚配置。') {
         return new Promise((resolve) => {
             // 创建自定义确认对话框，避免使用原生confirm（会丢失焦点）
             const dialog = document.createElement('div');
@@ -540,11 +612,11 @@ class ComponentDesigner {
                 <div class="dialog-backdrop"></div>
                 <div class="dialog-content">
                     <div class="dialog-header">
-                        <h3>确认重置</h3>
+                        <h3>${title}</h3>
                     </div>
                     <div class="dialog-body">
-                        <p>确定要清除所有引脚吗？</p>
-                        <p class="warning-text">此操作将清除元件的所有引脚配置。</p>
+                        <p>${message}</p>
+                        <p class="warning-text">${warning}</p>
                     </div>
                     <div class="dialog-footer">
                         <button class="btn-secondary cancel-btn">取消</button>
@@ -649,13 +721,7 @@ class ComponentDesigner {
             };
             document.addEventListener('keydown', handleEscape);
 
-            // 点击背景关闭
-            dialog.querySelector('.dialog-backdrop').addEventListener('click', () => {
-                document.body.removeChild(dialog);
-                document.head.removeChild(style);
-                document.removeEventListener('keydown', handleEscape);
-                resolve(false);
-            });
+            // 注意：移除点击背景关闭功能，确保用户必须明确点击按钮
         });
     }
 
@@ -1762,9 +1828,9 @@ class ComponentDesigner {
             }
         }
 
-        // 对于新建或复用模式，默认使用ctm前缀
+        // 对于新建或复用模式，默认使用std前缀
         // 实际的前缀将在主进程中根据保存路径重新确定
-        return 'ctm';
+        return 'std';
     }
 
     /**
@@ -2914,16 +2980,9 @@ class PinEditorModal {
     }
 
     bindEvents() {
-        // 关闭事件
+        // 关闭事件 - 仅关闭按钮和取消按钮
         this.closeBtn.addEventListener('click', () => this.hide());
         this.cancelBtn.addEventListener('click', () => this.hide());
-
-        // 点击模态框背景关闭
-        this.modal.addEventListener('click', (e) => {
-            if (e.target === this.modal) {
-                this.hide();
-            }
-        });
 
         // ESC键关闭
         document.addEventListener('keydown', (e) => {

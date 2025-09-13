@@ -1,0 +1,205 @@
+{
+  "name": "TCA9548A 8路I2C",
+  "id": "std-tca9548a-8路i2c-210605",
+  "description": "IIC多路拓展模块",
+  "category": "auxiliary",
+  "pins": {
+    "side1": [
+      {
+        "pinName": "SDA-2",
+        "type": "digital_io",
+        "order": 1
+      },
+      {
+        "pinName": "SCL-2",
+        "type": "digital_io",
+        "order": 2
+      },
+      {
+        "pinName": "VCC-2",
+        "type": "power",
+        "order": 3
+      },
+      {
+        "pinName": "GND-2",
+        "type": "ground",
+        "order": 4
+      },
+      {
+        "pinName": "SDA-3",
+        "type": "digital_io",
+        "order": 5
+      },
+      {
+        "pinName": "SCL-3",
+        "type": "digital_io",
+        "order": 6
+      },
+      {
+        "pinName": "VCC-3",
+        "type": "power",
+        "order": 7
+      },
+      {
+        "pinName": "GND-3",
+        "type": "ground",
+        "order": 8
+      },
+      {
+        "pinName": "SDA-4",
+        "type": "digital_io",
+        "order": 9
+      },
+      {
+        "pinName": "SCL-4",
+        "type": "digital_io",
+        "order": 10
+      },
+      {
+        "pinName": "VCC-4",
+        "type": "power",
+        "order": 11
+      },
+      {
+        "pinName": "GND-4",
+        "type": "ground",
+        "order": 12
+      },
+      {
+        "pinName": "SDA-5",
+        "type": "digital_io",
+        "order": 13
+      },
+      {
+        "pinName": "SCL-5",
+        "type": "digital_io",
+        "order": 14
+      },
+      {
+        "pinName": "VCC-5",
+        "type": "power",
+        "order": 15
+      },
+      {
+        "pinName": "GND-5",
+        "type": "ground",
+        "order": 16
+      }
+    ],
+    "side3": [
+      {
+        "pinName": "GND",
+        "type": "ground",
+        "order": 1
+      },
+      {
+        "pinName": "VCC",
+        "type": "power",
+        "order": 2
+      },
+      {
+        "pinName": "SCL",
+        "type": "digital_io",
+        "order": 3
+      },
+      {
+        "pinName": "SDA",
+        "type": "digital_io",
+        "order": 4
+      },
+      {
+        "pinName": "RESET",
+        "type": "special",
+        "order": 5
+      }
+    ],
+    "side2": [
+      {
+        "pinName": "SDA-6",
+        "type": "digital_io",
+        "order": 1
+      },
+      {
+        "pinName": "SCL-6",
+        "type": "digital_io",
+        "order": 2
+      },
+      {
+        "pinName": "VCC-6",
+        "type": "power",
+        "order": 3
+      },
+      {
+        "pinName": "GND-6",
+        "type": "ground",
+        "order": 4
+      },
+      {
+        "pinName": "SDA-7",
+        "type": "digital_io",
+        "order": 5
+      },
+      {
+        "pinName": "SCL-7",
+        "type": "digital_io",
+        "order": 6
+      },
+      {
+        "pinName": "VCC-7",
+        "type": "power",
+        "order": 7
+      },
+      {
+        "pinName": "GND-7",
+        "type": "ground",
+        "order": 8
+      }
+    ],
+    "side4": [
+      {
+        "pinName": "SDA-1",
+        "type": "digital_io",
+        "order": 1
+      },
+      {
+        "pinName": "SCL-1",
+        "type": "digital_io",
+        "order": 2
+      },
+      {
+        "pinName": "VCC-1",
+        "type": "power",
+        "order": 3
+      },
+      {
+        "pinName": "GND-1",
+        "type": "ground",
+        "order": 4
+      },
+      {
+        "pinName": "SDA-0",
+        "type": "digital_io",
+        "order": 5
+      },
+      {
+        "pinName": "SCL-0",
+        "type": "digital_io",
+        "order": 6
+      },
+      {
+        "pinName": "VCC-0",
+        "type": "power",
+        "order": 7
+      },
+      {
+        "pinName": "GND-0",
+        "type": "ground",
+        "order": 8
+      }
+    ]
+  },
+  "dimensions": {
+    "width": 380,
+    "height": 200
+  }
+}

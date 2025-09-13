@@ -402,12 +402,17 @@ class CanvasManager {
 
                 // 如果鼠标在引脚吸附距离范围内
                 if (distance <= this.pinInteraction.snapDistance) {
+                    // 生成唯一的引脚ID：边名-序号
+                    const pinId = `${pin.side}-${pin.order}`;
+
                     return {
                         componentId: component.id,
                         component: component,
-                        pinName: pin.pinName,
+                        pinId: pinId,              // 新增：唯一的引脚标识
+                        pinName: pin.pinName,      // 保留：引脚名称（用于显示）
                         position: rotatedPosition, // 返回旋转后的实际位置
                         side: pin.side,
+                        order: pin.order,          // 新增：引脚序号
                         type: pin.type
                     };
                 }
@@ -706,9 +711,13 @@ class CanvasManager {
             return;
         }
 
+        // 优先使用pinId，如果没有则使用pinName（向后兼容）
+        const sourcePinIdentifier = connection.source.pinId || connection.source.pinName;
+        const targetPinIdentifier = connection.target.pinId || connection.target.pinName;
+
         // 重新计算源引脚和目标引脚的当前位置（考虑旋转）
-        const sourcePinPos = this.getRotatedPinPosition(sourceComponent, connection.source.pinName);
-        const targetPinPos = this.getRotatedPinPosition(targetComponent, connection.target.pinName);
+        const sourcePinPos = this.getRotatedPinPosition(sourceComponent, sourcePinIdentifier);
+        const targetPinPos = this.getRotatedPinPosition(targetComponent, targetPinIdentifier);
 
         if (sourcePinPos && targetPinPos) {
             // 更新连线中的位置信息
@@ -723,10 +732,10 @@ class CanvasManager {
     /**
      * 获取元件中指定引脚的旋转后位置
      * @param {Object} component - 元件对象
-     * @param {string} pinName - 引脚名称
+     * @param {string} pinIdentifier - 引脚标识（可以是pinId或pinName）
      * @returns {Object|null} 旋转后的引脚位置或null
      */
-    getRotatedPinPosition(component, pinName) {
+    getRotatedPinPosition(component, pinIdentifier) {
         const { data, position, rotation } = component;
         const { x: compX, y: compY } = position;
 
@@ -745,8 +754,16 @@ class CanvasManager {
         const pinCalculator = new CanvasPinPositionCalculator(componentRect);
         const allPins = pinCalculator.calculateAllPositions(data.pins);
 
-        // 找到指定的引脚
-        const targetPin = allPins.find(pin => pin.pinName === pinName);
+        // 解析引脚标识
+        let targetPin;
+        if (pinIdentifier.includes('-')) {
+            // 新的pinId格式：side-order
+            const [side, order] = pinIdentifier.split('-');
+            targetPin = allPins.find(pin => pin.side === side && pin.order === parseInt(order));
+        } else {
+            // 兼容旧的pinName格式
+            targetPin = allPins.find(pin => pin.pinName === pinIdentifier);
+        }
 
         if (targetPin) {
             // 对引脚位置进行旋转变换
@@ -767,13 +784,15 @@ class CanvasManager {
         if (end === 'source') {
             connection.source = {
                 componentId: newPin.componentId,
-                pinName: newPin.pinName,
+                pinId: newPin.pinId,          // 新增：引脚唯一标识
+                pinName: newPin.pinName,      // 保留：引脚名称（用于显示）
                 position: { ...newPin.position }
             };
         } else if (end === 'target') {
             connection.target = {
                 componentId: newPin.componentId,
-                pinName: newPin.pinName,
+                pinId: newPin.pinId,          // 新增：引脚唯一标识
+                pinName: newPin.pinName,      // 保留：引脚名称（用于显示）
                 position: { ...newPin.position }
             };
         }
@@ -995,12 +1014,17 @@ class CanvasManager {
 
             // 如果鼠标在引脚15像素范围内
             if (distance <= 15) {
+                // 生成唯一的引脚ID：边名-序号
+                const pinId = `${pin.side}-${pin.order}`;
+
                 return {
                     componentId: component.id,
                     component: component,
-                    pinName: pin.pinName,
+                    pinId: pinId,              // 新增：唯一的引脚标识
+                    pinName: pin.pinName,      // 保留：引脚名称（用于显示）
                     position: rotatedPosition, // 返回旋转后的实际位置
                     side: pin.side,
+                    order: pin.order,          // 新增：引脚序号
                     type: pin.type
                 };
             }
@@ -1496,12 +1520,14 @@ class CanvasManager {
             id: `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             source: {
                 componentId: sourcePin.componentId,
-                pinName: sourcePin.pinName,
+                pinId: sourcePin.pinId,          // 新增：引脚唯一标识
+                pinName: sourcePin.pinName,      // 保留：引脚名称（用于显示）
                 position: { ...sourcePin.position }
             },
             target: {
                 componentId: targetPin.componentId,
-                pinName: targetPin.pinName,
+                pinId: targetPin.pinId,          // 新增：引脚唯一标识
+                pinName: targetPin.pinName,      // 保留：引脚名称（用于显示）
                 position: { ...targetPin.position }
             },
             path: this.calculateConnectionPath(sourcePin.position, targetPin.position),

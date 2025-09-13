@@ -1,0 +1,32 @@
+{
+  "name": "按键开关模块",
+  "id": "std-按键开关模块-222902",
+  "description": "按下触发低电平，弹起为高电平",
+  "category": "auxiliary",
+  "pins": {
+    "side1": [],
+    "side2": [],
+    "side3": [
+      {
+        "pinName": "S",
+        "type": "digital_io",
+        "order": 1
+      },
+      {
+        "pinName": "VCC",
+        "type": "power",
+        "order": 2
+      },
+      {
+        "pinName": "GND",
+        "type": "ground",
+        "order": 3
+      }
+    ],
+    "side4": []
+  },
+  "dimensions": {
+    "width": 140,
+    "height": 40
+  }
+}

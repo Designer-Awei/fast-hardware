@@ -1,7 +1,7 @@
 {
-  "name": "Resistor 220Ω",
-  "id": "std-resistor-220-120000",
-  "description": "220欧姆电阻器。阻值220Ω，精度5%，额定功率0.25W。",
+  "name": "1100Ω 电阻",
+  "id": "std-1100-电阻-202320",
+  "description": "1100欧姆电阻",
   "category": "auxiliary",
   "pins": {
     "side1": [
@@ -17,7 +17,9 @@
         "type": "special",
         "order": 1
       }
-    ]
+    ],
+    "side2": [],
+    "side4": []
   },
   "dimensions": {
     "width": 90,

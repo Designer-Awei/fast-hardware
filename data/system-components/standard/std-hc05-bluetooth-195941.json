@@ -1,18 +1,18 @@
 {
   "name": "HC-05 Bluetooth",
-  "id": "std-hc05-bluetooth-120000",
-  "description": "HC-05蓝牙模块，支持蓝牙串口通信。工作电压3.3-5V，工作电流30mA，有效通信距离10米，默认波特率9600。",
+  "id": "std-hc05-bluetooth-195941",
+  "description": "HC-05蓝牙模块，支持蓝牙串口通信,工作电压3.3-5V，工作电流30mA，有效通信距离10米，默认波特率9600",
   "category": "communication",
   "pins": {
     "side1": [
       {
-        "pinName": "VCC",
-        "type": "power",
+        "pinName": "STATE",
+        "type": "digital_io",
         "order": 1
       },
       {
-        "pinName": "GND",
-        "type": "ground",
+        "pinName": "RXD",
+        "type": "digital_io",
         "order": 2
       },
       {
@@ -21,13 +21,13 @@
         "order": 3
       },
       {
-        "pinName": "RXD",
-        "type": "digital_io",
+        "pinName": "GND",
+        "type": "ground",
         "order": 4
       },
       {
-        "pinName": "STATE",
-        "type": "digital_io",
+        "pinName": "VCC",
+        "type": "power",
         "order": 5
       },
       {

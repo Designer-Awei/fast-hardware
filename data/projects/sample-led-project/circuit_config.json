@@ -1,37 +1,38 @@
 {
-  "projectName": "LED亮度控制项目",
-  "version": "1.0.0", 
-  "description": "使用PWM控制LED亮度的示例项目，演示基本的模拟输出功能",
+  "projectName": "RGB LED颜色控制项目",
+  "version": "2.0.0",
+  "description": "使用按键控制RGB LED颜色循环变化的示例项目，演示数字输入和PWM输出的基本概念",
   "createdAt": "2024-01-01T10:00:00Z",
   "lastModified": "2024-01-01T15:30:00Z",
   "components": [
     {
-      "componentFile": "arduino-uno-r3.json",
-      "instanceId": "arduino-1",
+      "componentFile": "std-arduino-nano-220724.json",
+      "instanceId": "arduino-nano-1",
       "position": [200, 150],
       "orientation": "up",
       "properties": {
-        "customLabel": "主控板",
-        "boardType": "Arduino Uno R3"
+        "customLabel": "Arduino Nano主控板",
+        "boardType": "Arduino Nano"
       }
     },
     {
-      "componentFile": "led-5mm.json",
-      "instanceId": "led-1",
-      "position": [350, 100],
+      "componentFile": "std-rgb-三色-led-211130.json",
+      "instanceId": "rgb-led-1",
+      "position": [450, 100],
       "orientation": "up",
       "properties": {
-        "color": "red",
-        "customLabel": "状态指示灯"
+        "customLabel": "RGB三色LED",
+        "color": "rgb"
       }
     },
     {
-      "componentFile": "resistor-220.json",
-      "instanceId": "resistor-1",
-      "position": [300, 120],
-      "orientation": "right",
+      "componentFile": "std-按键开关模块-222902.json",
+      "instanceId": "button-1",
+      "position": [100, 100],
+      "orientation": "up",
       "properties": {
-        "customLabel": "限流电阻"
+        "customLabel": "颜色切换按键",
+        "type": "push_button"
       }
     }
   ],
@@ -39,23 +40,22 @@
     {
       "id": "wire-1",
       "source": {
-        "instanceId": "arduino-1",
-        "pinName": "D9"
+        "instanceId": "button-1",
+        "pinId": "side3-1"
       },
       "target": {
-        "instanceId": "resistor-1",
-        "pinName": "端子1"
+        "instanceId": "arduino-nano-1",
+        "pinId": "side1-11"
       },
       "wireType": "digital",
-      "description": "PWM信号输出到限流电阻",
+      "description": "按键信号输入到Arduino D2引脚",
       "routingPoints": [
-        [220, 170],
-        [280, 170],
-        [280, 125],
-        [300, 125]
+        [120, 110],
+        [180, 110],
+        [180, 140],
+        [200, 140]
       ],
       "style": {
-        "color": "#ff6b6b",
         "thickness": 2,
         "dashPattern": []
       }
@@ -63,23 +63,22 @@
     {
       "id": "wire-2",
       "source": {
-        "instanceId": "resistor-1",
-        "pinName": "端子2"
+        "instanceId": "arduino-nano-1",
+        "pinId": "side1-4"
       },
       "target": {
-        "instanceId": "led-1",
-        "pinName": "正极"
+        "instanceId": "rgb-led-1",
+        "pinId": "side3-1"
       },
       "wireType": "digital",
-      "description": "电阻连接到LED正极",
+      "description": "PWM信号输出控制红色LED",
       "routingPoints": [
-        [330, 125],
-        [340, 125],
-        [340, 115],
-        [350, 115]
+        [220, 170],
+        [380, 170],
+        [380, 110],
+        [430, 110]
       ],
       "style": {
-        "color": "#ff6b6b",
         "thickness": 2,
         "dashPattern": []
       }
@@ -87,23 +86,114 @@
     {
       "id": "wire-3",
       "source": {
-        "instanceId": "led-1",
-        "pinName": "负极"
+        "instanceId": "arduino-nano-1",
+        "pinId": "side1-3"
       },
       "target": {
-        "instanceId": "arduino-1",
-        "pinName": "GND"
+        "instanceId": "rgb-led-1",
+        "pinId": "side3-2"
       },
-      "wireType": "ground",
-      "description": "LED负极连接到地",
+      "wireType": "digital",
+      "description": "PWM信号输出控制绿色LED",
       "routingPoints": [
-        [350, 130],
-        [350, 180],
-        [240, 180],
-        [240, 165]
+        [240, 170],
+        [400, 170],
+        [400, 115],
+        [430, 115]
       ],
       "style": {
-        "color": "#2d3748",
+        "thickness": 2,
+        "dashPattern": []
+      }
+    },
+    {
+      "id": "wire-4",
+      "source": {
+        "instanceId": "arduino-nano-1",
+        "pinId": "side1-2"
+      },
+      "target": {
+        "instanceId": "rgb-led-1",
+        "pinId": "side3-3"
+      },
+      "wireType": "digital",
+      "description": "PWM信号输出控制蓝色LED",
+      "routingPoints": [
+        [260, 170],
+        [420, 170],
+        [420, 120],
+        [430, 120]
+      ],
+      "style": {
+        "thickness": 2,
+        "dashPattern": []
+      }
+    },
+    {
+      "id": "wire-5",
+      "source": {
+        "instanceId": "rgb-led-1",
+        "pinId": "side3-4"
+      },
+      "target": {
+        "instanceId": "arduino-nano-1",
+        "pinId": "side3-14"
+      },
+      "wireType": "ground",
+      "description": "RGB LED接地",
+      "routingPoints": [
+        [450, 130],
+        [450, 180],
+        [280, 180],
+        [280, 165]
+      ],
+      "style": {
+        "thickness": 2,
+        "dashPattern": []
+      }
+    },
+    {
+      "id": "wire-6",
+      "source": {
+        "instanceId": "button-1",
+        "pinId": "side3-2"
+      },
+      "target": {
+        "instanceId": "arduino-nano-1",
+        "pinId": "side3-12"
+      },
+      "wireType": "power",
+      "description": "按键电源供电",
+      "routingPoints": [
+        [100, 105],
+        [160, 105],
+        [160, 155],
+        [180, 155]
+      ],
+      "style": {
+        "thickness": 2,
+        "dashPattern": []
+      }
+    },
+    {
+      "id": "wire-7",
+      "source": {
+        "instanceId": "button-1",
+        "pinId": "side3-3"
+      },
+      "target": {
+        "instanceId": "arduino-nano-1",
+        "pinId": "side3-14"
+      },
+      "wireType": "ground",
+      "description": "按键接地",
+      "routingPoints": [
+        [100, 115],
+        [140, 115],
+        [140, 165],
+        [180, 165]
+      ],
+      "style": {
         "thickness": 2,
         "dashPattern": []
       }
@@ -113,6 +203,9 @@
     "gridSize": 10,
     "snapToGrid": true,
     "showGrid": true,
-    "backgroundColor": "#f8f9fa"
+    "backgroundColor": "#f8f9fa",
+    "zoom": 1.0,
+    "panX": 0,
+    "panY": 0
   }
 }
