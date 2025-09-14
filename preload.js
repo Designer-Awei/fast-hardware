@@ -79,5 +79,35 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   removeListener: (channel, callback) => {
     ipcRenderer.removeListener(channel, callback);
-  }
+  },
+
+  /**
+   * 选择目录对话框
+   */
+  selectDirectory: () => ipcRenderer.invoke('select-directory'),
+
+  /**
+   * 在外部浏览器中打开链接
+   */
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+
+  /**
+   * 获取设置值
+   */
+  getSettings: (key) => ipcRenderer.invoke('get-settings', key),
+
+  /**
+   * 保存设置值
+   */
+  saveSettings: (key, value) => ipcRenderer.invoke('save-settings', key, value),
+
+  /**
+   * 保存API密钥到env.local
+   */
+  saveApiKey: (apiKey) => ipcRenderer.invoke('save-api-key', apiKey),
+
+  /**
+   * 从env.local加载API密钥
+   */
+  loadApiKey: () => ipcRenderer.invoke('load-api-key')
 });

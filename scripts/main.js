@@ -169,7 +169,7 @@ class FastHardwareApp {
      * 切换到下一个标签页
      */
     switchToNextTab() {
-        const tabs = ['circuit-design', 'component-lib'];
+        const tabs = ['circuit-design', 'component-lib', 'settings'];
         const currentIndex = tabs.indexOf(this.currentTab);
         const nextIndex = (currentIndex + 1) % tabs.length;
         this.switchTab(tabs[nextIndex]);

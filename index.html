@@ -21,6 +21,9 @@
                 <button class="tab-btn" data-tab="component-lib">
                     元件管理
                 </button>
+                <button class="tab-btn" data-tab="settings">
+                    系统设置
+                </button>
             </div>
             <div class="nav-actions">
                 <button class="nav-btn" id="save-project">
@@ -312,6 +315,169 @@
                     </div>
                 </div>
             </div>
+
+            <!-- 设置标签页 -->
+            <div id="settings-tab" class="tab-content">
+                <div class="settings-page">
+                    <!-- 设置卡片网格 -->
+                    <div class="settings-grid">
+                        <!-- 存储设置卡片 -->
+                        <div class="setting-card">
+                            <div class="card-header">
+                                <div class="card-icon">
+                                    <span class="icon">📁</span>
+                                </div>
+                                <div class="card-info">
+                                    <h3>存储位置</h3>
+                                    <p>设置默认的项目保存位置</p>
+                                </div>
+                            </div>
+                            <div class="card-content">
+                                <div class="path-display" id="storage-path-display">
+                                    <span class="path-text">请选择存储位置</span>
+                                </div>
+                            </div>
+                            <div class="card-actions">
+                                <button class="btn btn-primary" id="change-storage-path">
+                                    <span class="btn-icon">📂</span>
+                                    选择文件夹
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- API设置卡片 -->
+                        <div class="setting-card">
+                            <div class="card-header">
+                                <div class="card-icon">
+                                    <span class="icon">🔑</span>
+                                </div>
+                                <div class="card-info">
+                                    <h3>AI API</h3>
+                                    <p>配置 SiliconFlow API 密钥</p>
+                                </div>
+                            </div>
+                            <div class="card-content">
+                                <div class="api-status" id="api-key-status">
+                                    <div class="status-badge status-unset">
+                                        <span class="status-dot"></span>
+                                        未配置
+                                    </div>
+                                    <p class="status-text">需要API密钥才能使用AI功能</p>
+                                </div>
+                            </div>
+                            <div class="card-actions">
+                                <button class="btn btn-secondary" id="configure-api-key">
+                                    <span class="btn-icon">⚙️</span>
+                                    配置密钥
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 快捷键卡片 -->
+                        <div class="setting-card">
+                            <div class="card-header">
+                                <div class="card-icon">
+                                    <span class="icon">⌨️</span>
+                                </div>
+                                <div class="card-info">
+                                    <h3>快捷键</h3>
+                                    <p>所有可用的键盘快捷键</p>
+                                </div>
+                            </div>
+                            <div class="card-content">
+                                <div class="shortcuts-grid">
+                                    <div class="shortcut-group">
+                                        <h5>画布操作</h5>
+                                        <div class="shortcut-item">
+                                            <kbd class="key">R</kbd>
+                                            <span>旋转选中元件</span>
+                                        </div>
+                                        <div class="shortcut-item">
+                                            <kbd class="key">Delete</kbd>
+                                            <span>删除选中元件</span>
+                                        </div>
+                                        <div class="shortcut-item">
+                                            <kbd class="key">Escape</kbd>
+                                            <span>取消选中</span>
+                                        </div>
+                                        <div class="shortcut-item">
+                                            <kbd class="key">鼠标滚轮</kbd>
+                                            <span>缩放画布</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="shortcut-group">
+                                        <h5>项目管理</h5>
+                                        <div class="shortcut-item">
+                                            <kbd class="key">Ctrl</kbd> + <kbd class="key">S</kbd>
+                                            <span>保存项目</span>
+                                        </div>
+                                        <div class="shortcut-item">
+                                            <kbd class="key">Ctrl</kbd> + <kbd class="key">O</kbd>
+                                            <span>打开项目</span>
+                                        </div>
+                                        <div class="shortcut-item">
+                                            <kbd class="key">Tab</kbd>
+                                            <span>切换标签页</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="shortcut-group">
+                                        <h5>元件设计</h5>
+                                        <div class="shortcut-item">
+                                            <kbd class="key">Escape</kbd>
+                                            <span>关闭引脚编辑对话框</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+
+                        <!-- 联系作者卡片 -->
+                        <div class="setting-card contact-card">
+                            <div class="card-header">
+                                <div class="card-icon">
+                                    <span class="icon">👨‍💻</span>
+                                </div>
+                                <div class="card-info">
+                                    <h3>联系我们</h3>
+                                    <p>获取帮助和反馈</p>
+                                </div>
+                            </div>
+                            <div class="card-content">
+                                <p class="contact-description">
+                                    访问我们的网站了解更多信息，或在GitHub上提交问题和建议。
+                                </p>
+                            </div>
+                            <div class="card-actions">
+                                <button class="btn btn-primary" id="contact-author">
+                                    <span class="btn-icon">🌐</span>
+                                    访问网站
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 关于卡片 -->
+                        <div class="setting-card about-card">
+                            <div class="card-header">
+                                <div class="card-icon">
+                                    <span class="icon">ℹ️</span>
+                                </div>
+                                <div class="card-info">
+                                    <h3>关于</h3>
+                                    <p>Fast Hardware v0.1.5</p>
+                                </div>
+                            </div>
+                            <div class="card-content">
+                                <p class="about-description">
+                                    一个智能化的硬件开发辅助工具，帮助新手快速完成电路设计和代码生成。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -323,6 +489,7 @@
     <script src="scripts/chat.js"></script>
     <script src="scripts/components.js"></script>
     <script src="scripts/component-designer.js"></script>
+    <script src="scripts/settings.js"></script>
     <script src="scripts/resizer.js"></script>
 </body>
 </html>

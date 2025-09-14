@@ -36,6 +36,11 @@ class TabManager {
             button: document.querySelector('[data-tab="component-lib"]')
         });
 
+        this.tabs.set('settings', {
+            element: document.getElementById('settings-tab'),
+            button: document.querySelector('[data-tab="settings"]')
+        });
+
         // 注册二级标签页
         this.subTabs.set('preview', {
             element: document.getElementById('preview-sub-tab'),

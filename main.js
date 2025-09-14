@@ -3,7 +3,7 @@
  * 纯Electron实现，无React框架
  */
 
-const { app, BrowserWindow, Menu, ipcMain, screen } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, screen, shell, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs').promises;
 
@@ -547,6 +547,206 @@ process.on('uncaughtException', (error) => {
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error('未处理的Promise拒绝:', reason);
+});
+
+// 设置相关IPC处理器（现在使用env.local文件）
+
+// 获取设置值（从env.local文件）
+ipcMain.handle('get-settings', async (event, key) => {
+  try {
+    const envPath = path.join(__dirname, 'env.local');
+
+    // 读取文件内容
+    const envContent = await fs.readFile(envPath, 'utf8');
+    const lines = envContent.split('\n');
+
+    // 根据key查找对应的值
+    const keyMap = {
+      'storagePath': 'PROJECT_STORAGE_PATH=',
+      'apiKey': 'SILICONFLOW_API_KEY='
+    };
+
+    const envKey = keyMap[key];
+    if (!envKey) {
+      return undefined;
+    }
+
+    for (const line of lines) {
+      if (line.startsWith(envKey)) {
+        const value = line.substring(envKey.length).trim();
+        return value || undefined;
+      }
+    }
+
+    // 如果没找到，返回undefined
+    return undefined;
+  } catch (error) {
+    console.log('读取设置失败:', error.message);
+    return undefined;
+  }
+});
+
+// 保存设置值（到env.local文件）
+ipcMain.handle('save-settings', async (event, key, value) => {
+  try {
+    const envPath = path.join(__dirname, 'env.local');
+    let envContent = '';
+
+    // 尝试读取现有文件内容
+    try {
+      envContent = await fs.readFile(envPath, 'utf8');
+    } catch {
+      // 如果文件不存在，使用默认内容
+      envContent = `# Fast Hardware Environment Configuration
+# This file contains sensitive configuration data
+# DO NOT commit this file to version control
+
+# SiliconFlow API Key
+SILICONFLOW_API_KEY=
+
+# Project Storage Path
+PROJECT_STORAGE_PATH=`;
+    }
+
+    // 更新或添加设置
+    const lines = envContent.split('\n');
+
+    const keyMap = {
+      'storagePath': 'PROJECT_STORAGE_PATH=',
+      'apiKey': 'SILICONFLOW_API_KEY='
+    };
+
+    const envKey = keyMap[key];
+    if (!envKey) {
+      return { success: false, error: '不支持的设置键' };
+    }
+
+    let found = false;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].startsWith(envKey)) {
+        lines[i] = `${envKey}${value}`;
+        found = true;
+        break;
+      }
+    }
+
+    // 如果没找到，添加新行
+    if (!found) {
+      lines.push(`${envKey}${value}`);
+    }
+
+    const newContent = lines.join('\n');
+
+    // 写入文件
+    await fs.writeFile(envPath, newContent, 'utf8');
+
+    console.log(`${key}已保存到env.local文件`);
+    return { success: true };
+  } catch (error) {
+    console.error('保存设置失败:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 选择目录对话框
+ipcMain.handle('select-directory', async () => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory'],
+      title: '选择项目存储位置',
+      buttonLabel: '选择文件夹'
+    });
+
+    return result;
+  } catch (error) {
+    console.error('选择目录对话框失败:', error);
+    return { canceled: true, error: error.message };
+  }
+});
+
+// 在外部浏览器中打开链接
+ipcMain.handle('open-external', async (event, url) => {
+  try {
+    await shell.openExternal(url);
+    return { success: true };
+  } catch (error) {
+    console.error('打开外部链接失败:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 保存API密钥到env.local文件
+ipcMain.handle('save-api-key', async (event, apiKey) => {
+  try {
+    const envPath = path.join(__dirname, 'env.local');
+    let envContent = '';
+
+    // 尝试读取现有文件内容
+    try {
+      envContent = await fs.readFile(envPath, 'utf8');
+    } catch {
+      // 如果文件不存在，使用默认内容
+      envContent = `# Fast Hardware Environment Configuration
+# This file contains sensitive configuration data
+# DO NOT commit this file to version control
+
+# SiliconFlow API Key
+SILICONFLOW_API_KEY=`;
+    }
+
+    // 更新或添加API密钥
+    const lines = envContent.split('\n');
+    let found = false;
+
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].startsWith('SILICONFLOW_API_KEY=')) {
+        lines[i] = `SILICONFLOW_API_KEY=${apiKey}`;
+        found = true;
+        break;
+      }
+    }
+
+    // 如果没找到，添加新行
+    if (!found) {
+      lines.push(`SILICONFLOW_API_KEY=${apiKey}`);
+    }
+
+    const newContent = lines.join('\n');
+
+    // 写入文件
+    await fs.writeFile(envPath, newContent, 'utf8');
+
+    console.log('API密钥已保存到env.local文件');
+    return { success: true };
+  } catch (error) {
+    console.error('保存API密钥失败:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 从env.local文件读取API密钥
+ipcMain.handle('load-api-key', async () => {
+  try {
+    const envPath = path.join(__dirname, 'env.local');
+
+    // 读取文件内容
+    const envContent = await fs.readFile(envPath, 'utf8');
+    const lines = envContent.split('\n');
+
+    // 查找API密钥
+    for (const line of lines) {
+      if (line.startsWith('SILICONFLOW_API_KEY=')) {
+        const apiKey = line.substring('SILICONFLOW_API_KEY='.length).trim();
+        return { success: true, apiKey: apiKey || null };
+      }
+    }
+
+    // 如果没找到，返回null
+    return { success: true, apiKey: null };
+  } catch (error) {
+    console.log('读取API密钥失败:', error.message);
+    return { success: false, error: error.message, apiKey: null };
+  }
 });
 
 console.log('主进程脚本加载完成');
