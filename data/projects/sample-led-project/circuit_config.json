@@ -1,7 +1,7 @@
 {
   "projectName": "RGB LED颜色控制项目",
-  "version": "2.0.0",
   "description": "使用按键控制RGB LED颜色循环变化的示例项目，演示数字输入和PWM输出的基本概念",
+  "version": "1.0.0",
   "createdAt": "2024-01-01T10:00:00Z",
   "lastModified": "2024-01-01T15:30:00Z",
   "components": [
@@ -41,171 +41,215 @@
       "id": "wire-1",
       "source": {
         "instanceId": "button-1",
-        "pinId": "side3-1"
+        "pinId": "side3-1",
+        "pinName": "SIG"
       },
       "target": {
         "instanceId": "arduino-nano-1",
-        "pinId": "side1-11"
+        "pinId": "side1-11",
+        "pinName": "D2"
       },
       "wireType": "digital",
       "description": "按键信号输入到Arduino D2引脚",
-      "routingPoints": [
-        [120, 110],
-        [180, 110],
-        [180, 140],
-        [200, 140]
+      "path": [
+        { "x": 120, "y": 110 },
+        { "x": 180, "y": 110 },
+        { "x": 180, "y": 140 },
+        { "x": 200, "y": 140 }
       ],
       "style": {
         "thickness": 2,
         "dashPattern": []
+      },
+      "metadata": {
+        "createdAt": "2024-01-01T10:00:00Z",
+        "connectionType": "digital"
       }
     },
     {
       "id": "wire-2",
       "source": {
         "instanceId": "arduino-nano-1",
-        "pinId": "side1-4"
+        "pinId": "side1-4",
+        "pinName": "D9"
       },
       "target": {
         "instanceId": "rgb-led-1",
-        "pinId": "side3-1"
+        "pinId": "side3-1",
+        "pinName": "R"
       },
       "wireType": "digital",
       "description": "PWM信号输出控制红色LED",
-      "routingPoints": [
-        [220, 170],
-        [380, 170],
-        [380, 110],
-        [430, 110]
+      "path": [
+        { "x": 220, "y": 170 },
+        { "x": 380, "y": 170 },
+        { "x": 380, "y": 110 },
+        { "x": 430, "y": 110 }
       ],
       "style": {
         "thickness": 2,
         "dashPattern": []
+      },
+      "metadata": {
+        "createdAt": "2024-01-01T10:00:00Z",
+        "connectionType": "digital"
       }
     },
     {
       "id": "wire-3",
       "source": {
         "instanceId": "arduino-nano-1",
-        "pinId": "side1-3"
+        "pinId": "side1-3",
+        "pinName": "D10"
       },
       "target": {
         "instanceId": "rgb-led-1",
-        "pinId": "side3-2"
+        "pinId": "side3-2",
+        "pinName": "G"
       },
       "wireType": "digital",
       "description": "PWM信号输出控制绿色LED",
-      "routingPoints": [
-        [240, 170],
-        [400, 170],
-        [400, 115],
-        [430, 115]
+      "path": [
+        { "x": 240, "y": 170 },
+        { "x": 400, "y": 170 },
+        { "x": 400, "y": 115 },
+        { "x": 430, "y": 115 }
       ],
       "style": {
         "thickness": 2,
         "dashPattern": []
+      },
+      "metadata": {
+        "createdAt": "2024-01-01T10:00:00Z",
+        "connectionType": "digital"
       }
     },
     {
       "id": "wire-4",
       "source": {
         "instanceId": "arduino-nano-1",
-        "pinId": "side1-2"
+        "pinId": "side1-2",
+        "pinName": "D11"
       },
       "target": {
         "instanceId": "rgb-led-1",
-        "pinId": "side3-3"
+        "pinId": "side3-3",
+        "pinName": "B"
       },
       "wireType": "digital",
       "description": "PWM信号输出控制蓝色LED",
-      "routingPoints": [
-        [260, 170],
-        [420, 170],
-        [420, 120],
-        [430, 120]
+      "path": [
+        { "x": 260, "y": 170 },
+        { "x": 420, "y": 170 },
+        { "x": 420, "y": 120 },
+        { "x": 430, "y": 120 }
       ],
       "style": {
         "thickness": 2,
         "dashPattern": []
+      },
+      "metadata": {
+        "createdAt": "2024-01-01T10:00:00Z",
+        "connectionType": "digital"
       }
     },
     {
       "id": "wire-5",
       "source": {
         "instanceId": "rgb-led-1",
-        "pinId": "side3-4"
+        "pinId": "side3-4",
+        "pinName": "GND"
       },
       "target": {
         "instanceId": "arduino-nano-1",
-        "pinId": "side3-14"
+        "pinId": "side3-14",
+        "pinName": "GND"
       },
       "wireType": "ground",
       "description": "RGB LED接地",
-      "routingPoints": [
-        [450, 130],
-        [450, 180],
-        [280, 180],
-        [280, 165]
+      "path": [
+        { "x": 450, "y": 130 },
+        { "x": 450, "y": 180 },
+        { "x": 280, "y": 180 },
+        { "x": 280, "y": 165 }
       ],
       "style": {
         "thickness": 2,
         "dashPattern": []
+      },
+      "metadata": {
+        "createdAt": "2024-01-01T10:00:00Z",
+        "connectionType": "ground"
       }
     },
     {
       "id": "wire-6",
       "source": {
         "instanceId": "button-1",
-        "pinId": "side3-2"
+        "pinId": "side3-2",
+        "pinName": "VCC"
       },
       "target": {
         "instanceId": "arduino-nano-1",
-        "pinId": "side3-12"
+        "pinId": "side3-12",
+        "pinName": "5V"
       },
       "wireType": "power",
       "description": "按键电源供电",
-      "routingPoints": [
-        [100, 105],
-        [160, 105],
-        [160, 155],
-        [180, 155]
+      "path": [
+        { "x": 100, "y": 105 },
+        { "x": 160, "y": 105 },
+        { "x": 160, "y": 155 },
+        { "x": 180, "y": 155 }
       ],
       "style": {
         "thickness": 2,
         "dashPattern": []
+      },
+      "metadata": {
+        "createdAt": "2024-01-01T10:00:00Z",
+        "connectionType": "power"
       }
     },
     {
       "id": "wire-7",
       "source": {
         "instanceId": "button-1",
-        "pinId": "side3-3"
+        "pinId": "side3-3",
+        "pinName": "GND"
       },
       "target": {
         "instanceId": "arduino-nano-1",
-        "pinId": "side3-14"
+        "pinId": "side3-14",
+        "pinName": "GND"
       },
       "wireType": "ground",
       "description": "按键接地",
-      "routingPoints": [
-        [100, 115],
-        [140, 115],
-        [140, 165],
-        [180, 165]
+      "path": [
+        { "x": 100, "y": 115 },
+        { "x": 140, "y": 115 },
+        { "x": 140, "y": 165 },
+        { "x": 180, "y": 165 }
       ],
       "style": {
         "thickness": 2,
         "dashPattern": []
+      },
+      "metadata": {
+        "createdAt": "2024-01-01T10:00:00Z",
+        "connectionType": "ground"
       }
     }
   ],
-  "canvasSettings": {
-    "gridSize": 10,
-    "snapToGrid": true,
-    "showGrid": true,
-    "backgroundColor": "#f8f9fa",
+  "canvas": {
+    "width": "auto",
+    "height": "auto",
     "zoom": 1.0,
     "panX": 0,
-    "panY": 0
+    "panY": 0,
+    "gridSize": 10,
+    "showGrid": true,
+    "minZoom": 0.1,
+    "maxZoom": 5.0
   }
 }
