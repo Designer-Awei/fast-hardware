@@ -1,0 +1,318 @@
+{
+  "projectName": "SEBT_测距读数",
+  "description": "使用三个模块搭建测距与读数功能",
+  "version": "1.0.0",
+  "createdAt": "2025-09-14T14:14:46.697Z",
+  "lastModified": "2025-09-14T14:14:46.697Z",
+  "components": [
+    {
+      "componentFile": "std-vl53l1x-激光红外测距传-222241.json",
+      "instanceId": "std-vl53l1x-激光红外测距传-222241_427_-210",
+      "position": [
+        465.89030632778486,
+        -178.18374334639896
+      ],
+      "orientation": "down",
+      "properties": {
+        "customLabel": "VL53L1X 激光红外测距传感器"
+      }
+    },
+    {
+      "componentFile": "std-arduino-nano-220724.json",
+      "instanceId": "std-arduino-nano-220724_465_-335",
+      "position": [
+        460.6683281339987,
+        -385.53617177001456
+      ],
+      "orientation": "up",
+      "properties": {
+        "customLabel": "Arduino Nano"
+      }
+    },
+    {
+      "componentFile": "std-4位数码管显示模块-211119.json",
+      "instanceId": "std-4位数码管显示模块-211119_474_-503",
+      "position": [
+        471.29299746130033,
+        -664.7456534173035
+      ],
+      "orientation": "right",
+      "properties": {
+        "customLabel": "4位数码管显示模块"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "conn_1757859144712_ix0d8tqdt",
+      "source": {
+        "instanceId": "std-arduino-nano-220724_465_-335",
+        "pinId": "side3-8",
+        "pinName": "A4"
+      },
+      "target": {
+        "instanceId": "std-vl53l1x-激光红外测距传-222241_427_-210",
+        "pinId": "side3-3",
+        "pinName": "SCL"
+      },
+      "path": [
+        {
+          "x": 460.6683281339987,
+          "y": -345.53617177001456
+        },
+        {
+          "x": 474.89030632778486,
+          "y": -198.18374334639896
+        }
+      ],
+      "style": {
+        "color": "#2196f3",
+        "width": 2
+      },
+      "metadata": {
+        "createdAt": "2025-09-14T14:14:46.697Z"
+      }
+    },
+    {
+      "id": "conn_1757859147000_bs6j5wx6s",
+      "source": {
+        "instanceId": "std-arduino-nano-220724_465_-335",
+        "pinId": "side3-7",
+        "pinName": "A3"
+      },
+      "target": {
+        "instanceId": "std-vl53l1x-激光红外测距传-222241_427_-210",
+        "pinId": "side3-4",
+        "pinName": "SDA"
+      },
+      "path": [
+        {
+          "x": 444.6683281339987,
+          "y": -345.53617177001456
+        },
+        {
+          "x": 456.89030632778486,
+          "y": -198.18374334639896
+        }
+      ],
+      "style": {
+        "color": "#2196f3",
+        "width": 2
+      },
+      "metadata": {
+        "createdAt": "2025-09-14T14:14:46.697Z"
+      }
+    },
+    {
+      "id": "conn_1757859150067_ax3gbhckp",
+      "source": {
+        "instanceId": "std-arduino-nano-220724_465_-335",
+        "pinId": "side3-14",
+        "pinName": "GND"
+      },
+      "target": {
+        "instanceId": "std-vl53l1x-激光红外测距传-222241_427_-210",
+        "pinId": "side3-2",
+        "pinName": "GND"
+      },
+      "path": [
+        {
+          "x": 556.6683281339988,
+          "y": -345.53617177001456
+        },
+        {
+          "x": 556.6683281339988,
+          "y": -271.85995755820676
+        },
+        {
+          "x": 492.89030632778486,
+          "y": -271.85995755820676
+        },
+        {
+          "x": 492.89030632778486,
+          "y": -198.18374334639896
+        }
+      ],
+      "style": {
+        "color": "#2196f3",
+        "width": 2
+      },
+      "metadata": {
+        "createdAt": "2025-09-14T14:14:46.697Z"
+      }
+    },
+    {
+      "id": "conn_1757859152063_c7l37mlnq",
+      "source": {
+        "instanceId": "std-arduino-nano-220724_465_-335",
+        "pinId": "side3-12",
+        "pinName": "5V"
+      },
+      "target": {
+        "instanceId": "std-vl53l1x-激光红外测距传-222241_427_-210",
+        "pinId": "side3-1",
+        "pinName": "VIN"
+      },
+      "path": [
+        {
+          "x": 524.6683281339988,
+          "y": -345.53617177001456
+        },
+        {
+          "x": 510.89030632778486,
+          "y": -198.18374334639896
+        }
+      ],
+      "style": {
+        "color": "#2196f3",
+        "width": 2
+      },
+      "metadata": {
+        "createdAt": "2025-09-14T14:14:46.697Z"
+      }
+    },
+    {
+      "id": "conn_1757859204745_1t32yey2w",
+      "source": {
+        "instanceId": "std-4位数码管显示模块-211119_474_-503",
+        "pinId": "side2-4",
+        "pinName": "GND"
+      },
+      "target": {
+        "instanceId": "std-arduino-nano-220724_465_-335",
+        "pinId": "side1-12",
+        "pinName": "GND"
+      },
+      "path": [
+        {
+          "x": 441.29299746130033,
+          "y": -584.7456534173036
+        },
+        {
+          "x": 441.29299746130033,
+          "y": -505.1409125936591
+        },
+        {
+          "x": 524.6683281339988,
+          "y": -505.1409125936591
+        },
+        {
+          "x": 524.6683281339988,
+          "y": -425.53617177001456
+        }
+      ],
+      "style": {
+        "color": "#2196f3",
+        "width": 2
+      },
+      "metadata": {
+        "createdAt": "2025-09-14T14:14:46.697Z"
+      }
+    },
+    {
+      "id": "conn_1757859207926_sfnc7i70m",
+      "source": {
+        "instanceId": "std-4位数码管显示模块-211119_474_-503",
+        "pinId": "side2-3",
+        "pinName": "VCC"
+      },
+      "target": {
+        "instanceId": "std-arduino-nano-220724_465_-335",
+        "pinId": "side3-12",
+        "pinName": "5V"
+      },
+      "path": [
+        {
+          "x": 461.29299746130033,
+          "y": -584.7456534173036
+        },
+        {
+          "x": 461.29299746130033,
+          "y": -465.1409125936591
+        },
+        {
+          "x": 524.6683281339988,
+          "y": -465.1409125936591
+        },
+        {
+          "x": 524.6683281339988,
+          "y": -345.53617177001456
+        }
+      ],
+      "style": {
+        "color": "#2196f3",
+        "width": 2
+      },
+      "metadata": {
+        "createdAt": "2025-09-14T14:14:46.697Z"
+      }
+    },
+    {
+      "id": "conn_1757859241945_glkufpmpm",
+      "source": {
+        "instanceId": "std-4位数码管显示模块-211119_474_-503",
+        "pinId": "side2-2",
+        "pinName": "DIO"
+      },
+      "target": {
+        "instanceId": "std-arduino-nano-220724_465_-335",
+        "pinId": "side1-9",
+        "pinName": "D4"
+      },
+      "path": [
+        {
+          "x": 481.29299746130033,
+          "y": -584.7456534173036
+        },
+        {
+          "x": 476.6683281339987,
+          "y": -425.53617177001456
+        }
+      ],
+      "style": {
+        "color": "#2196f3",
+        "width": 2
+      },
+      "metadata": {
+        "createdAt": "2025-09-14T14:14:46.697Z"
+      }
+    },
+    {
+      "id": "conn_1757859244613_b8zwdwqn7",
+      "source": {
+        "instanceId": "std-4位数码管显示模块-211119_474_-503",
+        "pinId": "side2-1",
+        "pinName": "CLK"
+      },
+      "target": {
+        "instanceId": "std-arduino-nano-220724_465_-335",
+        "pinId": "side1-10",
+        "pinName": "D3"
+      },
+      "path": [
+        {
+          "x": 501.29299746130033,
+          "y": -584.7456534173036
+        },
+        {
+          "x": 492.6683281339987,
+          "y": -425.53617177001456
+        }
+      ],
+      "style": {
+        "color": "#2196f3",
+        "width": 2
+      },
+      "metadata": {
+        "createdAt": "2025-09-14T14:14:46.697Z"
+      }
+    }
+  ],
+  "canvas": {
+    "zoom": 0.6925732356475627,
+    "panX": 182.45232809362466,
+    "panY": 553.3801821853451,
+    "gridSize": 10,
+    "showGrid": true
+  }
+}

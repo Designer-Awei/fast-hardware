@@ -1,0 +1,47 @@
+{
+  "name": "VL53L1X 激光红外测距传感器",
+  "id": "std-vl53l1x-激光红外测距传-222241",
+  "description": "测距范围4M，频率50Hz，最大全视场27°，电压3.3-5V，I2C接口",
+  "category": "sensor",
+  "pins": {
+    "side1": [],
+    "side2": [],
+    "side3": [
+      {
+        "pinName": "VIN",
+        "type": "power",
+        "order": 1
+      },
+      {
+        "pinName": "GND",
+        "type": "ground",
+        "order": 2
+      },
+      {
+        "pinName": "SCL",
+        "type": "digital_io",
+        "order": 3
+      },
+      {
+        "pinName": "SDA",
+        "type": "digital_io",
+        "order": 4
+      },
+      {
+        "pinName": "GPIO1",
+        "type": "digital_io",
+        "order": 5
+      },
+      {
+        "pinName": "XSHUT",
+        "type": "digital_io",
+        "order": 6
+      }
+    ],
+    "side4": []
+  },
+  "dimensions": {
+    "width": 240,
+    "height": 40
+  }
+}

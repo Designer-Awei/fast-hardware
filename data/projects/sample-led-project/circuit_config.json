@@ -1,38 +1,44 @@
 {
-  "projectName": "RGB LED颜色控制项目",
-  "description": "使用按键控制RGB LED颜色循环变化的示例项目，演示数字输入和PWM输出的基本概念",
+  "projectName": "sample-led-project",
+  "description": "通过Fast Hardware创建的电路设计",
   "version": "1.0.0",
-  "createdAt": "2024-01-01T10:00:00Z",
-  "lastModified": "2024-01-01T15:30:00Z",
+  "createdAt": "2025-09-14T12:31:03.588Z",
+  "lastModified": "2025-09-14T12:31:03.588Z",
   "components": [
     {
       "componentFile": "std-arduino-nano-220724.json",
       "instanceId": "arduino-nano-1",
-      "position": [200, 150],
+      "position": [
+        220.82040711370433,
+        -336.11972859086376
+      ],
       "orientation": "up",
       "properties": {
-        "customLabel": "Arduino Nano主控板",
-        "boardType": "Arduino Nano"
+        "customLabel": "Arduino Nano"
       }
     },
     {
       "componentFile": "std-rgb-三色-led-211130.json",
       "instanceId": "rgb-led-1",
-      "position": [450, 100],
-      "orientation": "up",
+      "position": [
+        190.73148978006066,
+        -121.99381056333544
+      ],
+      "orientation": "down",
       "properties": {
-        "customLabel": "RGB三色LED",
-        "color": "rgb"
+        "customLabel": "RGB 三色 LED"
       }
     },
     {
       "componentFile": "std-按键开关模块-222902.json",
       "instanceId": "button-1",
-      "position": [100, 100],
+      "position": [
+        230.69196877514045,
+        -546.1312185638673
+      ],
       "orientation": "up",
       "properties": {
-        "customLabel": "颜色切换按键",
-        "type": "push_button"
+        "customLabel": "按键开关模块"
       }
     }
   ],
@@ -50,19 +56,30 @@
         "pinName": "D2"
       },
       "wireType": "digital",
-      "description": "按键信号输入到Arduino D2引脚",
       "path": [
-        { "x": 120, "y": 110 },
-        { "x": 180, "y": 110 },
-        { "x": 180, "y": 140 },
-        { "x": 200, "y": 140 }
+        {
+          "x": 210.69196877514045,
+          "y": -526.1312185638673
+        },
+        {
+          "x": 210.69196877514045,
+          "y": -451.1254735773655
+        },
+        {
+          "x": 268.82040711370433,
+          "y": -451.1254735773655
+        },
+        {
+          "x": 268.82040711370433,
+          "y": -376.11972859086376
+        }
       ],
       "style": {
         "thickness": 2,
         "dashPattern": []
       },
       "metadata": {
-        "createdAt": "2024-01-01T10:00:00Z",
+        "createdAt": "2025-09-14T12:31:03.588Z",
         "connectionType": "digital"
       }
     },
@@ -79,19 +96,30 @@
         "pinName": "R"
       },
       "wireType": "digital",
-      "description": "PWM信号输出控制红色LED",
       "path": [
-        { "x": 220, "y": 170 },
-        { "x": 380, "y": 170 },
-        { "x": 380, "y": 110 },
-        { "x": 430, "y": 110 }
+        {
+          "x": 156.82040711370433,
+          "y": -376.11972859086376
+        },
+        {
+          "x": 156.82040711370433,
+          "y": -256.5567695770996
+        },
+        {
+          "x": 220.73148978006066,
+          "y": -256.5567695770996
+        },
+        {
+          "x": 220.73148978006066,
+          "y": -136.99381056333544
+        }
       ],
       "style": {
         "thickness": 2,
         "dashPattern": []
       },
       "metadata": {
-        "createdAt": "2024-01-01T10:00:00Z",
+        "createdAt": "2025-09-14T12:31:03.588Z",
         "connectionType": "digital"
       }
     },
@@ -108,19 +136,30 @@
         "pinName": "G"
       },
       "wireType": "digital",
-      "description": "PWM信号输出控制绿色LED",
       "path": [
-        { "x": 240, "y": 170 },
-        { "x": 400, "y": 170 },
-        { "x": 400, "y": 115 },
-        { "x": 430, "y": 115 }
+        {
+          "x": 140.82040711370433,
+          "y": -376.11972859086376
+        },
+        {
+          "x": 140.82040711370433,
+          "y": -256.5567695770996
+        },
+        {
+          "x": 200.73148978006066,
+          "y": -256.5567695770996
+        },
+        {
+          "x": 200.73148978006066,
+          "y": -136.99381056333544
+        }
       ],
       "style": {
         "thickness": 2,
         "dashPattern": []
       },
       "metadata": {
-        "createdAt": "2024-01-01T10:00:00Z",
+        "createdAt": "2025-09-14T12:31:03.588Z",
         "connectionType": "digital"
       }
     },
@@ -137,19 +176,30 @@
         "pinName": "B"
       },
       "wireType": "digital",
-      "description": "PWM信号输出控制蓝色LED",
       "path": [
-        { "x": 260, "y": 170 },
-        { "x": 420, "y": 170 },
-        { "x": 420, "y": 120 },
-        { "x": 430, "y": 120 }
+        {
+          "x": 124.82040711370433,
+          "y": -376.11972859086376
+        },
+        {
+          "x": 124.82040711370433,
+          "y": -256.5567695770996
+        },
+        {
+          "x": 180.73148978006066,
+          "y": -256.5567695770996
+        },
+        {
+          "x": 180.73148978006066,
+          "y": -136.99381056333544
+        }
       ],
       "style": {
         "thickness": 2,
         "dashPattern": []
       },
       "metadata": {
-        "createdAt": "2024-01-01T10:00:00Z",
+        "createdAt": "2025-09-14T12:31:03.588Z",
         "connectionType": "digital"
       }
     },
@@ -166,19 +216,30 @@
         "pinName": "GND"
       },
       "wireType": "ground",
-      "description": "RGB LED接地",
       "path": [
-        { "x": 450, "y": 130 },
-        { "x": 450, "y": 180 },
-        { "x": 280, "y": 180 },
-        { "x": 280, "y": 165 }
+        {
+          "x": 160.73148978006066,
+          "y": -136.99381056333544
+        },
+        {
+          "x": 160.73148978006066,
+          "y": -216.5567695770996
+        },
+        {
+          "x": 316.82040711370433,
+          "y": -216.5567695770996
+        },
+        {
+          "x": 316.82040711370433,
+          "y": -296.11972859086376
+        }
       ],
       "style": {
         "thickness": 2,
         "dashPattern": []
       },
       "metadata": {
-        "createdAt": "2024-01-01T10:00:00Z",
+        "createdAt": "2025-09-14T12:31:03.588Z",
         "connectionType": "ground"
       }
     },
@@ -195,19 +256,30 @@
         "pinName": "5V"
       },
       "wireType": "power",
-      "description": "按键电源供电",
       "path": [
-        { "x": 100, "y": 105 },
-        { "x": 160, "y": 105 },
-        { "x": 160, "y": 155 },
-        { "x": 180, "y": 155 }
+        {
+          "x": 230.69196877514045,
+          "y": -526.1312185638673
+        },
+        {
+          "x": 230.69196877514045,
+          "y": -411.1254735773655
+        },
+        {
+          "x": 284.82040711370433,
+          "y": -411.1254735773655
+        },
+        {
+          "x": 284.82040711370433,
+          "y": -296.11972859086376
+        }
       ],
       "style": {
         "thickness": 2,
         "dashPattern": []
       },
       "metadata": {
-        "createdAt": "2024-01-01T10:00:00Z",
+        "createdAt": "2025-09-14T12:31:03.588Z",
         "connectionType": "power"
       }
     },
@@ -224,32 +296,39 @@
         "pinName": "GND"
       },
       "wireType": "ground",
-      "description": "按键接地",
       "path": [
-        { "x": 100, "y": 115 },
-        { "x": 140, "y": 115 },
-        { "x": 140, "y": 165 },
-        { "x": 180, "y": 165 }
+        {
+          "x": 250.69196877514045,
+          "y": -526.1312185638673
+        },
+        {
+          "x": 250.69196877514045,
+          "y": -411.1254735773655
+        },
+        {
+          "x": 316.82040711370433,
+          "y": -411.1254735773655
+        },
+        {
+          "x": 316.82040711370433,
+          "y": -296.11972859086376
+        }
       ],
       "style": {
         "thickness": 2,
         "dashPattern": []
       },
       "metadata": {
-        "createdAt": "2024-01-01T10:00:00Z",
+        "createdAt": "2025-09-14T12:31:03.588Z",
         "connectionType": "ground"
       }
     }
   ],
   "canvas": {
-    "width": "auto",
-    "height": "auto",
-    "zoom": 1.0,
-    "panX": 0,
-    "panY": 0,
+    "zoom": 1,
+    "panX": 50,
+    "panY": 580,
     "gridSize": 10,
-    "showGrid": true,
-    "minZoom": 0.1,
-    "maxZoom": 5.0
+    "showGrid": true
   }
 }

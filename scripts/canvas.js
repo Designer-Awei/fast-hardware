@@ -700,9 +700,12 @@ class CanvasManager {
      */
     updateConnectionsForComponent(componentId) {
         // 找到与此元件相关的所有连线
-        const relatedConnections = this.connections.filter(conn =>
-            conn.source.componentId === componentId || conn.target.componentId === componentId
-        );
+        // 支持手动创建的连线（使用componentId）和导入的连线（使用instanceId）
+        const relatedConnections = this.connections.filter(conn => {
+            const sourceId = conn.source.instanceId || conn.source.componentId;
+            const targetId = conn.target.instanceId || conn.target.componentId;
+            return sourceId === componentId || targetId === componentId;
+        });
 
         // 为每个相关连线更新路径
         relatedConnections.forEach(connection => {
@@ -716,8 +719,12 @@ class CanvasManager {
      */
     updateConnectionPath(connection) {
         // 获取源元件和目标元件
-        const sourceComponent = this.components.find(comp => comp.id === connection.source.componentId);
-        const targetComponent = this.components.find(comp => comp.id === connection.target.componentId);
+        // 支持手动创建的连线（使用componentId）和导入的连线（使用instanceId）
+        const sourceId = connection.source.instanceId || connection.source.componentId;
+        const targetId = connection.target.instanceId || connection.target.componentId;
+
+        const sourceComponent = this.components.find(comp => comp.id === sourceId);
+        const targetComponent = this.components.find(comp => comp.id === targetId);
 
         if (!sourceComponent || !targetComponent) {
             console.warn('无法找到连线相关的元件:', connection);
@@ -1643,24 +1650,35 @@ class CanvasManager {
         // 根据选中状态设置样式
         if (connection.selected) {
             this.ctx.strokeStyle = '#ff4444'; // 红色（选中状态）
-            this.ctx.lineWidth = (connection.style.width + 2) / this.scale; // 更粗
+            this.ctx.lineWidth = (connection.style.thickness + 2) / this.scale; // 更粗
             this.ctx.setLineDash([8 / this.scale, 4 / this.scale]); // 虚线
         } else {
-            this.ctx.strokeStyle = connection.style.color;
-            this.ctx.lineWidth = connection.style.width / this.scale;
+            // 使用默认颜色或样式中定义的颜色
+            this.ctx.strokeStyle = connection.style.color || '#2196f3'; // 默认蓝色
+            this.ctx.lineWidth = connection.style.thickness / this.scale;
         }
 
         this.ctx.lineCap = 'round';
         this.ctx.lineJoin = 'round';
 
         this.ctx.beginPath();
-        connection.path.forEach((point, index) => {
-            if (index === 0) {
-                this.ctx.moveTo(point.x, point.y);
-            } else {
-                this.ctx.lineTo(point.x, point.y);
-            }
-        });
+
+        // 检查是否有有效的路径
+        if (connection.path && connection.path.length >= 2) {
+            // 使用预定义路径
+            connection.path.forEach((point, index) => {
+                if (index === 0) {
+                    this.ctx.moveTo(point.x, point.y);
+                } else {
+                    this.ctx.lineTo(point.x, point.y);
+                }
+            });
+        } else if (connection.source.position && connection.target.position) {
+            // 使用端点位置
+            this.ctx.moveTo(connection.source.position.x, connection.source.position.y);
+            this.ctx.lineTo(connection.target.position.x, connection.target.position.y);
+        }
+
         this.ctx.stroke();
 
         // 恢复线条样式
@@ -1823,7 +1841,6 @@ class CanvasManager {
 
         // 添加旋转和方向的日志
         const direction = this.getDirectionFromRotation(rotation);
-        console.log(`元件 "${componentName}" 旋转角度: ${rotation}°, 方向: ${direction}, 文字旋转角度: ${(textRotation * 180 / Math.PI).toFixed(1)}°`);
 
         // 应用文字旋转
         if (textRotation !== 0) {
@@ -2059,17 +2076,47 @@ class CanvasManager {
      * @param {Object} componentData - 元件数据
      * @param {number} x - X坐标
      * @param {number} y - Y坐标
+     * @param {string} instanceId - 元件实例ID（可选，用于项目导入）
+     * @param {string} orientation - 元件朝向（可选，up/down/left/right）
      */
-    addComponent(componentData, x, y) {
-        console.log('添加元件:', componentData.name, '位置:', x, y);
+    addComponent(componentData, x, y, instanceId = null, orientation = 'up') {
+
+        // 将orientation转换为direction
+        const directionMap = {
+            'up': 'up',
+            'down': 'down',
+            'left': 'left',
+            'right': 'right'
+        };
+        const direction = directionMap[orientation] || 'up';
+
+        // 根据朝向设置旋转角度
+        const rotationMap = {
+            'up': 0,
+            'right': 90,
+            'down': 180,
+            'left': 270
+        };
+        const rotation = rotationMap[orientation] || 0;
 
         // 创建元件实例
+        let componentId;
+        if (instanceId) {
+            // 如果提供了instanceId，使用它（用于项目加载）
+            componentId = instanceId;
+        } else {
+            // 否则生成一个稳定的ID（基于元件类型和位置）
+            const baseId = componentData.id || 'unknown';
+            const posKey = `${Math.round(x)}_${Math.round(y)}`;
+            componentId = `${baseId}_${posKey}`;
+        }
+
         const componentInstance = {
-            id: Date.now() + Math.random(), // 临时ID
+            id: componentId, // 使用稳定的ID
             data: componentData,
             position: { x, y },
-            rotation: 0,
-            direction: 'up', // 默认方向为向上
+            rotation: rotation, // 根据orientation设置旋转角度
+            direction: direction, // 根据orientation设置方向
             scale: 1,
             selected: false // 初始状态为未选中
         };
@@ -2084,11 +2131,122 @@ class CanvasManager {
     }
 
     /**
+     * 添加连线到画布
+     * @param {Object} connectionData - 连线数据
+     */
+    addConnection(connectionData) {
+        console.log('添加连线:', connectionData.id, '从', connectionData.source.instanceId, '到', connectionData.target.instanceId);
+        console.log('连线数据详情:', {
+            source: connectionData.source,
+            target: connectionData.target
+        });
+
+        // 查找源元件和目标元件
+        // 支持手动创建的连线（使用componentId）和导入的连线（使用instanceId）
+        const sourceId = connectionData.source.instanceId || connectionData.source.componentId;
+        const targetId = connectionData.target.instanceId || connectionData.target.componentId;
+
+        const sourceComponent = this.components.find(comp => comp.id === sourceId);
+        const targetComponent = this.components.find(comp => comp.id === targetId);
+
+        if (!sourceComponent || !targetComponent) {
+            console.warn('无法找到连线的源元件或目标元件:', sourceId, targetId);
+            console.warn('连线数据:', connectionData);
+            return null;
+        }
+
+        // 计算连线端点位置
+        const sourcePos = this.calculatePinPosition(sourceComponent, connectionData.source.pinId);
+        const targetPos = this.calculatePinPosition(targetComponent, connectionData.target.pinId);
+
+        if (!sourcePos || !targetPos) {
+            console.warn('无法计算连线端点位置');
+            return null;
+        }
+
+        // 创建连线实例
+        const connectionInstance = {
+            id: connectionData.id,
+            source: {
+                ...connectionData.source,
+                instanceId: connectionData.source.instanceId || connectionData.source.componentId || sourceComponent.id, // 确保instanceId正确设置
+                componentId: sourceComponent.id, // 添加componentId以支持更新逻辑
+                position: sourcePos
+            },
+            target: {
+                ...connectionData.target,
+                instanceId: connectionData.target.instanceId || connectionData.target.componentId || targetComponent.id, // 确保instanceId正确设置
+                componentId: targetComponent.id, // 添加componentId以支持更新逻辑
+                position: targetPos
+            },
+            path: connectionData.path || [],
+            wireType: connectionData.wireType,
+            style: connectionData.style || { thickness: 2, dashPattern: [] },
+            selected: false
+        };
+
+        // 如果没有自定义路径，使用计算的端点位置
+        if (!connectionInstance.path || connectionInstance.path.length < 2) {
+            connectionInstance.path = [sourcePos, targetPos];
+        }
+
+        // 添加到连线列表
+        this.connections.push(connectionInstance);
+
+        // 触发重新渲染，确保连线立即可见
+        this.draw();
+
+        return connectionInstance;
+    }
+
+    /**
      * 清除所有元件
      */
     clearComponents() {
         this.components = [];
+        this.connections = []; // 同时清除连线
         this.draw();
+    }
+
+    /**
+     * 计算元件上指定引脚的实际位置
+     * @param {Object} component - 元件实例
+     * @param {string} pinId - 引脚ID (格式: side-order)
+     * @returns {Object} 引脚位置 {x, y}
+     */
+    calculatePinPosition(component, pinId) {
+        const { data, position, rotation } = component;
+        const { x: compX, y: compY } = position;
+
+        // 计算元件边界
+        const width = data.dimensions?.width || 80;
+        const height = data.dimensions?.height || 60;
+        const halfWidth = width / 2;
+        const halfHeight = height / 2;
+
+        // 创建元件矩形区域（未旋转状态）
+        const componentRect = {
+            x: compX - halfWidth,
+            y: compY - halfHeight,
+            width: width,
+            height: height
+        };
+
+        // 获取所有引脚位置（未旋转状态下的位置）
+        const pinCalculator = new CanvasPinPositionCalculator(componentRect);
+        const allPins = pinCalculator.calculateAllPositions(data.pins);
+
+        // 找到指定引脚
+        const pin = allPins.find(p => p.pinId === pinId);
+        if (!pin) {
+            console.warn('未找到引脚:', pinId, '在元件:', data.name);
+            return { x: compX, y: compY }; // 返回元件中心作为默认位置
+        }
+
+        // 对引脚位置进行旋转变换
+        const rotatedPosition = this.rotatePoint(pin.position, { x: compX, y: compY }, rotation);
+
+        return rotatedPosition;
     }
 
     /**
@@ -2162,6 +2320,10 @@ let canvasManager;
 document.addEventListener('DOMContentLoaded', () => {
     canvasManager = new CanvasManager();
 
+    // 导出到全局作用域（在实例创建后）
+    window.CanvasManager = CanvasManager;
+    window.canvasManager = canvasManager;
+
     // 监听标签页切换事件，确保画布正确渲染
     document.addEventListener('tabActivated', (e) => {
         if (e.detail.tabName === 'circuit') {
@@ -2203,10 +2365,6 @@ document.addEventListener('DOMContentLoaded', () => {
         observer.observe(canvasElement.parentElement);
     }
 });
-
-// 导出到全局作用域
-window.CanvasManager = CanvasManager;
-window.canvasManager = canvasManager;
 
 /**
  * 画布引脚位置计算器
@@ -2255,6 +2413,7 @@ class CanvasPinPositionCalculator {
             const position = this.getPinPosition(side, index, pins.length);
             positions.push({
                 ...pin,
+                pinId: `${side}-${pin.order}`, // 生成 pinId: side-order 格式
                 position: position,
                 side: side
             });

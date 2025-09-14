@@ -1,0 +1,168 @@
+{
+  "name": "Arduino Nano",
+  "id": "std-arduino-nano-220724",
+  "description": "基于MEGA328P处理器的开发板",
+  "category": "microcontroller",
+  "pins": {
+    "side1": [
+      {
+        "pinName": "D12",
+        "type": "digital_io",
+        "order": 1
+      },
+      {
+        "pinName": "D11",
+        "type": "digital_io",
+        "order": 2
+      },
+      {
+        "pinName": "D10",
+        "type": "digital_io",
+        "order": 3
+      },
+      {
+        "pinName": "D9",
+        "type": "digital_io",
+        "order": 4
+      },
+      {
+        "pinName": "D8",
+        "type": "digital_io",
+        "order": 5
+      },
+      {
+        "pinName": "D7",
+        "type": "digital_io",
+        "order": 6
+      },
+      {
+        "pinName": "D6",
+        "type": "digital_io",
+        "order": 7
+      },
+      {
+        "pinName": "D5",
+        "type": "digital_io",
+        "order": 8
+      },
+      {
+        "pinName": "D4",
+        "type": "digital_io",
+        "order": 9
+      },
+      {
+        "pinName": "D3",
+        "type": "digital_io",
+        "order": 10
+      },
+      {
+        "pinName": "D2",
+        "type": "digital_io",
+        "order": 11
+      },
+      {
+        "pinName": "GND",
+        "type": "ground",
+        "order": 12
+      },
+      {
+        "pinName": "RST",
+        "type": "special",
+        "order": 13
+      },
+      {
+        "pinName": "RX0",
+        "type": "special",
+        "order": 14
+      },
+      {
+        "pinName": "TX1",
+        "type": "special",
+        "order": 15
+      }
+    ],
+    "side2": [],
+    "side3": [
+      {
+        "pinName": "D13",
+        "type": "digital_io",
+        "order": 1
+      },
+      {
+        "pinName": "3V3",
+        "type": "power",
+        "order": 2
+      },
+      {
+        "pinName": "REF",
+        "type": "special",
+        "order": 3
+      },
+      {
+        "pinName": "A0",
+        "type": "analog_io",
+        "order": 4
+      },
+      {
+        "pinName": "A1",
+        "type": "analog_io",
+        "order": 5
+      },
+      {
+        "pinName": "A2",
+        "type": "analog_io",
+        "order": 6
+      },
+      {
+        "pinName": "A3",
+        "type": "analog_io",
+        "order": 7
+      },
+      {
+        "pinName": "A4",
+        "type": "analog_io",
+        "order": 8
+      },
+      {
+        "pinName": "A5",
+        "type": "analog_io",
+        "order": 9
+      },
+      {
+        "pinName": "A6",
+        "type": "analog_io",
+        "order": 10
+      },
+      {
+        "pinName": "A7",
+        "type": "analog_io",
+        "order": 11
+      },
+      {
+        "pinName": "5V",
+        "type": "power",
+        "order": 12
+      },
+      {
+        "pinName": "RST",
+        "type": "special",
+        "order": 13
+      },
+      {
+        "pinName": "GND",
+        "type": "ground",
+        "order": 14
+      },
+      {
+        "pinName": "VIN",
+        "type": "power",
+        "order": 15
+      }
+    ],
+    "side4": []
+  },
+  "dimensions": {
+    "width": 350,
+    "height": 80
+  }
+}

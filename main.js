@@ -255,9 +255,24 @@ ipcMain.handle('get-platform', () => {
 });
 
 // 文件操作IPC
-ipcMain.handle('save-file', async (event, filePath, content) => {
+ipcMain.handle('save-file', async (event, filePath, content, createDir = false) => {
   const fs = require('fs').promises;
+  const path = require('path');
+
   try {
+    // 如果需要创建目录且内容为空，只创建目录
+    if (createDir && (!content || content === '')) {
+      await fs.mkdir(filePath, { recursive: true });
+      return { success: true };
+    }
+
+    // 如果需要创建目录，先创建父目录
+    if (createDir) {
+      const dir = path.dirname(filePath);
+      await fs.mkdir(dir, { recursive: true });
+    }
+
+    // 写入文件内容
     await fs.writeFile(filePath, content, 'utf8');
     return { success: true };
   } catch (error) {

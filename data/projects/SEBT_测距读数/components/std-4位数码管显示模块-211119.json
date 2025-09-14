@@ -1,0 +1,37 @@
+{
+  "name": "4位数码管显示模块",
+  "id": "std-4位数码管显示模块-211119",
+  "description": "四位共阴极数码管，显示四位读数，带有时钟点",
+  "category": "auxiliary",
+  "pins": {
+    "side1": [],
+    "side2": [
+      {
+        "pinName": "CLK",
+        "type": "digital_io",
+        "order": 1
+      },
+      {
+        "pinName": "DIO",
+        "type": "digital_io",
+        "order": 2
+      },
+      {
+        "pinName": "VCC",
+        "type": "power",
+        "order": 3
+      },
+      {
+        "pinName": "GND",
+        "type": "ground",
+        "order": 4
+      }
+    ],
+    "side3": [],
+    "side4": []
+  },
+  "dimensions": {
+    "width": 160,
+    "height": 110
+  }
+}

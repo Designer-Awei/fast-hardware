@@ -22,12 +22,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /**
    * 保存文件
    */
-  saveFile: (filePath, content) => ipcRenderer.invoke('save-file', filePath, content),
+  saveFile: async (filePath, content, createDir = false) => {
+    const result = await ipcRenderer.invoke('save-file', filePath, content, createDir);
+    if (result.success) {
+      return result;
+    } else {
+      throw new Error(result.error);
+    }
+  },
 
   /**
    * 加载文件
    */
-  loadFile: (filePath) => ipcRenderer.invoke('load-file', filePath),
+  loadFile: async (filePath) => {
+    const result = await ipcRenderer.invoke('load-file', filePath);
+    if (result.success) {
+      return result.content;
+    } else {
+      throw new Error(result.error);
+    }
+  },
 
   /**
    * 读取元件文件夹
