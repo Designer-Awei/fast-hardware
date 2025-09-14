@@ -153,10 +153,20 @@ async function createWindow() {
     icon: path.join(__dirname, 'assets/icon.png')
   };
 
-  // 如果有有效的窗口位置，设置位置
+  // 设置窗口位置
   if (windowBounds) {
+    // 使用保存的有效位置
     windowOptions.x = windowBounds.x;
     windowOptions.y = windowBounds.y;
+  } else {
+    // 没有有效位置时，将窗口居中显示
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+    const windowWidth = windowOptions.width;
+    const windowHeight = windowOptions.height;
+
+    windowOptions.x = Math.round((screenWidth - windowWidth) / 2);
+    windowOptions.y = Math.round((screenHeight - windowHeight) / 2);
   }
 
   mainWindow = new BrowserWindow(windowOptions);

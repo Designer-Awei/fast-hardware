@@ -10,7 +10,7 @@
 
 [🇨🇳 中文](README.md) | [🇺🇸 English](README_EN.md)
 
-[![Version](https://img.shields.io/badge/version-0.1.5-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
+[![Version](https://img.shields.io/badge/version-0.1.6-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
 [![Electron](https://img.shields.io/badge/Electron-27.0.0-47848F.svg)](https://electronjs.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-16+-339933.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -59,7 +59,7 @@
 ### 🚧 LLM智能助手 (规划中)
 自然语言交互，智能推荐硬件方案，自动生成电路设计。
 
-## ✨ 最新特性 (v0.1.4)
+## ✨ 最新特性 (v0.1.6)
 
 - **智能元件管理**: 编辑模式覆盖原文件，复用模式生成新文件
 - **元件批量管理**: 可视化选择和删除多个元件，提升维护效率
