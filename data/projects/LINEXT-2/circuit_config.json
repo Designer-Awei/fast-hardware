@@ -1,0 +1,484 @@
+{
+  "projectName": "LINEXT-2",
+  "description": "",
+  "version": "1.0.0",
+  "createdAt": "2025-09-22T07:54:44.346Z",
+  "lastModified": "2025-09-22T07:54:44.346Z",
+  "components": [
+    {
+      "componentFile": "std-arduino-nano-220724.json",
+      "instanceId": "std-arduino-nano-220724_488_-297",
+      "position": [
+        488,
+        -297
+      ],
+      "orientation": "up",
+      "properties": {
+        "customLabel": "Arduino Nano"
+      }
+    },
+    {
+      "componentFile": "std-131寸-oled显示屏-120000.json",
+      "instanceId": "std-131寸-oled显示屏-120000_485_-483",
+      "position": [
+        662.6612935442653,
+        -89.89205168957157
+      ],
+      "orientation": "up",
+      "properties": {
+        "customLabel": "1.31寸 OLED显示屏"
+      }
+    },
+    {
+      "componentFile": "std-六轴传感器-mpu6050-120000.json",
+      "instanceId": "std-六轴传感器-mpu6050-120000_554_-131",
+      "position": [
+        401.21400607887983,
+        -99.42386638919534
+      ],
+      "orientation": "down",
+      "properties": {
+        "customLabel": "六轴传感器 MPU-6050"
+      }
+    },
+    {
+      "componentFile": "std-按键开关模块-222902.json",
+      "instanceId": "std-按键开关模块-222902_663_-134",
+      "position": [
+        630.8933162617677,
+        -467.5400171078995
+      ],
+      "orientation": "up",
+      "properties": {
+        "customLabel": "按键开关模块"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "conn_1758527166922_soceh20re",
+      "source": {
+        "instanceId": "std-按键开关模块-222902_663_-134",
+        "pinId": "side3-2",
+        "pinName": "VCC"
+      },
+      "target": {
+        "instanceId": "std-arduino-nano-220724_488_-297",
+        "pinId": "side3-12",
+        "pinName": "5V"
+      },
+      "path": [
+        {
+          "x": 630.8933162617677,
+          "y": -447.5400171078995
+        },
+        {
+          "x": 630.8933162617677,
+          "y": -352.27000855394976
+        },
+        {
+          "x": 552,
+          "y": -352.27000855394976
+        },
+        {
+          "x": 552,
+          "y": -257
+        }
+      ],
+      "style": {
+        "color": "#2196f3",
+        "width": 2
+      },
+      "metadata": {
+        "createdAt": "2025-09-22T07:54:44.345Z"
+      }
+    },
+    {
+      "id": "conn_1758527174256_vfs3twijj",
+      "source": {
+        "instanceId": "std-按键开关模块-222902_663_-134",
+        "pinId": "side3-3",
+        "pinName": "GND"
+      },
+      "target": {
+        "instanceId": "std-arduino-nano-220724_488_-297",
+        "pinId": "side1-12",
+        "pinName": "GND"
+      },
+      "path": [
+        {
+          "x": 650.8933162617677,
+          "y": -447.5400171078995
+        },
+        {
+          "x": 650.8933162617677,
+          "y": -392.27000855394976
+        },
+        {
+          "x": 552,
+          "y": -392.27000855394976
+        },
+        {
+          "x": 552,
+          "y": -337
+        }
+      ],
+      "style": {
+        "color": "#2196f3",
+        "width": 2
+      },
+      "metadata": {
+        "createdAt": "2025-09-22T07:54:44.346Z"
+      }
+    },
+    {
+      "id": "conn_1758527181907_bgo39ja77",
+      "source": {
+        "instanceId": "std-按键开关模块-222902_663_-134",
+        "pinId": "side3-1",
+        "pinName": "S"
+      },
+      "target": {
+        "instanceId": "std-arduino-nano-220724_488_-297",
+        "pinId": "side1-11",
+        "pinName": "D2"
+      },
+      "path": [
+        {
+          "x": 610.8933162617677,
+          "y": -447.5400171078995
+        },
+        {
+          "x": 610.8933162617677,
+          "y": -392.27000855394976
+        },
+        {
+          "x": 536,
+          "y": -392.27000855394976
+        },
+        {
+          "x": 536,
+          "y": -337
+        }
+      ],
+      "style": {
+        "color": "#2196f3",
+        "width": 2
+      },
+      "metadata": {
+        "createdAt": "2025-09-22T07:54:44.346Z"
+      }
+    },
+    {
+      "id": "conn_1758527266920_95xj15aph",
+      "source": {
+        "instanceId": "std-六轴传感器-mpu6050-120000_554_-131",
+        "pinId": "side3-1",
+        "pinName": "VCC"
+      },
+      "target": {
+        "instanceId": "std-arduino-nano-220724_488_-297",
+        "pinId": "side3-12",
+        "pinName": "5V"
+      },
+      "path": [
+        {
+          "x": 457.21400607887983,
+          "y": -139.42386638919535
+        },
+        {
+          "x": 457.21400607887983,
+          "y": -198.2119331945977
+        },
+        {
+          "x": 552,
+          "y": -198.2119331945977
+        },
+        {
+          "x": 552,
+          "y": -257
+        }
+      ],
+      "style": {
+        "color": "#2196f3",
+        "width": 2
+      },
+      "metadata": {
+        "createdAt": "2025-09-22T07:54:44.346Z"
+      }
+    },
+    {
+      "id": "conn_1758527269410_exzmovepx",
+      "source": {
+        "instanceId": "std-131寸-oled显示屏-120000_485_-483",
+        "pinId": "side1-2",
+        "pinName": "VCC"
+      },
+      "target": {
+        "instanceId": "std-arduino-nano-220724_488_-297",
+        "pinId": "side3-12",
+        "pinName": "5V"
+      },
+      "path": [
+        {
+          "x": 652.6612935442653,
+          "y": -109.89205168957157
+        },
+        {
+          "x": 652.6612935442653,
+          "y": -183.44602584478577
+        },
+        {
+          "x": 552,
+          "y": -183.44602584478577
+        },
+        {
+          "x": 552,
+          "y": -257
+        }
+      ],
+      "style": {
+        "color": "#2196f3",
+        "width": 2
+      },
+      "metadata": {
+        "createdAt": "2025-09-22T07:54:44.346Z"
+      }
+    },
+    {
+      "id": "conn_1758527304290_5fdg6zibk",
+      "source": {
+        "instanceId": "std-六轴传感器-mpu6050-120000_554_-131",
+        "pinId": "side3-2",
+        "pinName": "GND"
+      },
+      "target": {
+        "instanceId": "std-arduino-nano-220724_488_-297",
+        "pinId": "side3-14",
+        "pinName": "GND"
+      },
+      "path": [
+        {
+          "x": 441.21400607887983,
+          "y": -139.42386638919535
+        },
+        {
+          "x": 512.6070030394399,
+          "y": -139.42386638919535
+        },
+        {
+          "x": 512.6070030394399,
+          "y": -257
+        },
+        {
+          "x": 584,
+          "y": -257
+        }
+      ],
+      "style": {
+        "color": "#2196f3",
+        "width": 2
+      },
+      "metadata": {
+        "createdAt": "2025-09-22T07:54:44.346Z"
+      }
+    },
+    {
+      "id": "conn_1758527313710_b414jfxyk",
+      "source": {
+        "instanceId": "std-131寸-oled显示屏-120000_485_-483",
+        "pinId": "side1-1",
+        "pinName": "GND"
+      },
+      "target": {
+        "instanceId": "std-arduino-nano-220724_488_-297",
+        "pinId": "side3-14",
+        "pinName": "GND"
+      },
+      "path": [
+        {
+          "x": 632.6612935442653,
+          "y": -109.89205168957157
+        },
+        {
+          "x": 632.6612935442653,
+          "y": -183.44602584478577
+        },
+        {
+          "x": 584,
+          "y": -183.44602584478577
+        },
+        {
+          "x": 584,
+          "y": -257
+        }
+      ],
+      "style": {
+        "color": "#2196f3",
+        "width": 2
+      },
+      "metadata": {
+        "createdAt": "2025-09-22T07:54:44.346Z"
+      }
+    },
+    {
+      "id": "conn_1758527396625_09offg2iq",
+      "source": {
+        "instanceId": "std-六轴传感器-mpu6050-120000_554_-131",
+        "pinId": "side3-4",
+        "pinName": "SDA"
+      },
+      "target": {
+        "instanceId": "std-arduino-nano-220724_488_-297",
+        "pinId": "side3-8",
+        "pinName": "A4"
+      },
+      "path": [
+        {
+          "x": 409.21400607887983,
+          "y": -139.42386638919535
+        },
+        {
+          "x": 409.21400607887983,
+          "y": -198.2119331945977
+        },
+        {
+          "x": 488,
+          "y": -198.2119331945977
+        },
+        {
+          "x": 488,
+          "y": -257
+        }
+      ],
+      "style": {
+        "color": "#2196f3",
+        "width": 2
+      },
+      "metadata": {
+        "createdAt": "2025-09-22T07:54:44.346Z"
+      }
+    },
+    {
+      "id": "conn_1758527401769_5lim8u656",
+      "source": {
+        "instanceId": "std-131寸-oled显示屏-120000_485_-483",
+        "pinId": "side1-4",
+        "pinName": "SDA"
+      },
+      "target": {
+        "instanceId": "std-arduino-nano-220724_488_-297",
+        "pinId": "side3-8",
+        "pinName": "A4"
+      },
+      "path": [
+        {
+          "x": 692.6612935442653,
+          "y": -109.89205168957157
+        },
+        {
+          "x": 590.3306467721327,
+          "y": -109.89205168957157
+        },
+        {
+          "x": 590.3306467721327,
+          "y": -257
+        },
+        {
+          "x": 488,
+          "y": -257
+        }
+      ],
+      "style": {
+        "color": "#2196f3",
+        "width": 2
+      },
+      "metadata": {
+        "createdAt": "2025-09-22T07:54:44.346Z"
+      }
+    },
+    {
+      "id": "conn_1758527465410_t3d3xz4ny",
+      "source": {
+        "instanceId": "std-六轴传感器-mpu6050-120000_554_-131",
+        "pinId": "side3-3",
+        "pinName": "SCL"
+      },
+      "target": {
+        "instanceId": "std-arduino-nano-220724_488_-297",
+        "pinId": "side3-9",
+        "pinName": "A5"
+      },
+      "path": [
+        {
+          "x": 425.21400607887983,
+          "y": -139.42386638919535
+        },
+        {
+          "x": 425.21400607887983,
+          "y": -198.2119331945977
+        },
+        {
+          "x": 504,
+          "y": -198.2119331945977
+        },
+        {
+          "x": 504,
+          "y": -257
+        }
+      ],
+      "style": {
+        "color": "#2196f3",
+        "width": 2
+      },
+      "metadata": {
+        "createdAt": "2025-09-22T07:54:44.346Z"
+      }
+    },
+    {
+      "id": "conn_1758527472002_5iuzub96q",
+      "source": {
+        "instanceId": "std-131寸-oled显示屏-120000_485_-483",
+        "pinId": "side1-4",
+        "pinName": "SDA"
+      },
+      "target": {
+        "instanceId": "std-arduino-nano-220724_488_-297",
+        "pinId": "side3-9",
+        "pinName": "A5"
+      },
+      "path": [
+        {
+          "x": 692.6612935442653,
+          "y": -109.89205168957157
+        },
+        {
+          "x": 598.3306467721327,
+          "y": -109.89205168957157
+        },
+        {
+          "x": 598.3306467721327,
+          "y": -257
+        },
+        {
+          "x": 504,
+          "y": -257
+        }
+      ],
+      "style": {
+        "color": "#2196f3",
+        "width": 2
+      },
+      "metadata": {
+        "createdAt": "2025-09-22T07:54:44.346Z"
+      }
+    }
+  ],
+  "canvas": {
+    "zoom": 0.805221711308894,
+    "panX": -37.6823959620923,
+    "panY": 574.6697991110996,
+    "gridSize": 10,
+    "showGrid": true
+  }
+}

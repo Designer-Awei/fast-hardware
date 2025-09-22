@@ -4,25 +4,33 @@
 
 ## 图标文件
 
-为了完整的应用程序打包，您需要在此目录中添加以下图标文件：
+✅ **图标文件已生成完成** - 基于 `Fast Hardware.png` 源文件自动生成
 
-### icon.png
-- **用途**: Linux平台图标和通用图标
-- **格式**: PNG
-- **推荐尺寸**: 512x512像素
-- **要求**: 透明背景，PNG格式
+应用程序所需的图标文件已全部生成并放置在此目录中：
 
-### icon.ico
-- **用途**: Windows平台图标
-- **格式**: ICO
-- **推荐尺寸**: 包含多个尺寸（16x16, 32x32, 48x48, 256x256）
-- **要求**: ICO格式，包含多种分辨率
+### 已生成的图标文件
 
-### icon.icns
-- **用途**: macOS平台图标
-- **格式**: ICNS
-- **推荐尺寸**: 包含多个尺寸（16x16到1024x1024）
-- **要求**: ICNS格式，包含多种分辨率
+#### 主图标文件
+- **`icon.png`** - Linux平台主图标 (512x512 PNG)
+- **`icon.ico`** - Windows平台图标 (256x256 ICO)
+- **`icon.icns`** - macOS平台图标 (512x512 ICNS)
+
+#### 多尺寸PNG变体 (适用于所有平台)
+- `icon_16x16.png` - 16x16像素
+- `icon_32x32.png` - 32x32像素
+- `icon_48x48.png` - 48x48像素
+- `icon_64x64.png` - 64x64像素
+- `icon_128x128.png` - 128x128像素
+- `icon_256x256.png` - 256x256像素
+- `icon_512x512.png` - 512x512像素
+- `icon_1024x1024.png` - 1024x1024像素 (macOS专用)
+
+## 图标生成信息
+
+- **源文件**: `Fast Hardware.png` (1067x1067像素，带透明通道)
+- **生成工具**: Node.js + Sharp图像处理库
+- **生成时间**: 自动生成于项目构建过程
+- **兼容性**: 完全兼容 Electron 构建配置
 
 ## 图标制作建议
 
@@ -31,24 +39,28 @@
 3. **图标主题**: 与应用程序功能相关的图标设计
 4. **文件大小**: 尽量控制文件大小，避免过大影响应用启动速度
 
-## 图标生成工具
+## 图标更新流程
 
-推荐使用以下工具生成不同格式的图标：
+如需更新图标，请遵循以下步骤：
 
-- **在线工具**: 
-  - [RealFaviconGenerator](https://realfavicongenerator.net/)
-  - [ICO Convert](https://icoconvert.com/)
+1. **替换源文件**: 将新的 `Fast Hardware.png` 放在此目录中
+2. **重新生成**: 运行 `node generate-icons.js` 脚本
+3. **验证文件**: 确保所有图标文件正确生成
+4. **测试构建**: 重新构建应用程序验证图标显示
 
-- **桌面工具**:
-  - [ImageOptim](https://imageoptim.com/) (macOS)
-  - [GIMP](https://www.gimp.org/) (跨平台)
-  - [Adobe Photoshop](https://www.adobe.com/products/photoshop.html)
+## package.json 配置
 
-## 添加图标文件
+图标文件路径已在 `package.json` 中正确配置：
 
-1. 将设计好的图标文件放置在此目录中
-2. 确保文件名与package.json中配置的路径一致
-3. 重新构建应用程序以应用新图标
+```json
+{
+  "build": {
+    "win": { "icon": "assets/icon.ico" },
+    "mac": { "icon": "assets/icon.icns" },
+    "linux": { "icon": "assets/icon.png" }
+  }
+}
+```
 
 ## 其他资源文件
 

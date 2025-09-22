@@ -20,15 +20,24 @@
     "circuit",
     "design"
   ],
-  "author": "",
+  "author": "Fast Hardware Team",
   "license": "MIT",
+  "homepage": "https://github.com/Designer-Awei/fast-hardware",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Designer-Awei/fast-hardware.git"
+  },
   "devDependencies": {
     "electron": "^27.0.0",
-    "electron-builder": "^24.6.4"
+    "electron-builder": "^24.6.4",
+    "electron-icon-maker": "^0.0.5",
+    "sharp": "^0.34.4",
+    "to-ico": "^1.1.5"
   },
   "build": {
     "appId": "com.fasthardware.app",
     "productName": "Fast Hardware",
+    "copyright": "Copyright © 2025 Fast Hardware Team",
     "directories": {
       "output": "dist",
       "buildResources": "assets"
@@ -51,15 +60,13 @@
         {
           "target": "nsis",
           "arch": [
-            "x64",
-            "ia32"
+            "x64"
           ]
         },
         {
           "target": "zip",
           "arch": [
-            "x64",
-            "ia32"
+            "x64"
           ]
         }
       ],
@@ -114,12 +121,14 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
       "installerIcon": "assets/icon.ico",
       "uninstallerIcon": "assets/icon.ico",
       "installerHeaderIcon": "assets/icon.ico",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Fast Hardware"
+      "shortcutName": "Fast Hardware",
+      "deleteAppDataOnUninstall": false
     },
     "dmg": {
       "contents": [

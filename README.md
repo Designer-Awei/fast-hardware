@@ -14,7 +14,7 @@
 [![Electron](https://img.shields.io/badge/Electron-27.0.0-47848F.svg)](https://electronjs.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-16+-339933.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows%2064--bit-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
 
 </div>
 
@@ -67,6 +67,19 @@
 - **元件ID结构化**: 统一格式 `std-[name]-[time]` 和 `ctm-[name]-[time]`
 - **跨平台优化**: Windows/macOS/Linux全平台兼容
 
+#### 🎨 图标系统 (最新更新)
+
+- **多尺寸图标生成**: 自动生成16x16到1024x1024全尺寸图标套装
+- **跨平台兼容**: Windows ICO、macOS ICNS、Linux PNG格式完整支持
+- **智能图标处理**: 基于源PNG自动生成，保持透明度和质量
+
+#### 📦 专业安装程序 (最新更新)
+
+- **64位专用优化**: 专门为现代64位Windows系统优化，去除32位支持
+- **自定义安装路径**: 安装时可自由选择安装位置，提升用户体验
+- **完整安装体验**: 自动创建桌面和开始菜单快捷方式
+- **智能卸载**: 完整的卸载程序，保护用户数据
+
 #### 🎨 悬浮元件库系统 (最新更新)
 
 - **智能悬浮面板**: 默认收起状态，节省界面空间，点击一键展开
@@ -81,6 +94,11 @@
 ```
 fast-hardware/
 ├── 📁 assets/                    # 资源文件和图标
+│   ├── icon.png                  # Linux平台图标
+│   ├── icon.ico                  # Windows平台图标
+│   ├── icon.icns                 # macOS平台图标
+│   ├── icon_*.png                # 多尺寸PNG图标 (16x16-1024x1024)
+│   └── README.md                 # 图标说明文档
 ├── 📁 data/                      # 数据文件目录
 │   ├── 📁 system-components/     # 系统级元件库
 │   │   ├── 📁 standard/          # 标准元件库 (std-*)
@@ -88,6 +106,10 @@ fast-hardware/
 │   └── 📁 projects/              # 用户项目目录
 ├── 📁 scripts/                   # 前端脚本
 ├── 📁 styles/                    # 样式文件
+├── 📁 dist/                      # 构建输出目录 (打包后生成)
+│   ├── Fast Hardware Setup 0.1.6.exe    # Windows安装程序
+│   ├── Fast Hardware-0.1.6-win.zip      # Windows绿色版
+│   └── win-unpacked/                    # 未打包版本
 ├── 📄 main.js                    # Electron主进程
 ├── 📄 index.html                 # 主界面
 ├── 📄 package.json               # 项目配置
@@ -104,9 +126,11 @@ fast-hardware/
 ## 🛠️ 快速开始
 
 ### 📋 系统要求
-- **Node.js**: ≥ 16.0.0
-- **npm**: ≥ 7.0.0
-- **操作系统**: Windows/macOS/Linux
+- **操作系统**: Windows 10/11 (64位)
+- **Node.js**: ≥ 16.0.0 (开发环境)
+- **npm**: ≥ 7.0.0 (开发环境)
+- **内存**: 建议 4GB 以上
+- **存储空间**: 200MB 可用空间
 
 ### 🚀 快速启动
 
@@ -127,14 +151,17 @@ npm run dev
 - `npm run build` - 构建应用
 - `npm run check-platform` - 环境检测
 
-## 🌟 跨平台特性
+## 🌟 平台特性
 
-本项目支持 Windows、macOS、Linux 全平台运行：
+### 🎯 **Windows 64位专业优化**
 
-- **自动适配**: 智能检测操作系统并执行相应命令
-- **UTF-8支持**: 保证中文显示正常
-- **统一工具链**: 跨平台构建和调试
-- **原生体验**: 每个平台都有原生的界面风格
+本项目专门针对现代64位Windows系统进行深度优化：
+
+- **64位架构**: 充分利用现代硬件性能，提升运行速度
+- **专业安装程序**: NSIS安装包，支持自定义安装路径
+- **完整用户体验**: 桌面快捷方式、开始菜单集成、优雅卸载
+- **数据保护**: 智能卸载机制，保护用户项目数据
+- **UTF-8支持**: 完美支持中文界面和文件路径
 
 ## 📦 构建和打包
 
@@ -147,10 +174,36 @@ npm run build
 npm run dist
 ```
 
-### 支持平台
-- **Windows**: EXE安装程序 + ZIP包
-- **macOS**: DMG磁盘映像 + ZIP包
-- **Linux**: AppImage + DEB/RPM包
+### 分发文件说明
+
+#### 🎯 **Windows (64位专用)**
+- **`Fast Hardware Setup 0.1.6.exe`** (75.7MB) - **专业安装程序**
+  - ✅ 自定义安装路径选择
+  - ✅ 自动创建桌面快捷方式
+  - ✅ 自动创建开始菜单快捷方式
+  - ✅ 完整的卸载程序
+  - ✅ 保护用户数据（卸载时不删除）
+
+- **`Fast Hardware-0.1.6-win.zip`** (612KB) - **绿色版本**
+  - 📦 无需安装，解压即可运行
+  - 🚀 适合快速部署和测试
+
+#### 🛠️ **开发版本**
+- **`win-unpacked/`** - 未打包版本
+  - ⚡ 可直接运行 `Fast Hardware.exe`
+  - 🐛 适合开发调试
+
+### 📋 系统要求
+- **操作系统**: Windows 10/11 (64位)
+- **内存**: 建议 4GB 以上
+- **存储空间**: 200MB 可用空间
+
+### 🚀 安装指南
+1. 下载 `Fast Hardware Setup 0.1.6.exe`
+2. 双击运行安装程序
+3. 选择安装位置（可自定义）
+4. 按照提示完成安装
+5. 从桌面或开始菜单启动应用
 
 ## 📚 相关文档
 
