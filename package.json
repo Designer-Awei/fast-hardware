@@ -1,6 +1,6 @@
 {
   "name": "fast-hardware",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "一个基于纯Electron的智能硬件开发辅助桌面应用程序",
   "main": "main.js",
   "scripts": {
@@ -44,6 +44,7 @@
     },
     "files": [
       "**/*",
+      "!data",
       "!node_modules",
       "!dist",
       "!*.md",
@@ -53,18 +54,19 @@
       "!test-*.js",
       "!edit_prd.md",
       "!Fast Hardware.txt",
-      "!nul"
+      "!nul",
+      "!env.local"
+    ],
+    "extraResources": [
+      {
+        "from": "data",
+        "to": "data"
+      }
     ],
     "win": {
       "target": [
         {
           "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "zip",
           "arch": [
             "x64"
           ]

@@ -37,6 +37,14 @@ class SettingsManager {
             });
         }
 
+        // 更改元件库路径按钮
+        const changeComponentLibBtn = document.getElementById('change-component-lib-path');
+        if (changeComponentLibBtn) {
+            changeComponentLibBtn.addEventListener('click', () => {
+                this.changeComponentLibPath();
+            });
+        }
+
         // 配置API密钥按钮
         const configureApiBtn = document.getElementById('configure-api-key');
         if (configureApiBtn) {
@@ -52,6 +60,9 @@ class SettingsManager {
     loadSettings() {
         // 加载存储路径设置
         this.loadStoragePath();
+
+        // 加载元件库路径设置
+        this.loadComponentLibPath();
 
         // 加载API密钥状态
         this.loadApiKeyStatus();
@@ -248,10 +259,73 @@ class SettingsManager {
      * 更新存储路径显示
      */
     updateStoragePathDisplay(path) {
-        const display = document.getElementById('storage-path-display');
-        const textElement = display ? display.querySelector('.path-text') : null;
-        if (textElement) {
-            textElement.textContent = path || '请选择存储位置';
+        const inputElement = document.getElementById('storage-path-display');
+        if (inputElement) {
+            inputElement.value = path || '';
+            inputElement.placeholder = path ? '' : '请选择项目文件夹';
+        }
+    }
+
+    /**
+     * 加载元件库路径设置
+     */
+    loadComponentLibPath() {
+        if (window.electronAPI && window.electronAPI.getSettings) {
+            window.electronAPI.getSettings('componentLibPath')
+                .then(path => {
+                    if (path) {
+                        this.updateComponentLibPathDisplay(path);
+                    }
+                })
+                .catch(error => {
+                    console.error('加载元件库路径失败:', error);
+                });
+        }
+    }
+
+    /**
+     * 保存元件库路径
+     */
+    saveComponentLibPath(path) {
+        if (window.electronAPI && window.electronAPI.saveSettings) {
+            window.electronAPI.saveSettings('componentLibPath', path)
+                .catch(error => {
+                    console.error('保存元件库路径失败:', error);
+                });
+        }
+    }
+
+    /**
+     * 更新元件库路径显示
+     */
+    updateComponentLibPathDisplay(path) {
+        const inputElement = document.getElementById('component-lib-path-display');
+        if (inputElement) {
+            inputElement.value = path || '';
+            inputElement.placeholder = path ? '' : '请选择元件库文件夹';
+        }
+    }
+
+    /**
+     * 更改元件库路径
+     */
+    async changeComponentLibPath() {
+        if (window.electronAPI && window.electronAPI.selectDirectory) {
+            window.electronAPI.selectDirectory()
+                .then(result => {
+                    if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
+                        const selectedPath = result.filePaths[0];
+                        this.saveComponentLibPath(selectedPath);
+                        this.updateComponentLibPathDisplay(selectedPath);
+                        this.showNotification('元件库路径已更新', 'success');
+                    }
+                })
+                .catch(error => {
+                    console.error('选择元件库文件夹失败:', error);
+                    this.showNotification('选择元件库文件夹失败，请重试', 'error');
+                });
+        } else {
+            this.showNotification('目录选择功能不可用', 'warning');
         }
     }
 

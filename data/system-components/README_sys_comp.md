@@ -55,7 +55,7 @@ LLM分析需求 → 扫描standard/和custom/文件夹 → 显示元件预览窗
 ### ⚠️ 重要概念区分
 
 - **模块类型** (`category`): 元件的整体功能分类
-  - 例如: `"communication"`, `"sensor"`, `"actuator"`, `"microcontroller"`等
+  - 标准分类: `"microcontroller"`, `"sensor"`, `"actuator"`, `"power"`, `"communication"`, `"auxiliary"`, `"other"`
 - **引脚类型** (`type`): 单个引脚的功能分类
   - 例如: `"power"`, `"ground"`, `"digital_io"`, `"analog_io"`, `"special"`
 

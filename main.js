@@ -69,6 +69,126 @@ async function saveWindowConfig(window) {
 }
 
 /**
+ * 获取自定义元件库路径
+ * @returns {Promise<string|null>} 自定义元件库路径，如果未设置则返回null
+ */
+async function getCustomComponentLibPath() {
+  try {
+    const envPath = path.join(app.getPath('userData'), 'env.local');
+    const envContent = await fs.readFile(envPath, 'utf8');
+    const lines = envContent.split('\n');
+
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      if (trimmedLine.startsWith('COMPONENT_LIB_PATH=')) {
+        const pathValue = trimmedLine.substring('COMPONENT_LIB_PATH='.length);
+        if (pathValue && pathValue.trim()) {
+          return pathValue.trim();
+        }
+      }
+    }
+  } catch (error) {
+    // 如果文件不存在或读取失败，返回null
+    console.log('未找到自定义元件库路径设置');
+  }
+  return null;
+}
+
+/**
+ * 确保元件库目录结构存在
+ * @param {string} baseDir - 基础目录路径
+ */
+async function ensureComponentLibStructure(baseDir) {
+  try {
+    // 确保基础目录存在
+    await fs.mkdir(baseDir, { recursive: true });
+
+    // 确保standard和custom子目录存在
+    const standardDir = path.join(baseDir, 'standard');
+    const customDir = path.join(baseDir, 'custom');
+
+    await fs.mkdir(standardDir, { recursive: true });
+    await fs.mkdir(customDir, { recursive: true });
+
+    console.log(`元件库目录结构已创建: ${baseDir}`);
+  } catch (error) {
+    console.error('创建元件库目录结构失败:', error);
+    throw error;
+  }
+}
+
+/**
+ * 初始化用户配置文件
+ * 在用户数据目录中创建默认的env.local文件（如果不存在）
+ */
+async function initializeUserConfig() {
+  try {
+    // 根据运行环境选择不同的env文件路径
+    const envPath = app.isPackaged
+      ? path.join(app.getPath('userData'), 'env.local')  // 生产环境：用户数据目录
+      : path.join(__dirname, 'env.local');              // 开发环境：项目目录
+
+    console.log(`[main.js] 初始化用户配置: 环境=${app.isPackaged ? '生产' : '开发'}, 路径=${envPath}`);
+
+    // 检查env.local文件是否已存在
+    try {
+      await fs.access(envPath);
+      console.log('用户配置文件已存在:', envPath);
+      return;
+    } catch (error) {
+      // 文件不存在，创建默认配置文件
+      console.log('创建默认用户配置文件:', envPath);
+    }
+
+    // 确保用户数据目录存在
+    await fs.mkdir(userDataPath, { recursive: true });
+
+    // 根据运行环境设置默认项目存储路径
+    let defaultProjectsPath;
+    let defaultComponentLibPath;
+    if (app.isPackaged) {
+      // 打包后的应用：使用程序目录下的data文件夹
+      const appPath = path.dirname(app.getPath('exe'));
+      defaultProjectsPath = path.join(appPath, 'resources', 'data', 'projects');
+      defaultComponentLibPath = path.join(appPath, 'resources', 'data', 'system-components');
+    } else {
+      // 开发环境：使用用户数据目录
+      defaultProjectsPath = path.join(userDataPath, 'projects');
+      defaultComponentLibPath = null; // 开发环境使用默认的data/system-components
+    }
+
+    // 创建默认的env.local内容（不包含敏感信息）
+    const defaultConfig = `# Fast Hardware 用户配置文件
+# 此文件存储用户的个人设置 / This file stores user personal settings
+# 可以安全地包含在备份中 / Can be safely included in backups
+
+# 项目存储路径 / Project Storage Path
+# 设置默认的项目保存位置 / Set the default project storage location
+PROJECT_STORAGE_PATH=${defaultProjectsPath.replace(/\\/g, '/')}
+
+# 元件库路径 / Component Library Path
+# 设置系统元件库的保存位置 / Set the system component library storage location
+${defaultComponentLibPath ? `COMPONENT_LIB_PATH=${defaultComponentLibPath.replace(/\\/g, '/')}` : '# COMPONENT_LIB_PATH='}
+
+# SiliconFlow API 密钥 / SiliconFlow API Key
+# 请通过应用程序设置页面配置 / Please configure through application settings page
+# SILICONFLOW_API_KEY=your_api_key_here
+`;
+
+    // 写入默认配置文件
+    await fs.writeFile(envPath, defaultConfig, 'utf8');
+    console.log('默认用户配置文件已创建');
+
+    // 创建默认的项目目录
+    await fs.mkdir(defaultProjectsPath, { recursive: true });
+    console.log('默认项目目录已创建:', defaultProjectsPath);
+
+  } catch (error) {
+    console.error('初始化用户配置文件失败:', error);
+  }
+}
+
+/**
  * 读取窗口配置
  */
 async function loadWindowConfig() {
@@ -232,8 +352,12 @@ async function createWindow() {
 }
 
 // 应用程序准备就绪时创建窗口
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   console.log('Electron应用程序已准备就绪');
+
+  // 初始化用户配置文件
+  await initializeUserConfig();
+
   createWindow();
 }).catch((error) => {
   console.error('应用程序初始化失败:', error);
@@ -308,15 +432,42 @@ ipcMain.handle('read-component-files', async (event, directory) => {
   try {
     console.log(`读取元件文件夹: ${directory}`);
 
+    // 处理data文件夹路径（配置为松散文件，直接在resources目录下）
+    let fullDirectory;
+    if (app.isPackaged) {
+      // 打包后的应用：替换data路径为resources/data
+      const resourcesPath = process.resourcesPath;
+      if (directory.startsWith('data/')) {
+        // 将'data/system-components/standard/'替换为'resources/data/system-components/standard/'
+        const relativePath = directory.substring(5); // 移除'data/'前缀
+        fullDirectory = path.join(resourcesPath, 'data', relativePath);
+      } else {
+        fullDirectory = path.join(resourcesPath, 'data', directory);
+      }
+      console.log(`打包模式，使用松散文件路径: ${fullDirectory}`);
+    } else {
+      // 开发模式：从项目根目录读取
+      fullDirectory = path.join(__dirname, directory);
+      console.log(`开发模式，使用项目路径: ${fullDirectory}`);
+    }
+
+    // 检查目录是否存在
+    try {
+      await fs.access(fullDirectory);
+    } catch (error) {
+      console.error(`目录不存在: ${fullDirectory}`);
+      return []; // 返回空数组而不是错误对象
+    }
+
     // 读取目录下的所有.json文件
-    const files = await fs.readdir(directory);
+    const files = await fs.readdir(fullDirectory);
     const jsonFiles = files.filter(file => file.endsWith('.json') && file !== 'README.md');
 
     const components = [];
 
     for (const file of jsonFiles) {
       try {
-        const filePath = path.join(directory, file);
+        const filePath = path.join(fullDirectory, file);
         const content = await fs.readFile(filePath, 'utf8');
         const component = JSON.parse(content);
 
@@ -348,8 +499,20 @@ ipcMain.handle('saveComponent', async (event, component, savePath) => {
   try {
     console.log(`保存元件: ${component.name}, 路径: ${savePath}`);
 
-    // 确定保存目录
-    const baseDir = path.join(__dirname, 'data', 'system-components');
+    // 确定保存目录 - 优先使用自定义元件库路径
+    let baseDir;
+    const customLibPath = await getCustomComponentLibPath();
+    if (customLibPath) {
+      baseDir = customLibPath;
+      console.log(`使用自定义元件库路径: ${baseDir}`);
+    } else {
+      baseDir = path.join(__dirname, 'data', 'system-components');
+      console.log(`使用默认元件库路径: ${baseDir}`);
+    }
+
+    // 确保基础目录存在
+    await ensureComponentLibStructure(baseDir);
+
     const targetDir = path.join(baseDir, savePath === 'standard' ? 'standard' : 'custom');
 
     // 确保目录存在
@@ -386,8 +549,20 @@ ipcMain.handle('saveComponentForce', async (event, component, savePath) => {
   try {
     console.log(`强制保存元件: ${component.name}, 路径: ${savePath}`);
 
-    // 确定保存目录和前缀
-    const baseDir = path.join(__dirname, 'data', 'system-components');
+    // 确定保存目录 - 优先使用自定义元件库路径
+    let baseDir;
+    const customLibPath = await getCustomComponentLibPath();
+    if (customLibPath) {
+      baseDir = customLibPath;
+      console.log(`使用自定义元件库路径: ${baseDir}`);
+    } else {
+      baseDir = path.join(__dirname, 'data', 'system-components');
+      console.log(`使用默认元件库路径: ${baseDir}`);
+    }
+
+    // 确保基础目录存在
+    await ensureComponentLibStructure(baseDir);
+
     const targetDir = path.join(baseDir, savePath === 'standard' ? 'standard' : 'custom');
     const prefix = savePath === 'standard' ? 'std' : 'ctm';
 
@@ -422,7 +597,20 @@ ipcMain.handle('saveComponentEditMode', async (event, component) => {
   try {
     console.log(`编辑模式保存元件: ${component.name}, ID: ${component.id}`);
 
-    const baseDir = path.join(__dirname, 'data', 'system-components');
+    // 确定基础目录 - 优先使用自定义元件库路径
+    let baseDir;
+    const customLibPath = await getCustomComponentLibPath();
+    if (customLibPath) {
+      baseDir = customLibPath;
+      console.log(`编辑模式使用自定义元件库路径: ${baseDir}`);
+    } else {
+      baseDir = path.join(__dirname, 'data', 'system-components');
+      console.log(`编辑模式使用默认元件库路径: ${baseDir}`);
+    }
+
+    // 确保基础目录存在
+    await ensureComponentLibStructure(baseDir);
+
     const originalFileName = `${component.id}.json`;
 
     // 首先尝试在标准库中查找原文件
@@ -579,7 +767,10 @@ process.on('unhandledRejection', (reason, promise) => {
 // 获取设置值（从env.local文件）
 ipcMain.handle('get-settings', async (event, key) => {
   try {
-    const envPath = path.join(__dirname, 'env.local');
+    // 根据运行环境选择不同的env文件路径
+    const envPath = app.isPackaged
+      ? path.join(app.getPath('userData'), 'env.local')  // 生产环境：用户数据目录
+      : path.join(__dirname, 'env.local');              // 开发环境：项目目录
 
     // 读取文件内容
     const envContent = await fs.readFile(envPath, 'utf8');
@@ -588,6 +779,7 @@ ipcMain.handle('get-settings', async (event, key) => {
     // 根据key查找对应的值
     const keyMap = {
       'storagePath': 'PROJECT_STORAGE_PATH=',
+      'componentLibPath': 'COMPONENT_LIB_PATH=',
       'apiKey': 'SILICONFLOW_API_KEY='
     };
 
@@ -613,8 +805,14 @@ ipcMain.handle('get-settings', async (event, key) => {
 
 // 保存设置值（到env.local文件）
 ipcMain.handle('save-settings', async (event, key, value) => {
+  console.log(`[main.js] 开始保存设置: key=${key}, value=${value}`);
+
   try {
-    const envPath = path.join(__dirname, 'env.local');
+    // 根据运行环境选择不同的env文件路径
+    const envPath = app.isPackaged
+      ? path.join(app.getPath('userData'), 'env.local')  // 生产环境：用户数据目录
+      : path.join(__dirname, 'env.local');              // 开发环境：项目目录
+
     let envContent = '';
 
     // 尝试读取现有文件内容
@@ -638,6 +836,7 @@ PROJECT_STORAGE_PATH=`;
 
     const keyMap = {
       'storagePath': 'PROJECT_STORAGE_PATH=',
+      'componentLibPath': 'COMPONENT_LIB_PATH=',
       'apiKey': 'SILICONFLOW_API_KEY='
     };
 
@@ -703,7 +902,7 @@ ipcMain.handle('open-external', async (event, url) => {
 // 保存API密钥到env.local文件
 ipcMain.handle('save-api-key', async (event, apiKey) => {
   try {
-    const envPath = path.join(__dirname, 'env.local');
+    const envPath = path.join(app.getPath('userData'), 'env.local');
     let envContent = '';
 
     // 尝试读取现有文件内容
@@ -752,7 +951,7 @@ SILICONFLOW_API_KEY=`;
 // 从env.local文件读取API密钥
 ipcMain.handle('load-api-key', async () => {
   try {
-    const envPath = path.join(__dirname, 'env.local');
+    const envPath = path.join(app.getPath('userData'), 'env.local');
 
     // 读取文件内容
     const envContent = await fs.readFile(envPath, 'utf8');

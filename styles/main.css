@@ -898,18 +898,47 @@ body {
     margin-bottom: 20px;
 }
 
-/* 路径显示样式 */
-.path-display {
+/* 存储路径行样式 */
+.storage-path-row {
+    display: flex;
+    gap: 12px;
+    align-items: center; /* 使用center保持内容垂直居中 */
+    flex-wrap: nowrap; /* 强制不换行 */
+    margin-bottom: 16px; /* 为每行之间添加间距 */
+}
+
+/* 最后一个存储路径行不需要下边距 */
+.storage-path-row:last-child {
+    margin-bottom: 0;
+}
+
+/* 路径输入框样式 */
+.path-input {
+    flex: 1;
     background: #f8f9fa;
     border-radius: 8px;
     padding: 12px 16px;
     border: 1px solid #e9ecef;
     transition: all 0.2s ease;
+    height: 44px; /* 与按钮高度完全一致 */
+    font-size: 14px;
+    color: #333;
+    white-space: nowrap; /* 不换行 */
+    overflow-x: auto; /* 水平滚动 */
+    overflow-y: hidden;
+    cursor: text;
+    box-sizing: border-box; /* 确保padding不会影响高度 */
 }
 
-.path-display:hover {
+.path-input:hover {
     background: #f1f3f4;
     border-color: #667eea;
+}
+
+.path-input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
 }
 
 .path-text {
@@ -1005,17 +1034,8 @@ body {
 
 .btn {
     display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 20px;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    border: none;
-    text-decoration: none;
 }
+
 
 .btn-primary {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -1178,6 +1198,20 @@ body {
         margin-bottom: 16px;
     }
 
+    /* 平板端：保持水平排列，但调整间距和按钮大小 */
+    .storage-path-row {
+        gap: 8px; /* 缩小间距 */
+        flex-wrap: wrap; /* 允许换行，但尽量保持一行 */
+    }
+
+    .btn-fixed-width {
+        width: 100px !important; /* 平板端缩小按钮宽度 */
+        height: 44px !important; /* 保持高度一致 */
+        flex-basis: 100px !important;
+        min-width: 100px !important;
+        max-width: 100px !important;
+    }
+
     .card-actions {
         padding: 0 20px 20px 20px;
     }
@@ -1230,6 +1264,21 @@ body {
 
     .card-content {
         padding: 0 16px;
+    }
+
+    /* 手机端：垂直排列以适应小屏幕 */
+    .storage-path-row {
+        flex-direction: column;
+        gap: 12px;
+        align-items: stretch;
+    }
+
+    .btn-fixed-width {
+        width: auto !important; /* 手机端恢复自适应宽度 */
+        height: 44px !important; /* 保持高度一致 */
+        flex-basis: auto !important;
+        min-width: 120px !important; /* 保持最小宽度 */
+        max-width: none !important;
     }
 
     .card-actions {
@@ -1427,6 +1476,18 @@ kbd.key {
 }
 
 /* 模态框按钮样式 */
+.btn-fixed-width {
+    width: 120px !important; /* 固定宽度 */
+    height: 44px !important; /* 固定高度，与输入框一致 */
+    flex-shrink: 0 !important; /* 不缩小 */
+    flex-basis: 120px !important; /* 基础宽度 */
+    justify-content: center !important; /* 内容居中 */
+    align-items: center !important; /* 垂直居中 */
+    white-space: nowrap !important; /* 不换行 */
+    min-width: 120px !important; /* 最小宽度 */
+    max-width: 120px !important; /* 最大宽度 */
+}
+
 .settings-modal .btn {
     display: inline-flex;
     align-items: center;

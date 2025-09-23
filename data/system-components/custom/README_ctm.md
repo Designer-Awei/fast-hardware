@@ -70,14 +70,15 @@
 
 ## 🏷️ 分类说明
 
-- `microcontroller` - 微控制器
-- `sensor` - 传感器
-- `actuator` - 执行器
-- `communication` - 通信模块
-- `output` - 输出设备
-- `input` - 输入设备
-- `passive` - 无源器件
-- `power` - 电源模块
+根据Fast Hardware项目的元件分类体系：
+
+- `microcontroller` - 微控制器 (Arduino, ESP32等主控板)
+- `sensor` - 传感器 (温度、湿度、光敏、超声波等传感器)
+- `actuator` - 执行器 (舵机、电机、继电器等控制设备)
+- `power` - 电源模块 (电池、充电器、稳压模块等电源设备)
+- `communication` - 通信模块 (蓝牙、WiFi、串口、LoRa等通信设备)
+- `auxiliary` - 辅助元件 (连接线、转接板、扩展板等辅助工具)
+- `other` - 其他 (不属于以上类别的特殊元件)
 
 ## ⚠️ 注意事项
 

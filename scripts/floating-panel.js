@@ -108,8 +108,15 @@ class FloatingPanel {
     async loadComponentLibrary() {
         try {
             // 从系统元件库加载数据（完全依赖文件系统，不使用模拟数据）
-            const standardComponents = await this.loadFromDirectory('data/system-components/standard/');
-            const customComponents = await this.loadFromDirectory('data/system-components/custom/');
+            const standardPath = 'data/system-components/standard/';
+            const customPath = 'data/system-components/custom/';
+
+            console.log(`正在从以下路径加载元件库:`);
+            console.log(`- 标准元件: ${standardPath}`);
+            console.log(`- 自定义元件: ${customPath}`);
+
+            const standardComponents = await this.loadFromDirectory(standardPath);
+            const customComponents = await this.loadFromDirectory(customPath);
 
             this.components = [...standardComponents, ...customComponents];
             this.filteredComponents = [...this.components];

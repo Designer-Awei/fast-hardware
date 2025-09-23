@@ -329,19 +329,27 @@
                                 </div>
                                 <div class="card-info">
                                     <h3>存储位置</h3>
-                                    <p>设置默认的项目保存位置</p>
+                                    <p>设置项目和元件库的保存位置</p>
                                 </div>
                             </div>
                             <div class="card-content">
-                                <div class="path-display" id="storage-path-display">
-                                    <span class="path-text">请选择存储位置</span>
+                                <!-- 项目文件夹存储位置 -->
+                                <div class="storage-path-row">
+                                    <input type="text" class="path-input" id="storage-path-display" placeholder="请选择项目文件夹" readonly />
+                                    <button class="btn btn-primary btn-fixed-width" id="change-storage-path">
+                                        <span class="btn-icon">📁</span>
+                                        项目文件夹
+                                    </button>
                                 </div>
-                            </div>
-                            <div class="card-actions">
-                                <button class="btn btn-primary" id="change-storage-path">
-                                    <span class="btn-icon">📂</span>
-                                    选择文件夹
-                                </button>
+
+                                <!-- 系统元件库存储位置 -->
+                                <div class="storage-path-row">
+                                    <input type="text" class="path-input" id="component-lib-path-display" placeholder="请选择元件库文件夹" readonly />
+                                    <button class="btn btn-primary btn-fixed-width" id="change-component-lib-path">
+                                        <span class="btn-icon">🔧</span>
+                                        系统元件库
+                                    </button>
+                                </div>
                             </div>
                         </div>
 

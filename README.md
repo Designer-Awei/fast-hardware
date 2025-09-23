@@ -10,7 +10,7 @@
 
 [🇨🇳 中文](README.md) | [🇺🇸 English](README_EN.md)
 
-[![Version](https://img.shields.io/badge/version-0.1.6-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
+[![Version](https://img.shields.io/badge/version-0.1.7-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
 [![Electron](https://img.shields.io/badge/Electron-27.0.0-47848F.svg)](https://electronjs.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-16+-339933.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -59,28 +59,29 @@
 ### 🚧 LLM智能助手 (规划中)
 自然语言交互，智能推荐硬件方案，自动生成电路设计。
 
-## ✨ 最新特性 (v0.1.6)
+## ✨ 最新特性 (v0.1.7)
 
-- **智能元件管理**: 编辑模式覆盖原文件，复用模式生成新文件
-- **元件批量管理**: 可视化选择和删除多个元件，提升维护效率
-- **保存成功提示**: 所有保存操作都有即时的视觉反馈
-- **元件ID结构化**: 统一格式 `std-[name]-[time]` 和 `ctm-[name]-[time]`
-- **跨平台优化**: Windows/macOS/Linux全平台兼容
+- **双路径管理**: 独立配置项目文件夹和系统元件库存储位置
+- **智能文件夹创建**: 自动检测并创建元件库的标准/custom子文件夹
+- **完整数据打包**: 松散文件方式包含完整元件库和项目数据
+- **跨环境兼容**: 开发环境和打包环境路径解析统一
+- **调试体验优化**: 元件库加载显示详细路径信息，便于问题排查
 
-#### 🎨 图标系统 (最新更新)
+#### 🚀 系统元件库路径配置
 
-- **多尺寸图标生成**: 自动生成16x16到1024x1024全尺寸图标套装
-- **跨平台兼容**: Windows ICO、macOS ICNS、Linux PNG格式完整支持
-- **智能图标处理**: 基于源PNG自动生成，保持透明度和质量
+- **双路径独立管理**: 项目存储和元件库存储分离配置
+- **自定义元件库**: 支持选择外部文件夹作为元件库根目录
+- **智能目录结构**: 自动创建standard/和custom/子文件夹
+- **路径持久化**: 设置保存到用户配置文件，支持重启后恢复
 
-#### 📦 专业安装程序 (最新更新)
+#### 📦 专业部署系统
 
-- **64位专用优化**: 专门为现代64位Windows系统优化，去除32位支持
-- **自定义安装路径**: 安装时可自由选择安装位置，提升用户体验
-- **完整安装体验**: 自动创建桌面和开始菜单快捷方式
-- **智能卸载**: 完整的卸载程序，保护用户数据
+- **完整数据包含**: data文件夹作为松散文件打包到resources目录
+- **跨环境路径解析**: 自动识别开发/打包环境，使用正确路径
+- **优化构建输出**: 只生成NSIS安装程序和unpacked目录
+- **64位专业化**: 专注现代64位Windows系统体验
 
-#### 🎨 悬浮元件库系统 (最新更新)
+#### 🎨 悬浮元件库系统
 
 - **智能悬浮面板**: 默认收起状态，节省界面空间，点击一键展开
 - **自适应尺寸**: 高度60%自适应，宽度10px精简设计，圆角8px现代美观
@@ -177,21 +178,19 @@ npm run dist
 ### 分发文件说明
 
 #### 🎯 **Windows (64位专用)**
-- **`Fast Hardware Setup 0.1.6.exe`** (75.7MB) - **专业安装程序**
+- **`Fast Hardware Setup 0.1.7.exe`** (约76MB) - **专业安装程序**
   - ✅ 自定义安装路径选择
   - ✅ 自动创建桌面快捷方式
   - ✅ 自动创建开始菜单快捷方式
   - ✅ 完整的卸载程序
+  - ✅ 内置完整元件库和示例项目
   - ✅ 保护用户数据（卸载时不删除）
 
-- **`Fast Hardware-0.1.6-win.zip`** (612KB) - **绿色版本**
-  - 📦 无需安装，解压即可运行
+- **`win-unpacked/`** - **绿色版本**
+  - 📦 无需安装，可直接运行 `Fast Hardware.exe`
   - 🚀 适合快速部署和测试
-
-#### 🛠️ **开发版本**
-- **`win-unpacked/`** - 未打包版本
-  - ⚡ 可直接运行 `Fast Hardware.exe`
   - 🐛 适合开发调试
+  - 💾 包含完整元件库数据
 
 ### 📋 系统要求
 - **操作系统**: Windows 10/11 (64位)
