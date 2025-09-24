@@ -6,6 +6,7 @@
     <title>Fast Hardware - 智能硬件开发助手</title>
     <link rel="stylesheet" href="styles/main.css">
     <link rel="stylesheet" href="styles/components.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
     <div id="app">
@@ -153,13 +154,13 @@
 
                             <!-- 模型选择下拉框 -->
                             <div class="model-dropdown" id="model-dropdown">
-                                <div class="model-option" data-model="THUDM/GLM-4.1V-9B-Thinking" data-desc="默认推理模型，支持图文输入">
-                                    THUDM/GLM-4.1V-9B-Thinking
-                                    <span class="model-desc">默认推理模型，支持图文输入</span>
-                                </div>
-                                <div class="model-option" data-model="THUDM/GLM-4-9B-0414" data-desc="普通对话模型">
+                                <div class="model-option" data-model="THUDM/GLM-4-9B-0414" data-desc="默认对话模型">
                                     THUDM/GLM-4-9B-0414
-                                    <span class="model-desc">普通对话模型</span>
+                                    <span class="model-desc">默认对话模型</span>
+                                </div>
+                                <div class="model-option" data-model="THUDM/GLM-4.1V-9B-Thinking" data-desc="推理模型，支持图文输入">
+                                    THUDM/GLM-4.1V-9B-Thinking
+                                    <span class="model-desc">推理模型，支持图文输入</span>
                                 </div>
                                 <div class="model-option" data-model="Qwen/Qwen3-8B" data-desc="推理模型">
                                     Qwen/Qwen3-8B

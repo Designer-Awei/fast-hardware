@@ -6,6 +6,7 @@
 const { app, BrowserWindow, Menu, ipcMain, screen, shell, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs').promises;
+const https = require('https');
 
 // 设置控制台编码为UTF-8
 if (process.platform === 'win32') {
@@ -970,6 +971,176 @@ ipcMain.handle('load-api-key', async () => {
   } catch (error) {
     console.log('读取API密钥失败:', error.message);
     return { success: false, error: error.message, apiKey: null };
+  }
+});
+
+/**
+ * 调用SiliconFlow AI API
+ * @param {Array} messages - 消息数组
+ * @param {string} model - 使用的模型
+ * @returns {Promise<Object>} API响应结果
+ */
+async function callSiliconFlowAPI(messages, model) {
+  try {
+    console.log('🔑 正在读取API密钥...');
+
+    // 获取API密钥
+    const envPath = app.isPackaged
+      ? path.join(app.getPath('userData'), 'env.local')
+      : path.join(__dirname, 'env.local');
+
+    const envContent = await fs.readFile(envPath, 'utf8');
+    const lines = envContent.split('\n');
+    let apiKey = '';
+
+    for (const line of lines) {
+      if (line.startsWith('SILICONFLOW_API_KEY=')) {
+        apiKey = line.substring('SILICONFLOW_API_KEY='.length).trim();
+        break;
+      }
+    }
+
+    if (!apiKey) {
+      console.log('❌ 未找到有效的API密钥');
+      throw new Error('未找到SiliconFlow API密钥，请在设置中配置');
+    }
+
+    console.log('✅ API密钥读取成功');
+
+    // API请求数据
+    const requestData = {
+      model: model,
+      messages: messages,
+      stream: false, // 先实现非流式，后续添加流式
+      max_tokens: 4096,
+      temperature: 0.7
+    };
+
+    // 发起HTTP请求
+    console.log('🌐 正在发送HTTP请求到SiliconFlow API...');
+    console.log('📊 请求数据大小:', `${Buffer.byteLength(JSON.stringify(requestData))} bytes`);
+
+    const response = await new Promise((resolve, reject) => {
+      const data = JSON.stringify(requestData);
+      const options = {
+        hostname: 'api.siliconflow.cn',
+        port: 443,
+        path: '/v1/chat/completions',
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(data)
+        }
+      };
+
+      const req = https.request(options, (res) => {
+        console.log('📡 HTTP响应状态码:', res.statusCode);
+        console.log('📡 HTTP响应头:', res.headers['content-type']);
+
+        let body = '';
+
+        res.on('data', (chunk) => {
+          body += chunk;
+        });
+
+        res.on('end', () => {
+          console.log('📦 响应数据大小:', `${body.length} bytes`);
+
+          try {
+            const responseData = JSON.parse(body);
+
+            if (res.statusCode === 200) {
+              console.log('✅ API响应解析成功');
+              resolve({
+                success: true,
+                content: responseData.choices[0]?.message?.content || '无响应内容',
+                usage: responseData.usage
+              });
+            } else {
+              console.log('❌ API返回错误状态');
+              resolve({
+                success: false,
+                error: `API请求失败: ${res.statusCode} - ${responseData.error?.message || '未知错误'}`
+              });
+            }
+          } catch (parseError) {
+            console.log('❌ 响应数据解析失败:', parseError.message);
+            console.log('🔍 原始响应内容:', body.substring(0, 200) + '...');
+            resolve({
+              success: false,
+              error: `解析响应失败: ${parseError.message}`
+            });
+          }
+        });
+      });
+
+      req.on('error', (error) => {
+        console.log('❌ HTTP请求失败:', error.message);
+        resolve({
+          success: false,
+          error: `网络请求失败: ${error.message}`
+        });
+      });
+
+      req.write(data);
+      req.end();
+
+      console.log('📤 HTTP请求已发送，等待响应...');
+    });
+
+    return response;
+
+  } catch (error) {
+    return {
+      success: false,
+      error: `调用AI API失败: ${error.message}`
+    };
+  }
+}
+
+// IPC通信处理
+ipcMain.handle('chatWithAI', async (event, messages, model) => {
+  const startTime = Date.now();
+  console.log('🔄 开始调用SiliconFlow AI API...');
+  console.log('📝 模型:', model);
+  console.log('💬 消息数量:', messages.length);
+  console.log('⏱️ 开始时间:', new Date(startTime).toLocaleTimeString());
+
+  // 设置60秒超时
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error('API请求超时 (60秒)')), 60000);
+  });
+
+  try {
+    const result = await Promise.race([
+      callSiliconFlowAPI(messages, model),
+      timeoutPromise
+    ]);
+
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    console.log('⏱️ 结束时间:', new Date(endTime).toLocaleTimeString());
+    console.log('⏱️ 请求耗时:', `${duration}ms (${(duration / 1000).toFixed(1)}s)`);
+
+    if (result.success) {
+      console.log('✅ AI API调用成功，获得回复');
+      console.log('📏 回复长度:', result.content.length);
+    } else {
+      console.log('❌ AI API调用失败:', result.error);
+    }
+
+    return result;
+  } catch (error) {
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    console.log('⏱️ 异常结束时间:', new Date(endTime).toLocaleTimeString());
+    console.log('⏱️ 异常时耗时:', `${duration}ms (${(duration / 1000).toFixed(1)}s)`);
+    console.log('⏰ API请求超时或出错:', error.message);
+    return {
+      success: false,
+      error: error.message
+    };
   }
 });
 

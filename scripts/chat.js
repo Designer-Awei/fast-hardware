@@ -7,10 +7,13 @@ class ChatManager {
     constructor() {
         this.messages = [];
         this.isTyping = false;
-        this.selectedModel = 'THUDM/GLM-4.1V-9B-Thinking';
+        this.selectedModel = 'THUDM/GLM-4-9B-0414';
         this.uploadedImages = []; // 支持多图上传
         this.currentImageIndex = 0; // 当前显示的图片索引
         this.hidePreviewTimeout = null; // 延迟隐藏定时器
+        this.isInterrupted = false; // 中断标志
+        this.currentUserMessage = null; // 当前用户消息，用于中断恢复
+        this.currentAbortController = null; // 用于中断API请求
         this.init();
     }
 
@@ -20,6 +23,25 @@ class ChatManager {
     init() {
         this.bindEvents();
         this.loadInitialMessages();
+        this.initializeModelDisplay();
+    }
+
+    /**
+     * 初始化模型显示
+     */
+    initializeModelDisplay() {
+        // 设置默认显示的模型
+        const modelNameElement = document.getElementById('current-model');
+        if (modelNameElement) {
+            modelNameElement.textContent = this.selectedModel;
+
+            // 设置对应的描述
+            const defaultOption = document.querySelector(`.model-option[data-model="${this.selectedModel}"]`);
+            if (defaultOption) {
+                const description = defaultOption.getAttribute('data-desc');
+                modelNameElement.title = description;
+            }
+        }
     }
 
     /**
@@ -93,17 +115,14 @@ class ChatManager {
 
         // 图片上传事件
         if (imageUploadBtn) {
-            console.log('找到图片上传按钮，设置事件监听器');
             imageUploadBtn.addEventListener('click', () => this.handleImageUpload());
 
             // 添加鼠标悬停事件（总是显示预览，包含添加图片区域）
             imageUploadBtn.addEventListener('mouseenter', () => {
-                console.log('鼠标进入图片上传按钮');
                 this.showHoverPreview();
             });
 
             imageUploadBtn.addEventListener('mouseleave', () => {
-                console.log('鼠标离开图片上传按钮');
                 this.hideHoverPreview();
             });
         } else {
@@ -114,17 +133,15 @@ class ChatManager {
         if (imagePreview) {
             // 鼠标进入预览区域时取消隐藏
             imagePreview.addEventListener('mouseenter', () => {
-                console.log('鼠标进入预览浮窗');
                 if (this.hidePreviewTimeout) {
                     clearTimeout(this.hidePreviewTimeout);
                     this.hidePreviewTimeout = null;
-                    console.log('取消预览隐藏定时器');
+                    this.hidePreviewTimeout = null;
                 }
             });
 
             // 鼠标离开预览区域时延迟隐藏
             imagePreview.addEventListener('mouseleave', () => {
-                console.log('鼠标离开预览浮窗');
                 this.hideHoverPreview();
             });
 
@@ -136,6 +153,17 @@ class ChatManager {
         if (previewClose) {
             previewClose.addEventListener('click', () => this.clearUploadedImage());
         }
+
+        // 代码块复制按钮事件委托
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('.code-copy-btn')) {
+                const button = e.target.closest('.code-copy-btn');
+                const codeId = button.getAttribute('data-code-id');
+                if (codeId) {
+                    this.copyCodeToClipboard(codeId);
+                }
+            }
+        });
     }
 
     /**
@@ -232,7 +260,14 @@ class ChatManager {
         if (!input) return;
 
         const content = input.value.trim();
-        if (!content && this.uploadedImages.length === 0 || this.isTyping) return;
+
+        // 如果正在回复中，执行中断操作
+        if (this.isTyping) {
+            this.interruptResponse();
+            return;
+        }
+
+        if (!content && this.uploadedImages.length === 0) return;
 
         // 构建消息内容
         let messageContent = content;
@@ -240,6 +275,12 @@ class ChatManager {
             const imageDesc = this.uploadedImages.length === 1 ? '[图片]' : `[${this.uploadedImages.length}张图片]`;
             messageContent = messageContent || imageDesc;
         }
+
+        // 保存当前输入内容，用于中断恢复
+        this.currentUserMessage = {
+            content: content,
+            images: [...this.uploadedImages]
+        };
 
         // 添加用户消息
         const userMessage = {
@@ -254,7 +295,6 @@ class ChatManager {
         this.messages.push(userMessage);
         this.renderMessages();
         input.value = '';
-        this.updateSendButton();
 
         // 清除上传的图片
         if (this.uploadedImages.length > 0) {
@@ -264,8 +304,63 @@ class ChatManager {
         // 滚动到底部
         this.scrollToBottom();
 
-        // 模拟AI回复（传入模型信息和多图）
+        // 开始AI回复（传入模型信息和多图）
         this.simulateAIResponse(messageContent, this.selectedModel, userMessage.images);
+    }
+
+    /**
+     * 中断当前AI回复
+     */
+    interruptResponse() {
+        if (!this.isTyping) return;
+
+        // 设置中断标志
+        this.isInterrupted = true;
+
+        // 中断API请求
+        if (this.currentAbortController) {
+            this.currentAbortController.abort();
+            this.currentAbortController = null;
+        }
+
+        // 隐藏正在输入指示器
+        this.hideTypingIndicator();
+
+        // 移除最后一条AI消息（如果存在）
+        if (this.messages.length > 0 && this.messages[this.messages.length - 1].type === 'assistant' && this.messages[this.messages.length - 1].isTyping) {
+            this.messages.pop();
+        }
+
+        // 移除用户发送的消息（如果存在）
+        if (this.messages.length > 0 && this.messages[this.messages.length - 1].type === 'user') {
+            this.messages.pop();
+        }
+
+        // 恢复输入框内容
+        if (this.currentUserMessage) {
+            const input = document.getElementById('chat-input');
+            if (input) {
+                input.value = this.currentUserMessage.content;
+
+                // 恢复图片
+                if (this.currentUserMessage.images && this.currentUserMessage.images.length > 0) {
+                    this.uploadedImages = [...this.currentUserMessage.images];
+                    this.currentImageIndex = 0;
+                    this.toggleImagePreview();
+                }
+            }
+        }
+
+        // 重置状态
+        this.isTyping = false;
+        this.isInterrupted = false;
+        this.currentUserMessage = null;
+
+        // 重新渲染消息
+        this.renderMessages();
+
+        // 更新按钮状态
+        this.updateSendButton();
     }
 
     /**
@@ -274,14 +369,29 @@ class ChatManager {
      * @param {string} model - 使用的模型
      * @param {Object} image - 上传的图片信息
      */
-    simulateAIResponse(userMessage, model, image) {
+    async simulateAIResponse(userMessage, model, image) {
         this.isTyping = true;
+        this.isInterrupted = false;
         this.showTypingIndicator();
 
-        // 模拟网络延迟
-        setTimeout(() => {
-            const currentModel = document.getElementById('current-model')?.textContent || 'THUDM/GLM-4.1V-9B-Thinking';
-            const aiResponse = this.generateAIResponse(userMessage, currentModel, image);
+        // 立即更新按钮状态为中断模式
+        this.updateSendButton();
+
+        // 创建AbortController用于中断请求
+        this.currentAbortController = new AbortController();
+
+        try {
+            const currentModel = document.getElementById('current-model')?.textContent || 'THUDM/GLM-4-9B-0414';
+            const aiResponse = await this.generateAIResponse(userMessage, currentModel, image);
+
+            // 检查是否被中断
+            if (this.isInterrupted) {
+                return;
+            }
+
+            // 在控制台打印机器人回复原文，方便对比效果
+            console.log('🤖 机器人回复原文:', aiResponse);
+
             this.hideTypingIndicator();
 
             const aiMessage = {
@@ -294,8 +404,31 @@ class ChatManager {
             this.messages.push(aiMessage);
             this.renderMessages();
             this.scrollToBottom();
+        } catch (error) {
+            // 如果是被中断的，不显示错误消息
+            if (error.name === 'AbortError' || this.isInterrupted) {
+                console.log('🛑 AI回复被用户中断');
+                return;
+            }
+
+            console.error('❌ AI回复失败:', error);
+            this.hideTypingIndicator();
+
+            const errorMessage = {
+                id: Date.now(),
+                type: 'assistant',
+                content: '🤖 抱歉，AI服务暂时不可用，请稍后重试。',
+                timestamp: new Date()
+            };
+
+            this.messages.push(errorMessage);
+            this.renderMessages();
+            this.scrollToBottom();
+        } finally {
             this.isTyping = false;
-        }, 1000 + Math.random() * 2000); // 1-3秒的随机延迟
+            this.currentAbortController = null;
+            this.updateSendButton();
+        }
     }
 
     /**
@@ -305,31 +438,71 @@ class ChatManager {
      * @param {Object} image - 上传的图片信息
      * @returns {string} AI回复内容
      */
-    generateAIResponse(userMessage, model, image) {
-        let response = '🤖 AI助手回复：';
+    /**
+     * 调用AI API生成回复
+     * @param {string} userMessage - 用户消息
+     * @param {string} model - 使用的模型
+     * @param {Object} image - 上传的图片信息
+     * @returns {Promise<string>} AI回复内容
+     */
+    async generateAIResponse(userMessage, model, image) {
+        try {
+            // 构建消息历史
+            const messages = [];
 
-        // 处理图片信息
-        if (image) {
-            response += `\n📸 我已经收到了你上传的图片 "${image.name}" (${Math.round(image.size / 1024)}KB)。`;
+            // 添加系统提示
+            messages.push({
+                role: 'system',
+                content: '你是一个专业的硬件开发助手，擅长Arduino、ESP32等嵌入式开发，熟悉各种传感器、执行器和通信模块。你可以帮助用户进行电路设计、元件选型和代码编写。请用markdown格式回复，提供清晰的结构化信息。'
+            });
+
+            // 添加历史消息（最近几条）
+            const recentMessages = this.messages.slice(-10); // 最近10条消息
+            for (const msg of recentMessages) {
+                if (msg.type === 'user') {
+                    messages.push({
+                        role: 'user',
+                        content: msg.content
+                    });
+                } else if (msg.type === 'assistant') {
+                    messages.push({
+                        role: 'assistant',
+                        content: msg.content
+                    });
+                }
+            }
+
+            // 如果有图片，添加到用户消息中
+            if (image && image.name) {
+                const userContent = `${userMessage}\n\n[上传了图片: ${image.name} (${Math.round(image.size / 1024)}KB)]`;
+
+                messages.push({
+                    role: 'user',
+                    content: userContent
+                });
+            } else {
+                // 添加当前用户消息
+                messages.push({
+                    role: 'user',
+                    content: userMessage
+                });
+            }
+
+            // 调用API
+            const result = await window.electronAPI.chatWithAI(messages, model);
+
+            if (result.success) {
+                console.log('✅ AI回复成功获取，长度:', result.content.length);
+                return result.content;
+            } else {
+                console.error('❌ AI API调用失败:', result.error);
+                return `🤖 抱歉，AI服务暂时不可用。\n\n错误信息: ${result.error}\n\n请检查API密钥配置或稍后重试。`;
+            }
+
+        } catch (error) {
+            console.error('❌ 生成AI回复失败:', error);
+            return '🤖 抱歉，发生了网络错误，请稍后重试。';
         }
-
-        // 生成基础回复
-        const baseResponses = [
-            '\n\n我理解你的需求。根据你的描述，我建议使用Arduino Uno作为主控板，这样可以快速实现你的想法。',
-            '\n\n这是一个很有趣的项目！我可以帮你设计电路图。首先，你需要准备以下元件：Arduino开发板、LED灯、220Ω电阻。',
-            '\n\n让我分析一下你的需求... 基于你的描述，这是一个典型的数字电路项目。我会为你推荐最合适的硬件配置。',
-            '\n\n好的，我来帮你规划这个项目。首先，我们需要确定功能需求，然后选择合适的硬件元件，最后设计电路连接。',
-            '\n\n这是一个很好的硬件项目想法！我可以提供完整的解决方案，包括电路图设计和Arduino代码生成。'
-        ];
-
-        response += baseResponses[Math.floor(Math.random() * baseResponses.length)];
-
-        // 如果有图片，添加图片相关回复
-        if (image) {
-            response += '\n\n关于你上传的图片，我会将其纳入电路设计分析中，为你提供更精准的建议。';
-        }
-
-        return response;
     }
 
     /**
@@ -343,7 +516,10 @@ class ChatManager {
         typingDiv.className = 'message assistant typing';
         typingDiv.id = 'typing-indicator';
         typingDiv.innerHTML = `
-            <div class="message-avatar"><img src="assets/icon-bot.svg" alt="AI" width="20" height="20"></div>
+            <div class="message-header">
+                <div class="message-avatar"><img src="assets/icon-bot.svg" alt="AI" width="20" height="20"></div>
+                <div class="message-time">正在输入...</div>
+            </div>
             <div class="message-content">
                 <div class="typing-dots">
                     <span></span>
@@ -391,6 +567,142 @@ class ChatManager {
     }
 
     /**
+     * 简单的markdown渲染器
+     * @param {string} text - markdown文本
+     * @returns {string} HTML字符串
+     */
+    renderMarkdown(text) {
+        // 清理开头和结尾的多余换行符
+        let processedText = text.trim();
+
+        // 存储代码块的数组
+        const codeBlocks = [];
+
+        // 第一步：提取所有代码块，用占位符替换
+        processedText = processedText.replace(/```(\w+)?\n?([\s\S]*?)```/g, (match, language, code) => {
+            const lang = language || 'text';
+            const codeId = 'code-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            // 只转义HTML特殊字符，保留换行符
+            const formattedCode = code.trim()
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+
+            const codeBlockHtml = `<div class="code-block-container"><div class="code-block-header"><span class="code-language">${lang}</span><button class="code-copy-btn" data-code-id="${codeId}" title="复制代码"><img src="assets/icon-copy.svg" alt="复制" width="14" height="14"></button></div><pre class="code-block"><code id="${codeId}">${formattedCode}</code></pre></div>`;
+
+            // 存储代码块
+            codeBlocks.push(codeBlockHtml);
+            // 返回占位符
+            return `{{{CODE_BLOCK_${codeBlocks.length - 1}}}}`;
+        });
+
+        // 第二步：使用marked渲染剩余的markdown文本
+        let result = marked.parse(processedText);
+
+        // 第三步：将代码块插入到渲染后的文本中
+        for (let i = 0; i < codeBlocks.length; i++) {
+            result = result.replace(`{{{CODE_BLOCK_${i}}}}`, codeBlocks[i]);
+        }
+
+        return result;
+    }
+
+
+    /**
+     * HTML转义函数
+     * @param {string} text - 需要转义的文本
+     * @returns {string} 转义后的HTML
+     */
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    /**
+     * 复制代码到剪贴板
+     * @param {string} codeId - 代码元素的ID
+     */
+    copyCodeToClipboard(codeId) {
+        const codeElement = document.getElementById(codeId);
+        if (!codeElement) return;
+
+        const codeText = codeElement.textContent;
+
+        if (navigator.clipboard && window.isSecureContext) {
+            // 使用现代的 Clipboard API
+            navigator.clipboard.writeText(codeText).then(() => {
+                this.showCopySuccess();
+            }).catch(err => {
+                console.error('复制失败:', err);
+                this.fallbackCopyTextToClipboard(codeText);
+            });
+        } else {
+            // 降级到传统方法
+            this.fallbackCopyTextToClipboard(codeText);
+        }
+    }
+
+    /**
+     * 降级复制方法
+     * @param {string} text - 要复制的文本
+     */
+    fallbackCopyTextToClipboard(text) {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        textArea.style.top = "-999999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+
+        try {
+            const successful = document.execCommand('copy');
+            if (successful) {
+                this.showCopySuccess();
+            } else {
+                alert('复制失败，请手动选择复制');
+            }
+        } catch (err) {
+            alert('复制失败，请手动选择复制');
+        }
+
+        document.body.removeChild(textArea);
+    }
+
+    /**
+     * 显示复制成功提示
+     */
+    showCopySuccess() {
+        // 创建临时的成功提示
+        const notification = document.createElement('div');
+        notification.textContent = '代码已复制到剪贴板';
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #28a745;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 14px;
+            z-index: 10000;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        `;
+
+        document.body.appendChild(notification);
+
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 2000);
+    }
+
+    /**
      * 创建消息元素
      * @param {Object} message - 消息对象
      * @returns {HTMLElement} 消息元素
@@ -399,12 +711,16 @@ class ChatManager {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${message.type}-message`;
 
-        const timeString = message.timestamp.toLocaleTimeString([], {
+        const timeString = message.timestamp.toLocaleString([], {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
             hour: '2-digit',
-            minute: '2-digit'
+            minute: '2-digit',
+            second: '2-digit'
         });
 
-        let contentHtml = `<p>${this.formatMessage(message.content)}</p>`;
+        let contentHtml = this.renderMarkdown(message.content);
 
         // 如果有多图，添加图片显示
         if (message.images && message.images.length > 0) {
@@ -420,12 +736,35 @@ class ChatManager {
             contentHtml += '</div>';
         }
 
+        // 检测是否为单行短消息（只对用户消息生效）
+        const isShortMessage = message.type === 'user' && this.isShortMessage(message.content, contentHtml, message.images);
+
         messageDiv.innerHTML = `
-            <div class="message-avatar">${message.type === 'user' ? '<img src="assets/icon-user.svg" alt="用户" width="20" height="20">' : '<img src="assets/icon-bot.svg" alt="AI" width="20" height="20">'}</div>
-            <div class="message-content">
+            <div class="message-header">
+                <div class="message-avatar">${message.type === 'user' ? '<img src="assets/icon-user.svg" alt="用户" width="20" height="20">' : '<img src="assets/icon-bot.svg" alt="AI" width="20" height="20">'}</div>
+                <div class="message-time">${timeString}</div>
+            </div>
+            <div class="message-content${isShortMessage ? ' short-message' : ''}">
                 ${contentHtml}
             </div>
         `;
+
+        // 如果是短消息，允许换行并保持两端对齐
+        if (isShortMessage) {
+            setTimeout(() => {
+                const messageContent = messageDiv.querySelector('.message-content');
+                if (messageContent) {
+                    messageContent.style.width = 'fit-content';
+                    messageContent.style.maxWidth = 'none';
+                    messageContent.style.flex = '0 0 fit-content';
+                    messageContent.style.textAlign = 'justify';
+                    messageContent.style.wordBreak = 'break-word';
+                    messageContent.style.overflowWrap = 'break-word';
+                }
+            }, 0);
+        }
+
+        // 代码块中的复制按钮已经使用本地SVG，不需要额外初始化
 
         return messageDiv;
     }
@@ -453,11 +792,22 @@ class ChatManager {
         if (!input || !sendBtn) return;
 
         const hasContent = input.value.trim().length > 0;
-        const hasImage = this.uploadedImage !== null;
-        const canSend = (hasContent || hasImage) && !this.isTyping;
+        const hasImage = this.uploadedImages && this.uploadedImages.length > 0;
 
+        // 如果正在回复中，显示中断样式
+        if (this.isTyping) {
+            sendBtn.disabled = false;
+            sendBtn.classList.add('interrupt-available');
+            sendBtn.title = '点击中断AI回复';
+            return;
+        }
+
+        // 正常状态
+        sendBtn.classList.remove('interrupt-available');
+        const canSend = (hasContent || hasImage);
         sendBtn.disabled = !canSend;
         sendBtn.style.opacity = canSend ? '1' : '0.5';
+        sendBtn.title = canSend ? '发送消息' : '请输入消息内容';
     }
 
     /**
@@ -571,7 +921,6 @@ class ChatManager {
     handleImageUpload() {
         // 如果已有图片，不允许通过按钮上传，只能通过浮窗内的添加区域
         if (this.uploadedImages.length > 0) {
-            console.log('已有图片，请通过浮窗内的添加区域上传新图片');
             return;
         }
 
@@ -649,8 +998,6 @@ class ChatManager {
             this.uploadedImages.push(imageData);
             this.currentImageIndex = this.uploadedImages.length - 1; // 显示最新上传的图片
 
-            console.log(`图片上传成功: ${file.name}, 总共 ${this.uploadedImages.length} 张图片`);
-
             // 更新按钮状态和提示
             this.updateImageUploadButton(this.uploadedImages.length > 0);
             this.updateSendButton();
@@ -687,8 +1034,6 @@ class ChatManager {
             image.src = this.uploadedImage.dataUrl;
             preview.classList.add('fixed');
             preview.classList.remove('show-hover');
-
-            console.log('固定预览显示，图片已设置');
         }
     }
 
@@ -696,8 +1041,6 @@ class ChatManager {
      * 显示悬停预览
      */
     showHoverPreview() {
-        console.log('showHoverPreview 被调用, 当前图片数量:', this.uploadedImages.length);
-
         const preview = document.getElementById('image-preview');
 
         if (preview) {
@@ -707,20 +1050,10 @@ class ChatManager {
             // 显示悬停预览 - 只管理CSS类，样式由CSS控制
             preview.classList.add('show-hover');
             preview.classList.remove('fixed');
-            console.log('添加show-hover类，移除fixed类，CSS将处理显示');
 
             // 更新标题显示图片数量
             this.updatePreviewTitle();
 
-            // 检查最终状态
-            setTimeout(() => {
-                console.log('悬停预览最终状态:', {
-                    display: getComputedStyle(preview).display,
-                    opacity: getComputedStyle(preview).opacity,
-                    visibility: getComputedStyle(preview).visibility,
-                    classes: preview.className
-                });
-            }, 10);
         } else {
             console.error('找不到预览元素');
         }
@@ -740,8 +1073,6 @@ class ChatManager {
      * 隐藏悬停预览
      */
     hideHoverPreview() {
-        console.log('hideHoverPreview 被调用');
-
         // 清除之前的延迟隐藏定时器
         if (this.hidePreviewTimeout) {
             clearTimeout(this.hidePreviewTimeout);
@@ -750,28 +1081,11 @@ class ChatManager {
         // 设置0.3秒延迟隐藏
         this.hidePreviewTimeout = setTimeout(() => {
             const preview = document.getElementById('image-preview');
-            console.log('执行延迟隐藏，预览元素状态:', {
-                exists: !!preview,
-                hasFixed: preview?.classList.contains('fixed'),
-                currentClasses: preview?.className,
-                isHovering: preview?.matches(':hover') || false
-            });
 
             // 检查鼠标是否还在预览区域内
             if (preview && !preview.classList.contains('fixed') && !preview.matches(':hover')) {
                 preview.classList.remove('show-hover');
-                console.log('移除show-hover类，预览隐藏');
 
-                // 检查最终状态
-                setTimeout(() => {
-                    console.log('隐藏预览最终状态:', {
-                        display: getComputedStyle(preview).display,
-                        opacity: getComputedStyle(preview).opacity,
-                        classes: preview.className
-                    });
-                }, 10);
-            } else {
-                console.log('取消隐藏（鼠标仍在预览区域内或固定状态）');
             }
         }, 300); // 0.3秒延迟
     }
@@ -819,7 +1133,6 @@ class ChatManager {
         if (index < 0 || index >= this.uploadedImages.length) return;
 
         const deletedImage = this.uploadedImages.splice(index, 1)[0];
-        console.log(`删除图片: ${deletedImage.name}`);
 
         // 更新所有图片项的索引
         this.updateImageIndices();
@@ -870,6 +1183,48 @@ class ChatManager {
     }
 
     /**
+     * 检测是否为单行短消息
+     * @param {string} rawContent - 原始消息内容
+     * @param {string} renderedHtml - 渲染后的HTML
+     * @param {Array} images - 图片数组
+     * @returns {boolean} 是否为短消息
+     */
+    isShortMessage(rawContent, renderedHtml, images) {
+        // 如果有图片，不是短消息
+        if (images && images.length > 0) {
+            return false;
+        }
+
+        // 如果包含复杂元素，不是短消息
+        if (renderedHtml.includes('<div class="code-block-container">') ||
+            renderedHtml.includes('<ul>') ||
+            renderedHtml.includes('<ol>') ||
+            renderedHtml.includes('<h1>') ||
+            renderedHtml.includes('<h2>') ||
+            renderedHtml.includes('<h3>')) {
+            return false;
+        }
+
+        // 如果原始内容包含换行符，不是短消息
+        if (rawContent.includes('\n')) {
+            return false;
+        }
+
+        // 如果内容长度超过30个字符，不是短消息
+        if (rawContent.length > 30) {
+            return false;
+        }
+
+        // 如果渲染后的HTML包含多个<p>标签，不是短消息
+        const paragraphCount = (renderedHtml.match(/<p>/g) || []).length;
+        if (paragraphCount > 1) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * 获取上传的图片
      */
     getUploadedImage() {
@@ -903,7 +1258,6 @@ class ChatManager {
 
         this.updateImageUploadButton(false);
         this.updateSendButton();
-        console.log('清空所有上传的图片');
     }
 }
 

@@ -242,7 +242,7 @@ body {
 
 .chat-tool-btn {
     background: #f0f0f0;
-    border: 1px solid #ddd;
+    border: none;
     padding: 6px 12px; /* 与画布工具按钮保持一致 */
     border-radius: 4px;
     cursor: pointer;
@@ -265,8 +265,22 @@ body {
 
 .message {
     display: flex;
-    gap: 12px;
+    flex-direction: column;
     max-width: 100%;
+    margin-bottom: 10px;
+}
+
+.message-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 8px;
+}
+
+.message-time {
+    font-size: 12px;
+    color: #666;
+    flex-shrink: 0;
 }
 
 .message-avatar {
@@ -288,11 +302,67 @@ body {
     padding: 12px 16px;
     border-radius: 12px;
     border-bottom-left-radius: 4px;
+    width: 85%; /* 基于聊天区的固定百分比宽度 */
+    max-width: none; /* 移除固定最大宽度限制 */
+    word-break: break-word; /* 允许在单词内部换行 */
+    overflow-wrap: break-word; /* 兼容性更好的换行 */
+    text-align: justify; /* 两端对齐 */
 }
 
 .message-content p {
     margin: 0;
     line-height: 1.4;
+}
+
+/* 短消息样式 - 自适应宽度，允许换行，两端对齐 */
+.message-content.short-message {
+    flex: 0 0 fit-content !important; /* 不伸缩，基础尺寸适应内容 */
+    width: fit-content !important; /* 完全适应内容宽度 */
+    max-width: none !important; /* 移除最大宽度限制 */
+    text-align: justify !important; /* 两端对齐 */
+    word-break: break-word !important; /* 允许换行 */
+    overflow-wrap: break-word !important; /* 兼容性换行 */
+}
+
+/* 中断按钮样式 */
+.send-btn.interrupt-available {
+    background: #ff4d4f !important; /* Ant Design 红色 */
+    border-color: #ff4d4f !important;
+    position: relative;
+    overflow: hidden;
+}
+
+.send-btn.interrupt-available:hover {
+    background: #ff7875 !important; /* 浅红hover */
+    border-color: #ff7875 !important;
+}
+
+.send-btn.interrupt-available .btn-icon {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+}
+
+.send-btn.interrupt-available .btn-icon::before {
+    content: '';
+    width: 18px;
+    height: 18px;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    border-top: 3px solid #ffffff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    flex-shrink: 0;
+}
+
+.send-btn.interrupt-available .btn-icon img {
+    display: none; /* 隐藏原来的图标 */
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 
 .message-images {

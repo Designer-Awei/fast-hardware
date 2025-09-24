@@ -78,20 +78,234 @@
     gap: 16px;
 }
 
-/* 消息样式增强 */
-.message.user-message {
-    flex-direction: row-reverse;
+/* 消息样式增强 - 对齐方式 */
+.message.assistant-message .message-header {
+    justify-content: flex-start; /* 机器人消息：头像和时间左对齐 */
+}
+
+.message.user-message .message-header {
+    justify-content: flex-end; /* 用户消息：头像和时间右对齐 */
+    flex-direction: row-reverse; /* 反转元素顺序：时间在左，头像在右 */
+    align-self: flex-end; /* 整个header右对齐，与气泡对齐 */
+}
+
+.message.assistant-message .message-content {
+    align-self: flex-start; /* 机器人气泡左对齐 */
+    border-radius: 0 12px 12px 12px; /* 左上角直角，其他角圆角 */
 }
 
 .message.user-message .message-content {
+    align-self: flex-end; /* 用户气泡右对齐 */
     background: #667eea;
     color: white;
-    border-bottom-left-radius: 12px;
-    border-bottom-right-radius: 4px;
+    border-radius: 12px 0 12px 12px; /* 右上角直角，其他角圆角 */
+}
+
+/* 用户短消息特殊处理 */
+.message.user-message .message-content.short-message {
+    flex: 0 0 fit-content !important;
+    width: fit-content !important;
+    max-width: none !important;
+    text-align: justify !important; /* 两端对齐 */
+    word-break: break-word !important; /* 允许换行 */
+    overflow-wrap: break-word !important; /* 兼容性换行 */
 }
 
 .message.user-message .message-avatar {
     background: #28a745;
+}
+
+/* 自定义代码块样式 */
+.code-block-container {
+    margin: 12px 0;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #f8f9fa;
+    max-width: 100%;
+}
+
+.code-block-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: #f1f3f4;
+    /* 移除边框，让标题栏和内容块无缝连接 */
+    border-radius: 7px 7px 0 0; /* 标题栏上角圆，下面平直 */
+    height: 36px;
+    box-sizing: border-box;
+}
+
+.code-language {
+    color: #5f6368;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-size: 12px;
+}
+
+.code-copy-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    color: #5f6368;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    margin-left: auto;
+}
+
+.code-copy-btn:hover {
+    background: #e8eaed;
+    color: #202124;
+}
+
+.code-copy-btn img {
+    width: 14px;
+    height: 14px;
+    filter: brightness(0) saturate(100%) invert(42%) sepia(9%) saturate(1000%) hue-rotate(176deg) brightness(92%) contrast(87%);
+    transition: filter 0.2s ease;
+}
+
+.code-block {
+    margin: 0;
+    padding: 0;
+    background: #ffffff;
+    border: none;
+    border-radius: 0 0 7px 7px; /* 内容块下角圆，上角平直，与标题栏无缝连接 */
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+    font-size: 13px;
+    line-height: 1.4;
+    /* 限制高度为大约10行的高度 */
+    max-height: calc(1.4em * 10 + 24px); /* 10行 + padding */
+    overflow: auto; /* 同时支持垂直和水平滚动 */
+    white-space: pre; /* 保留空格和换行符 */
+    word-wrap: normal; /* 不换行，保持代码格式 */
+    word-break: normal;
+}
+
+.code-block code {
+    display: block;
+    background: transparent;
+    color: inherit;
+    padding: 12px;
+    border-radius: 0;
+    font-size: inherit;
+    line-height: inherit;
+    white-space: pre; /* 保留代码缩进 */
+    word-wrap: normal;
+    overflow-wrap: normal;
+}
+
+/* 自定义代码块滚动条样式 */
+.code-block::-webkit-scrollbar {
+    width: 12px;  /* 纵向滚动条宽度 */
+    height: 12px; /* 横向滚动条高度，与纵向滚动条宽度一致 */
+}
+
+.code-block::-webkit-scrollbar-track {
+    background: #f1f3f4; /* 滚动条轨道背景色 */
+    border-radius: 6px;
+}
+
+.code-block::-webkit-scrollbar-thumb {
+    background: #c1c1c1; /* 滚动条滑块颜色 */
+    border-radius: 6px;
+    border: 2px solid #f1f3f4; /* 滑块边框，与轨道颜色一致 */
+}
+
+.code-block::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8; /* 鼠标悬停时的滑块颜色 */
+}
+
+.code-block::-webkit-scrollbar-corner {
+    background: #f1f3f4; /* 右下角空白区域的背景色，与轨道一致 */
+}
+
+/* Markdown样式 */
+.message-content pre {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 12px;
+    overflow-x: auto;
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.message-content code {
+    background: #f1f3f4;
+    color: #d73a49;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+    font-size: 0.9em;
+}
+
+.message-content pre code {
+    background: transparent;
+    color: inherit;
+    padding: 0;
+    border-radius: 0;
+}
+
+.message-content strong {
+    font-weight: 600;
+    color: inherit;
+}
+
+.message-content em {
+    font-style: italic;
+    color: inherit;
+}
+
+.message-content h1,
+.message-content h2,
+.message-content h3,
+.message-content h4 {
+    margin: 16px 0 8px 0;
+    font-weight: 600; /* 统一的加粗样式 */
+    font-size: 1em; /* 统一字号，与正文相同 */
+    line-height: 1.3;
+    color: inherit;
+}
+
+/* 第一个标题的上边距特殊处理 */
+.message-content h1:first-child,
+.message-content h2:first-child,
+.message-content h3:first-child,
+.message-content h4:first-child {
+    margin-top: 0; /* 移除第一个标题的上边距 */
+}
+
+.message-content li {
+    margin-left: 20px;
+    line-height: 1.6;
+}
+
+.message-content a {
+    color: #0066cc;
+    text-decoration: underline;
+}
+
+.message-content a:hover {
+    color: #004499;
+}
+
+/* 用户消息中的markdown样式 */
+.message.user-message .message-content pre {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.message.user-message .message-content code {
+    background: rgba(255, 255, 255, 0.2);
+    color: #ffffff;
 }
 
 /* 工具提示 */

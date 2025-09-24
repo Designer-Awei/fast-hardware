@@ -123,5 +123,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /**
    * 从env.local加载API密钥
    */
-  loadApiKey: () => ipcRenderer.invoke('load-api-key')
+  loadApiKey: () => ipcRenderer.invoke('load-api-key'),
+
+  /**
+   * 与AI对话
+   */
+  chatWithAI: (messages, model) => ipcRenderer.invoke('chatWithAI', messages, model)
 });
