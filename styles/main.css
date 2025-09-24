@@ -218,6 +218,7 @@ body {
     border-left: 1px solid #e0e0e0;
     position: relative;
     flex-shrink: 0;
+    min-width: 240px; /* 最小宽度限制 */
 }
 
 .chat-header {
@@ -242,7 +243,7 @@ body {
 .chat-tool-btn {
     background: #f0f0f0;
     border: 1px solid #ddd;
-    padding: 4px 8px;
+    padding: 6px 12px; /* 与画布工具按钮保持一致 */
     border-radius: 4px;
     cursor: pointer;
     font-size: 12px;
@@ -294,13 +295,56 @@ body {
     line-height: 1.4;
 }
 
+.message-images {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.message-image-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.message-image-item img {
+    border-radius: 6px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.message-image {
+    margin-top: 8px;
+}
+
+.message-image img {
+    border: 1px solid #e0e0e0;
+    display: block;
+}
+
+.image-info {
+    font-size: 12px;
+    color: #fff; /* 改为白色字体 */
+    margin-top: 4px;
+    font-style: italic;
+}
+
+.message-model {
+    font-size: 11px;
+    color: #888;
+    margin-top: 4px;
+    padding: 2px 6px;
+    background: #f8f9fa;
+    border-radius: 4px;
+    display: inline-block;
+}
+
 .chat-input-area {
     padding: 20px;
     border-top: 1px solid #e0e0e0;
     background: #fafafa;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+    position: relative;
 }
 
 #chat-input {
@@ -318,21 +362,371 @@ body {
     border-color: #667eea;
 }
 
-.send-btn {
-    align-self: flex-end;
-    background: #667eea;
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 6px;
+/* 输入控制栏 */
+.input-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 12px;
+    gap: 12px;
+}
+
+/* 控制按钮基础样式 */
+.control-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    background: white;
     cursor: pointer;
-    font-size: 14px;
     transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.control-btn:hover {
+    border-color: #667eea;
+    background: #f8f9fa;
+}
+
+.control-btn:active {
+    transform: scale(0.95);
+}
+
+.control-btn .btn-icon {
+    font-size: 16px;
+    line-height: 1;
+}
+
+/* 图标样式 */
+.message-avatar img {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    object-fit: contain;
+    filter: brightness(0) invert(1); /* 白色 */
+    display: block;
+}
+
+.control-btn .btn-icon img {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    object-fit: contain;
+    display: block;
+    margin: 0 auto;
+}
+
+.send-btn .btn-icon img {
+    filter: brightness(0) invert(1); /* 发送按钮图标白色 */
+}
+
+.card-icon .icon img {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    object-fit: contain;
+}
+
+.control-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* 发送按钮特殊样式 */
+.send-btn {
+    background: #667eea;
+    border-color: #667eea;
+    color: white;
 }
 
 .send-btn:hover {
     background: #5a6fd8;
+    border-color: #5a6fd8;
 }
+
+/* 模型选择器 */
+.model-selector {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+}
+
+.model-select-btn {
+    width: 100%;
+    justify-content: space-between;
+    padding: 0 12px;
+    font-size: 13px;
+    border: 1px solid #ddd;
+    background: white;
+}
+
+.model-select-btn .model-name {
+    flex: 1;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-right: 8px;
+}
+
+.model-dropdown {
+    position: absolute;
+    bottom: 65px;
+    left: 20px;
+    right: 20px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 1000;
+    display: none;
+}
+
+.model-dropdown.active {
+    display: block;
+}
+
+.model-option {
+    padding: 12px 16px;
+    cursor: pointer;
+    border-bottom: 1px solid #f0f0f0;
+    transition: background-color 0.2s ease;
+    font-size: 13px;
+}
+
+.model-option:last-child {
+    border-bottom: none;
+}
+
+.model-option:hover {
+    background: #f8f9fa;
+}
+
+.model-option.selected {
+    background: #e3f2fd;
+    color: #1976d2;
+}
+
+.model-desc {
+    display: block;
+    font-size: 11px;
+    color: #666;
+    margin-top: 2px;
+    font-weight: normal;
+}
+
+/* 图片上传容器 */
+.image-upload-container {
+    position: relative;
+    display: flex;
+}
+
+/* 图片预览 */
+.image-preview {
+    position: absolute;
+    bottom: calc(100% + 8px); /* 按钮正上方8px间距 */
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    overflow: hidden;
+    width: 200px; /* 固定宽度 */
+    height: 400px; /* 固定高度 */
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    display: flex;
+    flex-direction: column;
+}
+
+.image-preview.fixed {
+    display: block !important;
+    opacity: 1;
+    pointer-events: auto;
+    z-index: 1001; /* 确保在最上层 */
+    /* 保持与悬停状态相同的尺寸和位置 */
+}
+
+.image-preview:not(.fixed) {
+    pointer-events: none;
+}
+
+.image-preview.show-hover {
+    display: block !important;
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.preview-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #eee;
+}
+
+.preview-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: #333;
+}
+
+.preview-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    color: #666;
+    padding: 0;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+}
+
+.preview-close:hover {
+    background: #e0e0e0;
+    color: #333;
+}
+
+.preview-content {
+    flex: 1;
+    padding: 10px; /* 四边10px padding */
+    background: #fafafa;
+    position: relative;
+    overflow: hidden; /* 隐藏超出内容，让子元素滚动 */
+}
+
+
+/* 图片列表容器 */
+.preview-image-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px; /* 图片间距10px */
+    max-height: 380px; /* 400px总高 - 41px header - 20px padding */
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* 单个图片项 */
+.preview-image-item {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start; /* 顶部对齐，让图片自然展开 */
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    /* 移除 overflow: hidden，让图片完整显示 */
+    width: 180px; /* 与图片宽度一致 */
+    margin: 0 auto; /* 居中对齐 */
+}
+
+.preview-item-image {
+    width: 180px; /* 固定宽度180px */
+    height: auto; /* 自动高度，根据比例缩放 */
+    object-fit: contain; /* 保持比例，适应容器 */
+    display: block;
+}
+
+/* 删除按钮样式 */
+.preview-item-delete {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.6); /* 半透明黑色背景 */
+    color: white;
+    font-size: 12px;
+    font-weight: bold;
+    opacity: 0.8; /* 默认半透明显示 */
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    z-index: 5;
+}
+
+.preview-image-item:hover .preview-item-delete {
+    opacity: 1; /* 悬停时完全显示 */
+}
+
+.preview-item-delete:hover {
+    background: rgba(255, 77, 77, 0.8);
+    transform: scale(1.1);
+}
+
+.delete-icon {
+    line-height: 1;
+    pointer-events: none;
+}
+
+/* 添加图片区域样式 */
+.preview-add-image-item {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: white;
+    border-radius: 8px;
+    border: 2px dashed #ddd;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s ease;
+    cursor: pointer;
+    overflow: hidden;
+    width: 180px; /* 与图片宽度一致 */
+    height: 120px; /* 固定高度 */
+    margin: 0 auto; /* 居中对齐 */
+    flex-shrink: 0; /* 防止被flex压缩 */
+}
+
+.preview-add-image-item:hover {
+    border-color: #007bff;
+    background: #f8f9ff;
+}
+
+.add-image-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px 10px; /* 上下20px，左右10px */
+    width: 180px;
+    height: 120px;
+    color: #666;
+}
+
+.add-icon {
+    font-size: 32px;
+    font-weight: bold;
+    color: #007bff;
+    margin-bottom: 8px;
+    line-height: 1;
+}
+
+.add-text {
+    font-size: 14px;
+    font-weight: 500;
+    text-align: center;
+}
+
+
 
 /* 元件管理标签页 */
 .component-workspace {
@@ -1273,6 +1667,34 @@ body {
         align-items: stretch;
     }
 
+    /* 手机端聊天输入区域优化 */
+    .input-controls {
+        gap: 8px;
+    }
+
+    .control-btn {
+        width: 36px;
+        height: 36px;
+    }
+
+    .model-select-btn {
+        font-size: 12px;
+        padding: 0 8px;
+    }
+
+    .model-option {
+        padding: 10px 12px;
+        font-size: 12px;
+    }
+
+    .image-preview {
+        margin-top: 8px;
+    }
+
+    .preview-content img {
+        max-height: 150px;
+    }
+
     .btn-fixed-width {
         width: auto !important; /* 手机端恢复自适应宽度 */
         height: 44px !important; /* 保持高度一致 */
@@ -1617,14 +2039,11 @@ kbd.key {
 /* 响应式设计 */
 @media (max-width: 900px) {
     .canvas-section {
-        min-width: 50%;
-        max-width: 70%;
+        min-width: 65%; /* 确保最小可用空间 */
     }
 
     .chat-section {
-        width: 200px;
-        min-width: 200px;
-        max-width: 300px;
+        min-width: 240px; /* 确保聊天区最小宽度与JavaScript一致 */
     }
 
     .settings-container {

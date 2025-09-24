@@ -261,7 +261,7 @@ async function createWindow() {
     width: windowBounds ? windowBounds.width : savedConfig.width,
     height: windowBounds ? windowBounds.height : savedConfig.height,
     minHeight: 400,
-    minWidth: 600,
+    minWidth: 800,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

@@ -103,7 +103,7 @@
                     <!-- 对话栏区域 -->
                     <section class="chat-section">
                         <div class="chat-header">
-                            <h3>🤖 AI硬件助手</h3>
+                            <h3>AI硬件助手</h3>
                             <div class="chat-tools">
                                 <button class="chat-tool-btn" id="clear-chat">清空</button>
                                 <button class="chat-tool-btn" id="export-chat">导出</button>
@@ -111,7 +111,7 @@
                         </div>
                         <div class="chat-messages" id="chat-messages">
                             <div class="message ai-message">
-                                <div class="message-avatar">🤖</div>
+                                <div class="message-avatar"><img src="assets/icon-bot.svg" alt="AI" width="20" height="20"></div>
                                 <div class="message-content">
                                     <p>你好！我是Fast Hardware智能助手。我可以帮你进行硬件选型、电路设计和代码生成。请告诉我你想要实现什么功能？</p>
                                 </div>
@@ -119,7 +119,57 @@
                         </div>
                         <div class="chat-input-area">
                             <textarea id="chat-input" placeholder="描述你想要实现的硬件功能，我来帮你设计电路..." rows="3"></textarea>
-                            <button class="send-btn" id="send-message">发送</button>
+
+                            <!-- 输入控制栏 -->
+                            <div class="input-controls">
+                                <div class="image-upload-container">
+                                    <button class="control-btn image-upload-btn" id="image-upload" title="上传图片">
+                                        <span class="btn-icon"><img src="assets/icon-image.svg" alt="上传图片" width="20" height="20"></span>
+                                    </button>
+
+                                    <!-- 图片预览浮窗 -->
+                                    <div class="image-preview" id="image-preview" style="display: none;">
+                                        <div class="preview-header">
+                                            <span class="preview-title">已上传图片</span>
+                                            <button class="preview-close" id="preview-close">✕</button>
+                                        </div>
+                                        <div class="preview-content">
+                                            <img id="preview-image" src="" alt="预览图片">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="model-selector">
+                                    <button class="control-btn model-select-btn" id="model-select" title="选择AI模型">
+                                        <span class="model-name" id="current-model">THUDM/GLM-4.1V-9B-Thinking</span>
+                                        <span class="btn-icon">▼</span>
+                                    </button>
+                                </div>
+
+                                <button class="control-btn send-btn" id="send-message" title="发送消息">
+                                    <span class="btn-icon"><img src="assets/icon-send.svg" alt="发送" width="20" height="20"></span>
+                                </button>
+                            </div>
+
+                            <!-- 模型选择下拉框 -->
+                            <div class="model-dropdown" id="model-dropdown">
+                                <div class="model-option" data-model="THUDM/GLM-4.1V-9B-Thinking" data-desc="默认推理模型，支持图文输入">
+                                    THUDM/GLM-4.1V-9B-Thinking
+                                    <span class="model-desc">默认推理模型，支持图文输入</span>
+                                </div>
+                                <div class="model-option" data-model="THUDM/GLM-4-9B-0414" data-desc="普通对话模型">
+                                    THUDM/GLM-4-9B-0414
+                                    <span class="model-desc">普通对话模型</span>
+                                </div>
+                                <div class="model-option" data-model="Qwen/Qwen3-8B" data-desc="推理模型">
+                                    Qwen/Qwen3-8B
+                                    <span class="model-desc">推理模型</span>
+                                </div>
+                                <div class="model-option" data-model="tencent/Hunyuan-MT-7B" data-desc="多语言翻译模型">
+                                    tencent/Hunyuan-MT-7B
+                                    <span class="model-desc">多语言翻译模型</span>
+                                </div>
+                            </div>
                         </div>
                     </section>
                 </div>
@@ -446,7 +496,7 @@
                         <div class="setting-card contact-card">
                             <div class="card-header">
                                 <div class="card-icon">
-                                    <span class="icon">👨‍💻</span>
+                                    <span class="icon"><img src="assets/icon-user.svg" alt="用户" width="20" height="20"></span>
                                 </div>
                                 <div class="card-info">
                                     <h3>联系我们</h3>

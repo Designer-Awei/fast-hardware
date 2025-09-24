@@ -14,6 +14,7 @@ class ResizerManager {
         this.startCanvasWidth = 0;
         this.minChatWidth = 0.2; // 聊天区最小20%
         this.maxChatWidth = 0.4; // 聊天区最大40%
+        this.minChatWidthPx = 240; // 聊天区最小宽度像素
         this.defaultChatWidth = 0.3; // 聊天区默认30%
         this.init();
     }
@@ -78,6 +79,9 @@ class ResizerManager {
         this.startX = e.clientX;
         this.startCanvasWidth = this.canvasSection.offsetWidth;
 
+        // 检查是否处于响应式模式
+        const isResponsiveMode = window.innerWidth <= 900;
+
         // 添加拖拽样式
         document.body.style.cursor = 'col-resize';
         this.resizer.style.background = '#007acc';
@@ -86,7 +90,8 @@ class ResizerManager {
         console.log('开始调整分割线', {
             startX: this.startX,
             canvasWidth: this.startCanvasWidth,
-            chatWidth: this.chatSection.offsetWidth
+            chatWidth: this.chatSection.offsetWidth,
+            responsiveMode: isResponsiveMode
         });
     }
 
@@ -99,22 +104,60 @@ class ResizerManager {
 
         const workspaceRect = this.workspace.getBoundingClientRect();
         const deltaX = e.clientX - this.startX;
-        
-        // 计算当前聊天区域宽度百分比
-        const currentChatWidth = this.chatSection.offsetWidth;
-        const currentChatPercent = currentChatWidth / workspaceRect.width;
-        
-        // 计算新的聊天区域百分比 (向右拖动减少聊天区宽度)
-        const deltaPercent = deltaX / workspaceRect.width;
-        const newChatPercent = currentChatPercent - deltaPercent;
-        
-        // 限制在20%-40%范围内
-        const clampedChatPercent = Math.max(this.minChatWidth, Math.min(this.maxChatWidth, newChatPercent));
-        const clampedCanvasPercent = 1 - clampedChatPercent;
 
-        // 设置固定宽度
-        this.canvasSection.style.width = `${clampedCanvasPercent * 100}%`;
-        this.chatSection.style.width = `${clampedChatPercent * 100}%`;
+        // 检查是否处于响应式模式 (900px以下)
+        const isResponsiveMode = window.innerWidth <= 900;
+
+        // 计算可能的新的聊天区宽度
+        const currentChatWidth = this.chatSection.offsetWidth;
+        const potentialNewChatWidth = currentChatWidth - deltaX; // 向右拖动减少聊天区宽度
+
+        // 检查是否会小于最小像素宽度
+        if (potentialNewChatWidth < this.minChatWidthPx) {
+            console.log(`聊天区宽度不能小于 ${this.minChatWidthPx}px，当前计算宽度: ${potentialNewChatWidth}px`);
+            return; // 不进行调整
+        }
+
+        if (isResponsiveMode) {
+            // 响应式模式：也使用百分比控制，但调整范围适应小屏幕
+            const currentChatPercent = currentChatWidth / workspaceRect.width;
+
+            // 计算新的聊天区域百分比 (向右拖动减少聊天区宽度)
+            const deltaPercent = deltaX / workspaceRect.width;
+            const newChatPercent = currentChatPercent - deltaPercent;
+
+            // 响应式模式下调整范围：15%-35% (比正常模式稍小)
+            const minChatWidth = 0.15; // 15%
+            const maxChatWidth = 0.35; // 35%
+            const clampedChatPercent = Math.max(minChatWidth, Math.min(maxChatWidth, newChatPercent));
+            const clampedCanvasPercent = 1 - clampedChatPercent;
+
+            // 设置百分比宽度
+            this.canvasSection.style.width = `${clampedCanvasPercent * 100}%`;
+            this.chatSection.style.width = `${clampedChatPercent * 100}%`;
+        } else {
+            // 正常模式：使用百分比调整
+            const currentChatPercent = currentChatWidth / workspaceRect.width;
+
+            // 计算新的聊天区域百分比 (向右拖动减少聊天区宽度)
+            const deltaPercent = deltaX / workspaceRect.width;
+            const newChatPercent = currentChatPercent - deltaPercent;
+
+            // 计算对应的像素宽度，确保不小于最小像素宽度
+            const newChatWidthPx = newChatPercent * workspaceRect.width;
+            if (newChatWidthPx < this.minChatWidthPx) {
+                console.log(`聊天区宽度不能小于 ${this.minChatWidthPx}px，当前计算宽度: ${newChatWidthPx}px`);
+                return; // 不进行调整
+            }
+
+            // 限制在20%-40%范围内
+            const clampedChatPercent = Math.max(this.minChatWidth, Math.min(this.maxChatWidth, newChatPercent));
+            const clampedCanvasPercent = 1 - clampedChatPercent;
+
+            // 设置固定宽度
+            this.canvasSection.style.width = `${clampedCanvasPercent * 100}%`;
+            this.chatSection.style.width = `${clampedChatPercent * 100}%`;
+        }
 
         // 更新起始位置，避免累积误差
         this.startX = e.clientX;
@@ -145,33 +188,54 @@ class ResizerManager {
      * 设置默认布局
      */
     setDefaultLayout() {
-        const canvasPercent = 1 - this.defaultChatWidth;
-        this.canvasSection.style.width = `${canvasPercent * 100}%`;
-        this.chatSection.style.width = `${this.defaultChatWidth * 100}%`;
-        
+        // 检查是否处于响应式模式
+        const isResponsiveMode = window.innerWidth <= 900;
+
+        if (isResponsiveMode) {
+            // 响应式模式：设置适合小屏幕的默认百分比
+            const canvasPercent = 1 - 0.25; // 聊天区25%
+            this.canvasSection.style.width = `${canvasPercent * 100}%`;
+            this.chatSection.style.width = `25%`;
+        } else {
+            // 正常模式：设置默认百分比
+            const canvasPercent = 1 - this.defaultChatWidth;
+            this.canvasSection.style.width = `${canvasPercent * 100}%`;
+            this.chatSection.style.width = `${this.defaultChatWidth * 100}%`;
+        }
+
         // 清除flex样式以避免冲突
         this.canvasSection.style.flex = 'none';
         this.chatSection.style.flex = 'none';
-        
+
     }
 
     /**
      * 处理窗口大小改变
      */
     handleWindowResize() {
+        // 检查是否处于响应式模式
+        const isResponsiveMode = window.innerWidth <= 900;
+
         // 保持当前的宽度比例
         const workspaceWidth = this.workspace.offsetWidth;
         const currentChatWidth = this.chatSection.offsetWidth;
         const currentChatPercent = currentChatWidth / workspaceWidth;
-        
-        // 确保比例在有效范围内
-        const clampedChatPercent = Math.max(this.minChatWidth, Math.min(this.maxChatWidth, currentChatPercent));
+
+        let clampedChatPercent;
+        if (isResponsiveMode) {
+            // 响应式模式：15%-35%范围
+            clampedChatPercent = Math.max(0.15, Math.min(0.35, currentChatPercent));
+        } else {
+            // 正常模式：20%-40%范围
+            clampedChatPercent = Math.max(this.minChatWidth, Math.min(this.maxChatWidth, currentChatPercent));
+        }
+
         const clampedCanvasPercent = 1 - clampedChatPercent;
-        
+
         // 重新设置宽度
         this.canvasSection.style.width = `${clampedCanvasPercent * 100}%`;
         this.chatSection.style.width = `${clampedChatPercent * 100}%`;
-        
+
         // 重新计算画布大小
         setTimeout(() => {
             if (window.canvasManager && window.canvasManager.resizeCanvas) {
