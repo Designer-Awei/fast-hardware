@@ -366,6 +366,9 @@ class FastHardwareApp {
             const configPath = `${projectPath}/circuit_config.json`;
             await window.electronAPI.saveFile(configPath, JSON.stringify(circuitConfig, null, 2));
 
+            // 同步元件文件到项目文件夹
+            await this.syncComponentFiles(projectPath, canvasState);
+
             // 更新固件代码
             await this.updateProjectCode(projectPath, canvasState);
 
@@ -373,6 +376,130 @@ class FastHardwareApp {
         } catch (error) {
             console.error('更新项目失败:', error);
             throw error;
+        }
+    }
+
+    /**
+     * 同步元件文件到项目文件夹
+     * @param {string} projectPath - 项目路径
+     * @param {Object} canvasState - 画布状态
+     */
+    async syncComponentFiles(projectPath, canvasState) {
+        try {
+            console.log('开始同步元件文件...');
+
+            const componentsPath = `${projectPath}/components`;
+
+            // 确保components文件夹存在
+            try {
+                await window.electronAPI.saveFile(componentsPath, '', true);
+            } catch (error) {
+                console.log('components文件夹已存在');
+            }
+
+            // 获取画布上的元件ID集合
+            const canvasComponentIds = new Set();
+            canvasState.components.forEach(component => {
+                if (component.data && component.data.id) {
+                    canvasComponentIds.add(component.data.id);
+                }
+            });
+
+            console.log('画布上的元件数量:', canvasComponentIds.size);
+
+            // 读取项目components文件夹中的现有元件文件
+            const dirResult = await window.electronAPI.readDirectory(componentsPath);
+            const existingComponentIds = new Set();
+
+            if (dirResult.success) {
+                dirResult.files.forEach(file => {
+                    if (file.name.endsWith('.json')) {
+                        // 从文件名提取元件ID (移除.json扩展名)
+                        const componentId = file.name.replace('.json', '');
+                        existingComponentIds.add(componentId);
+                    }
+                });
+            }
+
+            console.log('项目文件夹中的元件数量:', existingComponentIds.size);
+
+            // 找出需要新增的元件 (在画布上但不在项目文件夹中)
+            const componentsToAdd = [];
+            for (const componentId of canvasComponentIds) {
+                if (!existingComponentIds.has(componentId)) {
+                    // 找到对应的元件数据
+                    const component = canvasState.components.find(c => c.data && c.data.id === componentId);
+                    if (component) {
+                        componentsToAdd.push(component);
+                    }
+                }
+            }
+
+            // 找出需要删除的元件 (在项目文件夹中但不在画布上)
+            const componentsToRemove = [];
+            for (const componentId of existingComponentIds) {
+                if (!canvasComponentIds.has(componentId)) {
+                    componentsToRemove.push(componentId);
+                }
+            }
+
+            console.log(`需要新增 ${componentsToAdd.length} 个元件，删除 ${componentsToRemove.length} 个元件`);
+
+            // 复制新增的元件文件
+            for (const component of componentsToAdd) {
+                if (component.data && component.data.id) {
+                    try {
+                        // 从系统元件库读取原始元件文件
+                        const sourcePath = `data/system-components/standard/${component.data.id}.json`;
+                        let componentContent;
+
+                        try {
+                            // 先尝试从standard目录读取
+                            componentContent = await window.electronAPI.loadFile(sourcePath);
+                        } catch (error) {
+                            // 如果standard目录没有找到，尝试custom目录
+                            const customPath = `data/system-components/custom/${component.data.id}.json`;
+                            componentContent = await window.electronAPI.loadFile(customPath);
+                        }
+
+                        // 保存到项目的components目录
+                        const componentFileName = `${component.data.id}.json`;
+                        const componentPath = `${componentsPath}/${componentFileName}`;
+                        await window.electronAPI.saveFile(componentPath, componentContent);
+
+                        console.log(`✅ 元件 ${component.data.name} 已添加到项目`);
+                    } catch (error) {
+                        console.error(`❌ 复制元件 ${component.data.name} 失败:`, error);
+                        // 如果无法从系统库读取，则保存当前数据作为备用
+                        const componentFileName = `${component.data.id}.json`;
+                        const componentPath = `${componentsPath}/${componentFileName}`;
+                        await window.electronAPI.saveFile(componentPath, JSON.stringify(component.data, null, 2));
+                        console.log(`⚠️  元件 ${component.data.name} 使用备用数据保存`);
+                    }
+                }
+            }
+
+            // 删除不需要的元件文件
+            for (const componentId of componentsToRemove) {
+                try {
+                    const componentFileName = `${componentId}.json`;
+                    const componentPath = `${componentsPath}/${componentFileName}`;
+
+                    // 直接删除元件文件
+                    await window.electronAPI.deleteFile(componentPath);
+                    console.log(`🗑️ 元件 ${componentId} 已从项目文件夹删除`);
+
+                } catch (error) {
+                    console.error(`❌ 删除元件文件 ${componentId} 时出错:`, error);
+                    // 继续处理其他文件，不因单个文件失败而中断整个同步过程
+                }
+            }
+
+            console.log('元件文件同步完成');
+
+        } catch (error) {
+            console.error('同步元件文件失败:', error);
+            throw new Error('同步元件文件失败: ' + error.message);
         }
     }
 

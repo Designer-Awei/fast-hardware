@@ -492,6 +492,87 @@ ipcMain.handle('read-component-files', async (event, directory) => {
   }
 });
 
+// 读取目录内容（通用方法）
+ipcMain.handle('read-directory', async (event, directoryPath) => {
+  const fs = require('fs').promises;
+  const path = require('path');
+
+  try {
+    console.log(`读取目录内容: ${directoryPath}`);
+
+    // 检查目录是否存在
+    try {
+      await fs.access(directoryPath);
+    } catch (error) {
+      console.error(`目录不存在: ${directoryPath}`);
+      return { success: false, error: '目录不存在', files: [] };
+    }
+
+    // 读取目录内容
+    const items = await fs.readdir(directoryPath, { withFileTypes: true });
+
+    // 分类文件和文件夹
+    const files = [];
+    const directories = [];
+
+    for (const item of items) {
+      if (item.isFile()) {
+        files.push({
+          name: item.name,
+          type: 'file',
+          path: path.join(directoryPath, item.name)
+        });
+      } else if (item.isDirectory()) {
+        directories.push({
+          name: item.name,
+          type: 'directory',
+          path: path.join(directoryPath, item.name)
+        });
+      }
+    }
+
+    console.log(`目录读取完成: ${files.length}个文件, ${directories.length}个文件夹`);
+
+    return {
+      success: true,
+      files: files,
+      directories: directories,
+      all: [...files, ...directories]
+    };
+
+  } catch (error) {
+    console.error('读取目录失败:', error.message);
+    return { success: false, error: error.message, files: [], directories: [], all: [] };
+  }
+});
+
+// 删除文件
+ipcMain.handle('delete-file', async (event, filePath) => {
+  const fs = require('fs').promises;
+
+  try {
+    console.log(`删除文件: ${filePath}`);
+
+    // 检查文件是否存在
+    try {
+      await fs.access(filePath);
+    } catch (error) {
+      console.warn(`文件不存在，无需删除: ${filePath}`);
+      return { success: true, message: '文件不存在，无需删除' };
+    }
+
+    // 删除文件
+    await fs.unlink(filePath);
+    console.log(`文件删除成功: ${filePath}`);
+
+    return { success: true, message: '文件删除成功' };
+
+  } catch (error) {
+    console.error('删除文件失败:', error.message);
+    return { success: false, error: error.message };
+  }
+});
+
 // 保存元件（带重复检查）
 ipcMain.handle('saveComponent', async (event, component, savePath) => {
   const fs = require('fs').promises;

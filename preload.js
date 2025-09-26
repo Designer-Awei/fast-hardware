@@ -49,6 +49,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readComponentFiles: (directory) => ipcRenderer.invoke('read-component-files', directory),
 
   /**
+   * 读取目录内容
+   */
+  readDirectory: (directoryPath) => ipcRenderer.invoke('read-directory', directoryPath),
+
+  /**
+   * 删除文件
+   */
+  deleteFile: async (filePath) => {
+    const result = await ipcRenderer.invoke('delete-file', filePath);
+    if (result.success) {
+      return result;
+    } else {
+      throw new Error(result.error);
+    }
+  },
+
+  /**
    * 保存元件（带重复检查）
    */
   saveComponent: (component, path) => ipcRenderer.invoke('saveComponent', component, path),
