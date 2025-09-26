@@ -2,8 +2,8 @@
   "projectName": "SEBT-从机",
   "description": "通过Fast Hardware创建的电路设计",
   "version": "1.0.0",
-  "createdAt": "2025-09-26T07:34:03.055Z",
-  "lastModified": "2025-09-26T07:34:03.055Z",
+  "createdAt": "2025-09-26T08:47:08.071Z",
+  "lastModified": "2025-09-26T08:47:08.071Z",
   "components": [
     {
       "componentFile": "std-tp4056-充电模块-120647.json",
@@ -126,7 +126,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-09-26T07:34:03.055Z"
+        "createdAt": "2025-09-26T08:47:08.071Z"
       }
     },
     {
@@ -164,7 +164,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-09-26T07:34:03.055Z"
+        "createdAt": "2025-09-26T08:47:08.071Z"
       }
     },
     {
@@ -194,7 +194,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-09-26T07:34:03.055Z"
+        "createdAt": "2025-09-26T08:47:08.071Z"
       }
     },
     {
@@ -232,7 +232,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-09-26T07:34:03.055Z"
+        "createdAt": "2025-09-26T08:47:08.071Z"
       }
     },
     {
@@ -270,7 +270,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-09-26T07:34:03.055Z"
+        "createdAt": "2025-09-26T08:47:08.071Z"
       }
     },
     {
@@ -308,7 +308,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-09-26T07:34:03.055Z"
+        "createdAt": "2025-09-26T08:47:08.071Z"
       }
     },
     {
@@ -346,7 +346,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-09-26T07:34:03.055Z"
+        "createdAt": "2025-09-26T08:47:08.071Z"
       }
     },
     {
@@ -384,7 +384,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-09-26T07:34:03.055Z"
+        "createdAt": "2025-09-26T08:47:08.071Z"
       }
     },
     {
@@ -422,7 +422,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-09-26T07:34:03.055Z"
+        "createdAt": "2025-09-26T08:47:08.071Z"
       }
     },
     {
@@ -460,7 +460,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-09-26T07:34:03.055Z"
+        "createdAt": "2025-09-26T08:47:08.071Z"
       }
     },
     {
@@ -490,7 +490,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-09-26T07:34:03.055Z"
+        "createdAt": "2025-09-26T08:47:08.071Z"
       }
     },
     {
@@ -528,7 +528,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-09-26T07:34:03.055Z"
+        "createdAt": "2025-09-26T08:47:08.071Z"
       }
     },
     {
@@ -566,7 +566,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-09-26T07:34:03.055Z"
+        "createdAt": "2025-09-26T08:47:08.071Z"
       }
     },
     {
@@ -596,14 +596,14 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-09-26T07:34:03.055Z"
+        "createdAt": "2025-09-26T08:47:08.071Z"
       }
     }
   ],
   "canvas": {
-    "zoom": 0.5122703657982337,
-    "panX": 289.63201013972304,
-    "panY": 492.7135583203781,
+    "zoom": 0.7510238053876724,
+    "panX": 51.52581911031669,
+    "panY": 502.59318272622215,
     "gridSize": 10,
     "showGrid": true
   }

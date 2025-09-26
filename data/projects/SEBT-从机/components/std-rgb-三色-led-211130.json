@@ -1,0 +1,35 @@
+{
+  "name": "RGB 三色 LED",
+  "id": "std-rgb-三色-led-211130",
+  "description": "三色LED模块，工作电压3.3V/5V",
+  "category": "auxiliary",
+  "pins": {
+    "side1": [],
+    "side3": [
+      {
+        "pinName": "R",
+        "type": "power",
+        "order": 1
+      },
+      {
+        "pinName": "G",
+        "type": "power",
+        "order": 2
+      },
+      {
+        "pinName": "B",
+        "type": "power",
+        "order": 3
+      },
+      {
+        "pinName": "GND",
+        "type": "ground",
+        "order": 4
+      }
+    ]
+  },
+  "dimensions": {
+    "width": 110,
+    "height": 30
+  }
+}
