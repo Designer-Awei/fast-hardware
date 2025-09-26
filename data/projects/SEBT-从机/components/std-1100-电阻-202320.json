@@ -1,0 +1,28 @@
+{
+  "name": "1100Ω 电阻",
+  "id": "std-1100-电阻-202320",
+  "description": "1100欧姆电阻",
+  "category": "auxiliary",
+  "pins": {
+    "side1": [
+      {
+        "pinName": "端子1",
+        "type": "special",
+        "order": 1
+      }
+    ],
+    "side3": [
+      {
+        "pinName": "端子2",
+        "type": "special",
+        "order": 1
+      }
+    ],
+    "side2": [],
+    "side4": []
+  },
+  "dimensions": {
+    "width": 90,
+    "height": 30
+  }
+}

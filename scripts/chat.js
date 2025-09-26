@@ -460,10 +460,40 @@ class ChatManager {
             const recentMessages = this.messages.slice(-10); // 最近10条消息
             for (const msg of recentMessages) {
                 if (msg.type === 'user') {
-                    messages.push({
-                        role: 'user',
-                        content: msg.content
-                    });
+                    // 检查消息是否包含图片
+                    if (msg.images && msg.images.length > 0) {
+                        // 重新构建包含图片的消息格式
+                        const contentArray = [];
+
+                        // 添加文本内容
+                        if (msg.content && msg.content.trim()) {
+                            contentArray.push({
+                                type: 'text',
+                                text: msg.content
+                            });
+                        }
+
+                        // 添加图片内容（使用第一张图片）
+                        const firstImage = msg.images[0];
+                        if (firstImage && firstImage.dataUrl) {
+                            contentArray.push({
+                                type: 'image_url',
+                                image_url: {
+                                    url: firstImage.dataUrl
+                                }
+                            });
+                        }
+
+                        messages.push({
+                            role: 'user',
+                            content: contentArray
+                        });
+                    } else {
+                        messages.push({
+                            role: 'user',
+                            content: msg.content
+                        });
+                    }
                 } else if (msg.type === 'assistant') {
                     messages.push({
                         role: 'assistant',
@@ -472,14 +502,33 @@ class ChatManager {
                 }
             }
 
-            // 如果有图片，添加到用户消息中
-            if (image && image.name) {
-                const userContent = `${userMessage}\n\n[上传了图片: ${image.name} (${Math.round(image.size / 1024)}KB)]`;
+            // 如果有图片，构建包含图片的消息
+            if (image && image.name && image.dataUrl) {
+                // 对于支持视觉的模型，使用正确的多模态消息格式
+                const contentArray = [];
+
+                // 添加文本内容
+                if (userMessage && userMessage.trim()) {
+                    contentArray.push({
+                        type: 'text',
+                        text: userMessage
+                    });
+                }
+
+                // 添加图片内容
+                contentArray.push({
+                    type: 'image_url',
+                    image_url: {
+                        url: image.dataUrl // base64格式的图片URL
+                    }
+                });
 
                 messages.push({
                     role: 'user',
-                    content: userContent
+                    content: contentArray
                 });
+
+                console.log('📸 构建多模态消息，包含图片:', image.name);
             } else {
                 // 添加当前用户消息
                 messages.push({
@@ -1001,8 +1050,27 @@ class ChatManager {
             // 更新按钮状态和提示
             this.updateImageUploadButton(this.uploadedImages.length > 0);
             this.updateSendButton();
+
+            // 如果预览正在显示（悬停状态），立即刷新预览内容
+            const preview = document.getElementById('image-preview');
+            if (preview && preview.classList.contains('show-hover')) {
+                this.refreshHoverPreview();
+            }
         };
         reader.readAsDataURL(file);
+    }
+
+    /**
+     * 刷新悬停预览内容（不改变显示状态）
+     */
+    refreshHoverPreview() {
+        const preview = document.getElementById('image-preview');
+        if (preview && preview.classList.contains('show-hover')) {
+            // 重新生成预览内容
+            this.addPreviewControls();
+            // 更新标题显示图片数量
+            this.updatePreviewTitle();
+        }
     }
 
     /**
@@ -1096,11 +1164,12 @@ class ChatManager {
     updateImageUploadButton(hasImage) {
         const uploadBtn = document.getElementById('image-upload');
         if (uploadBtn) {
+            const btnIcon = uploadBtn.querySelector('.btn-icon');
             if (hasImage) {
-                uploadBtn.querySelector('.btn-icon').textContent = '👁️';
+                btnIcon.innerHTML = '<img src="assets/icon-eye.svg" alt="查看图片" width="20" height="20">';
                 uploadBtn.title = `查看图片 (${this.uploadedImages.length}张，悬停预览)`;
             } else {
-                uploadBtn.querySelector('.btn-icon').textContent = '🖼️';
+                btnIcon.innerHTML = '<img src="assets/icon-image.svg" alt="上传图片" width="20" height="20">';
                 uploadBtn.title = '上传图片';
             }
         }

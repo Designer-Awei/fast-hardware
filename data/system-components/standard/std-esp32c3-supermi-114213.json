@@ -1,0 +1,98 @@
+{
+  "name": "ESP32-C3 SuperMini",
+  "id": "std-esp32c3-supermi-114213",
+  "description": "开发板，带WiFi和蓝牙模块，4M闪存。22.5*18 mm",
+  "category": "other",
+  "pins": {
+    "side1": [
+      {
+        "pinName": "5V",
+        "type": "power",
+        "order": 1
+      },
+      {
+        "pinName": "GND",
+        "type": "ground",
+        "order": 2
+      },
+      {
+        "pinName": "3V3",
+        "type": "power",
+        "order": 3
+      },
+      {
+        "pinName": "GP4",
+        "type": "digital_io",
+        "order": 4
+      },
+      {
+        "pinName": "GP3",
+        "type": "digital_io",
+        "order": 5
+      },
+      {
+        "pinName": "GP2",
+        "type": "digital_io",
+        "order": 6
+      },
+      {
+        "pinName": "GP1",
+        "type": "digital_io",
+        "order": 7
+      },
+      {
+        "pinName": "GP0",
+        "type": "digital_io",
+        "order": 8
+      }
+    ],
+    "side2": [],
+    "side3": [
+      {
+        "pinName": "GP5",
+        "type": "digital_io",
+        "order": 1
+      },
+      {
+        "pinName": "GP6",
+        "type": "digital_io",
+        "order": 2
+      },
+      {
+        "pinName": "GP7",
+        "type": "digital_io",
+        "order": 3
+      },
+      {
+        "pinName": "GP8",
+        "type": "digital_io",
+        "order": 4
+      },
+      {
+        "pinName": "GP9",
+        "type": "digital_io",
+        "order": 5
+      },
+      {
+        "pinName": "GP10",
+        "type": "digital_io",
+        "order": 6
+      },
+      {
+        "pinName": "GP20",
+        "type": "digital_io",
+        "order": 7
+      },
+      {
+        "pinName": "GP21",
+        "type": "digital_io",
+        "order": 8
+      }
+    ],
+    "side4": []
+  },
+  "dimensions": {
+    "width": 200,
+    "height": 80
+  }
+}

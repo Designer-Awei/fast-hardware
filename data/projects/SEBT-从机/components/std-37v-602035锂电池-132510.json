@@ -1,0 +1,27 @@
+{
+  "name": "3.7V 602035锂电池",
+  "id": "std-37v-602035锂电池-132510",
+  "description": "聚合物锂电池",
+  "category": "power",
+  "pins": {
+    "side1": [
+      {
+        "pinName": "3.7V",
+        "type": "power",
+        "order": 1
+      },
+      {
+        "pinName": "GND",
+        "type": "ground",
+        "order": 2
+      }
+    ],
+    "side2": [],
+    "side3": [],
+    "side4": []
+  },
+  "dimensions": {
+    "width": 160,
+    "height": 40
+  }
+}

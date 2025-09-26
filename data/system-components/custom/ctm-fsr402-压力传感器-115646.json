@@ -1,0 +1,28 @@
+{
+  "name": "FSR402  压力传感器",
+  "id": "ctm-fsr402-压力传感器-115646",
+  "description": "电阻式薄膜压力传感器",
+  "category": "sensor",
+  "pins": {
+    "side1": [
+      {
+        "pinName": "端子1",
+        "type": "digital_io",
+        "order": 1
+      }
+    ],
+    "side2": [],
+    "side3": [
+      {
+        "pinName": "端子2",
+        "type": "digital_io",
+        "order": 1
+      }
+    ],
+    "side4": []
+  },
+  "dimensions": {
+    "width": 170,
+    "height": 50
+  }
+}
