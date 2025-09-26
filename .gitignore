@@ -145,3 +145,6 @@ app/dist/
 *.rpm
 *.AppImage
 *.snap
+
+# User projects and data
+data/projects/
