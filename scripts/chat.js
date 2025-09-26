@@ -367,9 +367,9 @@ class ChatManager {
      * 模拟AI回复
      * @param {string} userMessage - 用户消息
      * @param {string} model - 使用的模型
-     * @param {Object} image - 上传的图片信息
+     * @param {Array} images - 上传的图片信息数组
      */
-    async simulateAIResponse(userMessage, model, image) {
+    async simulateAIResponse(userMessage, model, images) {
         this.isTyping = true;
         this.isInterrupted = false;
         this.showTypingIndicator();
@@ -382,7 +382,7 @@ class ChatManager {
 
         try {
             const currentModel = document.getElementById('current-model')?.textContent || 'THUDM/GLM-4-9B-0414';
-            const aiResponse = await this.generateAIResponse(userMessage, currentModel, image);
+            const aiResponse = await this.generateAIResponse(userMessage, currentModel, images);
 
             // 检查是否被中断
             if (this.isInterrupted) {
@@ -442,10 +442,10 @@ class ChatManager {
      * 调用AI API生成回复
      * @param {string} userMessage - 用户消息
      * @param {string} model - 使用的模型
-     * @param {Object} image - 上传的图片信息
+     * @param {Array} images - 上传的图片信息数组
      * @returns {Promise<string>} AI回复内容
      */
-    async generateAIResponse(userMessage, model, image) {
+    async generateAIResponse(userMessage, model, images) {
         try {
             // 构建消息历史
             const messages = [];
@@ -462,7 +462,7 @@ class ChatManager {
                 if (msg.type === 'user') {
                     // 检查消息是否包含图片
                     if (msg.images && msg.images.length > 0) {
-                        // 重新构建包含图片的消息格式
+                        // 重新构建包含多图片的消息格式
                         const contentArray = [];
 
                         // 添加文本内容
@@ -473,21 +473,24 @@ class ChatManager {
                             });
                         }
 
-                        // 添加图片内容（使用第一张图片）
-                        const firstImage = msg.images[0];
-                        if (firstImage && firstImage.dataUrl) {
-                            contentArray.push({
-                                type: 'image_url',
-                                image_url: {
-                                    url: firstImage.dataUrl
-                                }
-                            });
+                        // 添加所有图片内容
+                        for (const image of msg.images) {
+                            if (image && image.dataUrl) {
+                                contentArray.push({
+                                    type: 'image_url',
+                                    image_url: {
+                                        url: image.dataUrl
+                                    }
+                                });
+                            }
                         }
 
                         messages.push({
                             role: 'user',
                             content: contentArray
                         });
+
+                        console.log(`📸 历史消息包含 ${msg.images.length} 张图片`);
                     } else {
                         messages.push({
                             role: 'user',
@@ -502,8 +505,8 @@ class ChatManager {
                 }
             }
 
-            // 如果有图片，构建包含图片的消息
-            if (image && image.name && image.dataUrl) {
+            // 如果有图片，构建包含多图片的消息
+            if (images && images.length > 0) {
                 // 对于支持视觉的模型，使用正确的多模态消息格式
                 const contentArray = [];
 
@@ -515,20 +518,24 @@ class ChatManager {
                     });
                 }
 
-                // 添加图片内容
-                contentArray.push({
-                    type: 'image_url',
-                    image_url: {
-                        url: image.dataUrl // base64格式的图片URL
+                // 添加所有图片内容
+                for (const image of images) {
+                    if (image && image.dataUrl) {
+                        contentArray.push({
+                            type: 'image_url',
+                            image_url: {
+                                url: image.dataUrl // base64格式的图片URL
+                            }
+                        });
                     }
-                });
+                }
 
                 messages.push({
                     role: 'user',
                     content: contentArray
                 });
 
-                console.log('📸 构建多模态消息，包含图片:', image.name);
+                console.log(`📸 构建多模态消息，包含 ${images.length} 张图片:`, images.map(img => img.name).join(', '));
             } else {
                 // 添加当前用户消息
                 messages.push({
