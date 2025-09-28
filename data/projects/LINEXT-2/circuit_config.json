@@ -1,9 +1,9 @@
 {
   "projectName": "LINEXT-2",
-  "description": "",
+  "description": "通过Fast Hardware创建的电路设计",
   "version": "1.0.0",
-  "createdAt": "2025-09-22T07:54:44.346Z",
-  "lastModified": "2025-09-22T07:54:44.346Z",
+  "createdAt": "2025-09-28T03:19:20.092Z",
+  "lastModified": "2025-09-28T03:19:20.092Z",
   "components": [
     {
       "componentFile": "std-arduino-nano-220724.json",
@@ -90,7 +90,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-09-22T07:54:44.345Z"
+        "createdAt": "2025-09-28T03:19:20.092Z"
       }
     },
     {
@@ -128,7 +128,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-09-22T07:54:44.346Z"
+        "createdAt": "2025-09-28T03:19:20.092Z"
       }
     },
     {
@@ -166,7 +166,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-09-22T07:54:44.346Z"
+        "createdAt": "2025-09-28T03:19:20.092Z"
       }
     },
     {
@@ -204,7 +204,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-09-22T07:54:44.346Z"
+        "createdAt": "2025-09-28T03:19:20.092Z"
       }
     },
     {
@@ -242,7 +242,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-09-22T07:54:44.346Z"
+        "createdAt": "2025-09-28T03:19:20.092Z"
       }
     },
     {
@@ -280,7 +280,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-09-22T07:54:44.346Z"
+        "createdAt": "2025-09-28T03:19:20.092Z"
       }
     },
     {
@@ -318,7 +318,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-09-22T07:54:44.346Z"
+        "createdAt": "2025-09-28T03:19:20.092Z"
       }
     },
     {
@@ -356,7 +356,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-09-22T07:54:44.346Z"
+        "createdAt": "2025-09-28T03:19:20.092Z"
       }
     },
     {
@@ -394,7 +394,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-09-22T07:54:44.346Z"
+        "createdAt": "2025-09-28T03:19:20.092Z"
       }
     },
     {
@@ -432,7 +432,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-09-22T07:54:44.346Z"
+        "createdAt": "2025-09-28T03:19:20.092Z"
       }
     },
     {
@@ -470,14 +470,14 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-09-22T07:54:44.346Z"
+        "createdAt": "2025-09-28T03:19:20.092Z"
       }
     }
   ],
   "canvas": {
-    "zoom": 0.805221711308894,
-    "panX": -37.6823959620923,
-    "panY": 574.6697991110996,
+    "zoom": 0.9043820750088056,
+    "panX": -95.83364135297847,
+    "panY": 479.3443784126234,
     "gridSize": 10,
     "showGrid": true
   }

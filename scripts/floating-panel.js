@@ -121,7 +121,7 @@ class FloatingPanel {
             this.components = [...standardComponents, ...customComponents];
             this.filteredComponents = [...this.components];
 
-            console.log(`成功加载 ${this.components.length} 个元件 (${standardComponents.length} 个标准元件, ${customComponents.length} 个自定义元件)`);
+            console.log(`元件库加载完成，共 ${this.components.length} 个元件`);
 
             this.renderComponents();
         } catch (error) {

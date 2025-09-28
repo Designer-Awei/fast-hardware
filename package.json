@@ -1,6 +1,6 @@
 {
   "name": "fast-hardware",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "一个基于纯Electron的智能硬件开发辅助桌面应用程序",
   "main": "main.js",
   "scripts": {
@@ -56,6 +56,13 @@
       "!Fast Hardware.txt",
       "!nul",
       "!env.local"
+    ],
+    "extraFiles": [
+      {
+        "from": "assets",
+        "to": "assets",
+        "filter": "**/*"
+      }
     ],
     "extraResources": [
       {

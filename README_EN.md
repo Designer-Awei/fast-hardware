@@ -10,7 +10,7 @@
 
 [🇨🇳 中文](README.md) | [🇺🇸 English](README_EN.md)
 
-[![Version](https://img.shields.io/badge/version-0.1.5-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
+[![Version](https://img.shields.io/badge/version-0.1.8-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
 [![Electron](https://img.shields.io/badge/Electron-27.0.0-47848F.svg)](https://electronjs.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-16+-339933.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -73,30 +73,49 @@
 - **🎨 Automatic Generation**: Automatically generate circuit diagrams based on dialogue
 - **⚡ API Integration**: Support for multiple LLM service providers
 
-## ✨ Latest Features (v0.1.5)
+## ✨ Latest Features (v0.1.8)
 
-### 🎯 Intelligent Functions
-- **🎨 Intelligent Size Adjustment**: Automatically adjust component size when importing to ensure pin display is complete
-- **🔧 Dynamic Property Binding**: Real-time synchronization between renderer and designer to avoid size desynchronization
-- **📋 State Protection Mechanism**: Edit mode state protection to prevent accidental loss of modifications
+### 🚀 LLM Intelligent Assistant Integration (Core Feature)
+- **🎯 SiliconFlow AI API Integration**: Integration of multiple AI models (GLM-4-9B, GLM-4.1V-9B-Thinking, Qwen3-8B, Hunyuan-MT-7B)
+- **💬 Intelligent Dialogue Interface**: Complete chat system with streaming output and markdown rendering
+- **📝 Smart Markdown Rendering**: Integration of marked library supporting titles, lists, code blocks, bold/italic formats
+- **🔧 Code Block Processing Engine**: Intelligent extraction of code blocks, placeholder replacement, rendering, and precise insertion
+- **🎨 Nested List Support**: Support for multi-level nested unordered and ordered lists
+- **🔢 Title Number Cleanup**: Automatic cleanup of number prefixes in markdown titles
+- **⚡ Real-time Dialogue Synchronization**: Support for typing indicators, interrupt function, and message timestamps
+- **🛡️ API Key Security**: Support for API key visibility toggle and persistent storage
 
-### 🛠️ Development Tools
-- **🔍 Platform Detection Tool**: Automatic detection of development environment compatibility
+#### ✅ Markdown Rendering System Deep Optimization
+- **🎯 Marked Library Integration**: Using industry-standard markdown rendering engine
+- **📦 Code Block Intelligent Processing**: Extract code blocks → Render plain text → Re-insert code blocks
+- **🔧 Title Number Cleanup**: Support for multi-level number cleanup (1.2.3, etc.)
+- **📋 Nested List Support**: Recursive parsing of multi-level nested structures
+- **🎨 Style Unification**: Complete style support for code blocks, titles, and lists
+- **⚡ Performance Optimization**: Efficient rendering algorithms and memory management
 
-### 🎨 Floating Component Library System (Latest Update)
-- **🎯 Smart Floating Panel**: Left-side intelligent floating panel with default 10px narrow collapsed state
-- **📐 Adaptive Design**: 60% height adaptive to canvas area, 10px width minimalist design, 8px rounded corners
-- **🖱️ Smooth Drag & Drop**: HTML5 native drag and drop API for seamless experience from panel to canvas
-- **🎪 Complete Rendering**: Rounded rectangle body, multi-color pin system, intelligent text layout
-- **📱 Responsive Design**: Perfect adaptation for desktop, tablet, and mobile devices
-- **✨ Hover Feedback**: Dynamic width changes, color transitions, excellent interaction experience
-- **🚨 Error Diagnosis System**: Intelligent error analysis and solution suggestions
-- **⚡ Cross-Platform Scripts**: Unified development commands with seamless multi-platform switching
+#### ✅ Dialogue Experience Comprehensive Optimization
+- **💬 Streaming Message Rendering**: Support for real-time message streaming output
+- **🕐 Timestamp Display**: Message timestamps accurate to seconds
+- **🔄 Interrupt Function**: Support for manual interruption of AI responses
+- **🎨 Message Bubbles**: Differentiated display for user and AI messages
+- **📱 Responsive Layout**: Adaptation to different screen sizes
+- **🎯 Shortcut Key Support**: Enter to send, Shift+Enter for line break
 
-### 📊 Quality Assurance
-- **✅ Complete Test Coverage**: Functional tests, boundary tests, error handling tests
-- **🔒 Data Integrity**: JSON validation, ID generation, pin data structure assurance
-- **🎯 User Experience**: Detailed status prompts and intelligent error recovery
+#### ✅ Code Block Functionality Deep Optimization
+- **🔧 Syntax Highlighting**: Code blocks support multiple programming language identifiers
+- **📋 One-Click Copy**: Copy button directly copies code content to clipboard
+- **📏 Auto Scroll**: Long code automatically enables scrollbars
+- **🎨 Beautiful Style**: Professional code block appearance design
+- **🏷️ Language Identification**: Display code language type
+- **📏 Size Control**: Reasonable code block size and font settings
+
+#### ✅ Technical Architecture Upgrade
+- **🔧 Modular Refactoring**: Thorough refactoring of markdown rendering system
+- **📚 Marked Integration**: Using mature markdown processing library
+- **🔄 API Abstraction**: Support for multiple LLM service providers
+- **🛡️ Error Handling**: Complete API call error handling and retry mechanisms
+- **📊 State Management**: Complete dialogue history and context management
+- **⚡ Performance Optimization**: Efficient rendering and caching mechanisms
 
 ## 📁 Project Structure
 
@@ -596,6 +615,50 @@ When encountering problems, follow these steps:
 4. **Error Diagnosis**: `npm run error-help`
 
 ## 📝 Changelog
+
+### 🎉 v0.1.8 (2025-09-24)
+
+#### 🚀 LLM Intelligent Assistant Integration (Core Feature)
+- 🎯 **SiliconFlow AI API Integration**: Integration of multiple AI models (GLM-4-9B, GLM-4.1V-9B-Thinking, Qwen3-8B, Hunyuan-MT-7B)
+- 💬 **Dialogue Interface System**: Complete chat interface with streaming output and markdown rendering
+- 📝 **Smart Markdown Rendering**: Integration of marked library supporting titles, lists, code blocks, bold/italic formats
+- 🔧 **Code Block Processing Engine**: Intelligent extraction of code blocks, placeholder replacement, rendering, and precise insertion
+- 🎨 **Nested List Support**: Support for multi-level nested unordered and ordered lists
+- 🔢 **Title Number Cleanup**: Automatic cleanup of number prefixes in markdown titles
+- ⚡ **Real-time Dialogue Synchronization**: Support for typing indicators, interrupt function, and message timestamps
+- 🛡️ **API Key Security**: Support for API key visibility toggle and persistent storage
+
+#### ✅ Markdown Rendering System Deep Optimization
+- 🎯 **Marked Library Integration**: Using industry-standard markdown rendering engine
+- 📦 **Code Block Intelligent Processing**: Extract code blocks → Render plain text → Re-insert code blocks
+- 🔧 **Title Number Cleanup**: Support for multi-level number cleanup (1.2.3, etc.)
+- 📋 **Nested List Support**: Recursive parsing of multi-level nested structures
+- 🎨 **Style Unification**: Complete style support for code blocks, titles, and lists
+- ⚡ **Performance Optimization**: Efficient rendering algorithms and memory management
+
+#### ✅ Dialogue Experience Comprehensive Optimization
+- 💬 **Streaming Message Rendering**: Support for real-time message streaming output
+- 🕐 **Timestamp Display**: Message timestamps accurate to seconds
+- 🔄 **Interrupt Function**: Support for manual interruption of AI responses
+- 🎨 **Message Bubbles**: Differentiated display for user and AI messages
+- 📱 **Responsive Layout**: Adaptation to different screen sizes
+- 🎯 **Shortcut Key Support**: Enter to send, Shift+Enter for line break
+
+#### ✅ Code Block Functionality Deep Optimization
+- 🔧 **Syntax Highlighting**: Code blocks support multiple programming language identifiers
+- 📋 **One-Click Copy**: Copy button directly copies code content to clipboard
+- 📏 **Auto Scroll**: Long code automatically enables scrollbars
+- 🎨 **Beautiful Style**: Professional code block appearance design
+- 🏷️ **Language Identification**: Display code language type
+- 📏 **Size Control**: Reasonable code block size and font settings
+
+#### ✅ Technical Architecture Upgrade
+- 🔧 **Modular Refactoring**: Thorough refactoring of markdown rendering system
+- 📚 **Marked Integration**: Using mature markdown processing library
+- 🔄 **API Abstraction**: Support for multiple LLM service providers
+- 🛡️ **Error Handling**: Complete API call error handling and retry mechanisms
+- 📊 **State Management**: Complete dialogue history and context management
+- ⚡ **Performance Optimization**: Efficient rendering and caching mechanisms
 
 ### 🎉 v0.1.1 (2025-09-10)
 - ✅ **Significantly improved cross-platform compatibility**

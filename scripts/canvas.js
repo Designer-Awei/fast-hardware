@@ -134,10 +134,8 @@ class CanvasManager {
         this.canvas.addEventListener('wheel', (e) => this.handleWheel(e));
 
         // 工具栏按钮事件
-        document.getElementById('zoom-in')?.addEventListener('click', () => this.zoomIn());
-        document.getElementById('zoom-out')?.addEventListener('click', () => this.zoomOut());
         document.getElementById('reset-view')?.addEventListener('click', () => this.resetView());
-        document.getElementById('fit-view')?.addEventListener('click', () => this.fitView());
+        document.getElementById('firmware-code')?.addEventListener('click', () => this.openFirmwareCodeEditor());
 
         // 窗口大小改变
         window.addEventListener('resize', () => {
@@ -1238,6 +1236,404 @@ class CanvasManager {
     }
 
     /**
+     * 打开固件代码编辑器
+     */
+    openFirmwareCodeEditor() {
+        console.log('🔧 尝试打开固件代码编辑器');
+        console.log('📱 window.mainApp 存在:', !!window.mainApp);
+        console.log('📂 currentProject:', window.mainApp?.currentProject);
+
+        // 显示编辑器模态框
+        const modal = document.getElementById('code-editor-modal');
+        if (modal) {
+            modal.style.display = 'flex';
+
+            // 加载项目代码（如果有项目）或显示默认模板
+            this.loadProjectCode();
+
+            // 初始化拖拽功能
+            this.initCodeEditorDrag();
+
+            // 初始化事件监听器（移除点击背景关闭的逻辑）
+            this.initCodeEditorEvents();
+        }
+    }
+
+    /**
+     * 关闭固件代码编辑器
+     */
+    closeFirmwareCodeEditor() {
+        const modal = document.getElementById('code-editor-modal');
+        if (modal) {
+            modal.style.display = 'none';
+
+            // 重置窗口定位方式，使其下次打开时能正确居中
+            const windowEl = document.querySelector('.code-editor-window');
+            if (windowEl) {
+                windowEl.style.position = '';
+                windowEl.style.left = '';
+                windowEl.style.top = '';
+                windowEl.style.transform = '';
+            }
+
+            // 清理事件监听器
+            this.cleanupCodeEditorEvents();
+        }
+    }
+
+    /**
+     * 加载项目代码
+     */
+    async loadProjectCode() {
+        try {
+            let codeContent = '';
+            let codePath = '未命名.ino';
+
+            // 检查是否有当前项目
+            if (window.mainApp?.currentProject) {
+                const projectPath = window.mainApp.currentProject;
+                const projectData = await window.mainApp.loadProjectConfig(projectPath);
+
+                // 按照项目保存逻辑确定代码文件路径
+                // 优先使用项目名称作为文件名
+                let actualCodePath = `${projectPath}/${projectData.projectName}.ino`;
+
+                try {
+                    // 尝试读取项目名称对应的.ino文件
+                    codeContent = await window.electronAPI.loadFile(actualCodePath);
+                    codePath = actualCodePath;
+                } catch (error) {
+                    try {
+                        // 如果不存在，尝试读取默认文件名
+                        const defaultCodePath = `${projectPath}/generated_code.ino`;
+                        codeContent = await window.electronAPI.loadFile(defaultCodePath);
+                        codePath = defaultCodePath;
+                    } catch (error2) {
+                        // 如果都没有找到，生成新的代码
+                        codeContent = window.mainApp.generateArduinoCode(projectData, projectData.projectName);
+                        codePath = actualCodePath;
+                    }
+                }
+            } else {
+                // 没有项目时，显示默认Arduino模板代码
+                codeContent = this.getDefaultArduinoTemplate();
+                codePath = '未命名.ino';
+            }
+
+            // 设置编辑器内容
+            const textarea = document.getElementById('code-editor-textarea');
+            if (textarea) {
+                textarea.value = codeContent;
+                this.updateCodeEditorLineNumbers();
+            }
+
+            // 设置标题
+            const title = document.getElementById('code-editor-title');
+            if (title) {
+                const fileName = codePath.split('/').pop();
+                if (window.mainApp?.currentProject) {
+                    title.textContent = `固件代码编辑器 - ${fileName}`;
+                } else {
+                    title.textContent = `代码编辑器 - ${fileName}`;
+                }
+            }
+
+            // 保存当前代码路径
+            this.currentCodePath = codePath;
+
+        } catch (error) {
+            console.error('加载项目代码失败:', error);
+            alert('加载项目代码失败: ' + error.message);
+        }
+    }
+
+    /**
+     * 获取默认Arduino模板代码
+     */
+    getDefaultArduinoTemplate() {
+        return `void setup() {
+  // put your setup code here, to run once:
+
+}
+
+void loop() {
+  // put your main code here, to run repeatedly:
+
+}`;
+    }
+
+    /**
+     * 保存代码
+     */
+    async saveCode() {
+        try {
+            const textarea = document.getElementById('code-editor-textarea');
+            if (!textarea) {
+                return;
+            }
+
+            const codeContent = textarea.value;
+
+            // 检查是否有当前项目
+            if (window.mainApp?.currentProject) {
+                // 有项目时，直接保存到当前代码路径
+                if (!this.currentCodePath) {
+                    return;
+                }
+                await window.electronAPI.saveFile(this.currentCodePath, codeContent);
+            } else {
+                // 没有项目时，需要创建新项目
+                await this.saveCodeAsNewProject(codeContent);
+                // saveCodeAsNewProject 内部已经处理了成功提示，这里不需要return
+            }
+
+            // 显示保存成功提示
+            this.showSaveNotification();
+
+        } catch (error) {
+            console.error('保存代码失败:', error);
+            alert('保存代码失败: ' + error.message);
+        }
+    }
+
+    /**
+     * 将代码保存为新项目
+     */
+    async saveCodeAsNewProject(codeContent) {
+        // 保存调用前的项目状态，用于判断是否真的创建了新项目
+        const previousProject = window.mainApp.currentProject;
+
+        try {
+            // 先关闭代码编辑器，避免层级遮挡问题
+            this.closeFirmwareCodeEditor();
+
+            // 直接调用现有的项目保存功能
+            await window.mainApp.saveProject();
+
+            // 检查是否真的创建了新项目（currentProject是否发生了变化）
+            if (window.mainApp.currentProject && window.mainApp.currentProject !== previousProject) {
+                // 确实创建了新项目，现在保存代码文件
+                const projectName = window.mainApp.currentProject.split('/').pop() || window.mainApp.currentProject.split('\\').pop();
+                const codeFilePath = `${window.mainApp.currentProject}/${projectName}.ino`;
+
+                try {
+                    await window.electronAPI.saveFile(codeFilePath, codeContent);
+                    console.log('代码文件保存成功:', codeFilePath);
+                } catch (error) {
+                    console.warn('保存代码文件时出错:', error);
+                }
+            } else {
+                // 用户取消了保存或者保存失败，不执行任何操作
+                console.log('项目保存被取消或失败，不保存代码文件');
+            }
+        } catch (error) {
+            console.error('创建项目失败:', error);
+            throw error; // 重新抛出错误，让调用方处理
+        }
+    }
+
+    /**
+     * 显示保存成功提示
+     */
+    showSaveNotification() {
+        // 创建临时提示元素
+        const notification = document.createElement('div');
+        notification.textContent = '代码已保存';
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #28a745;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 14px;
+            z-index: 10001;
+            animation: fadeInOut 2s ease-in-out;
+        `;
+
+        document.body.appendChild(notification);
+
+        // 2秒后自动移除
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 2000);
+    }
+
+    /**
+     * 更新行号显示
+     */
+    updateCodeEditorLineNumbers() {
+        const textarea = document.getElementById('code-editor-textarea');
+        const lineNumbers = document.getElementById('code-editor-line-numbers');
+
+        if (!textarea || !lineNumbers) {
+            return;
+        }
+
+        const lines = textarea.value.split('\n');
+        const lineCount = lines.length;
+
+        // 清空现有内容
+        lineNumbers.innerHTML = '';
+
+        // 生成行号元素
+        for (let i = 1; i <= lineCount; i++) {
+            const lineNumber = document.createElement('div');
+            lineNumber.textContent = i;
+            lineNumber.style.height = '18.2px'; // 与textarea的line-height匹配
+            lineNumbers.appendChild(lineNumber);
+        }
+
+        // 同步滚动位置
+        lineNumbers.scrollTop = textarea.scrollTop;
+    }
+
+    /**
+     * 初始化代码编辑器拖拽功能
+     */
+    initCodeEditorDrag() {
+        const windowEl = document.querySelector('.code-editor-window');
+        const headerEl = document.querySelector('.code-editor-header');
+
+        if (!windowEl || !headerEl) {
+            return;
+        }
+
+        let isDragging = false;
+        let startX, startY, startLeft, startTop;
+
+        const handleMouseDown = (e) => {
+            if (e.target.closest('.code-editor-actions')) {
+                return; // 不要在按钮上开始拖拽
+            }
+
+            isDragging = true;
+            startX = e.clientX;
+            startY = e.clientY;
+
+            const rect = windowEl.getBoundingClientRect();
+            startLeft = rect.left;
+            startTop = rect.top;
+
+            // 将窗口从flexbox居中改为absolute定位以支持拖拽
+            windowEl.style.position = 'absolute';
+            windowEl.style.left = startLeft + 'px';
+            windowEl.style.top = startTop + 'px';
+            windowEl.style.transform = 'none';
+
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+        };
+
+        const handleMouseMove = (e) => {
+            if (!isDragging) return;
+
+            const deltaX = e.clientX - startX;
+            const deltaY = e.clientY - startY;
+
+            const newLeft = startLeft + deltaX;
+            const newTop = startTop + deltaY;
+
+            // 限制在视窗范围内
+            const maxLeft = window.innerWidth - windowEl.offsetWidth;
+            const maxTop = window.innerHeight - windowEl.offsetHeight;
+
+            windowEl.style.left = Math.max(0, Math.min(newLeft, maxLeft)) + 'px';
+            windowEl.style.top = Math.max(0, Math.min(newTop, maxTop)) + 'px';
+            windowEl.style.transform = 'none'; // 移除居中变换
+        };
+
+        const handleMouseUp = () => {
+            isDragging = false;
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        };
+
+        headerEl.addEventListener('mousedown', handleMouseDown);
+
+        // 保存清理函数
+        this.cleanupCodeEditorDrag = () => {
+            headerEl.removeEventListener('mousedown', handleMouseDown);
+        };
+    }
+
+    /**
+     * 初始化代码编辑器事件监听器
+     */
+    initCodeEditorEvents() {
+        // 保存按钮
+        const saveBtn = document.getElementById('save-code-btn');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', () => this.saveCode());
+        }
+
+        // 关闭按钮
+        const closeBtn = document.getElementById('close-code-editor');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => this.closeFirmwareCodeEditor());
+        }
+
+        // 文本区域事件
+        const textarea = document.getElementById('code-editor-textarea');
+        if (textarea) {
+            textarea.addEventListener('input', () => this.updateCodeEditorLineNumbers());
+            textarea.addEventListener('scroll', () => this.updateCodeEditorLineNumbers());
+            textarea.addEventListener('keydown', (e) => this.handleCodeEditorKeydown(e));
+        }
+
+        // 移除点击模态框背景关闭的逻辑，只允许通过关闭按钮退出
+
+        // ESC键关闭
+        const handleEscape = (e) => {
+            if (e.key === 'Escape') {
+                this.closeFirmwareCodeEditor();
+            }
+        };
+        document.addEventListener('keydown', handleEscape);
+
+        // 保存清理函数
+        this.cleanupCodeEditorEvents = () => {
+            if (saveBtn) saveBtn.removeEventListener('click', () => this.saveCode());
+            if (closeBtn) closeBtn.removeEventListener('click', () => this.closeFirmwareCodeEditor());
+            if (textarea) {
+                textarea.removeEventListener('input', () => this.updateCodeEditorLineNumbers());
+                textarea.removeEventListener('scroll', () => this.updateCodeEditorLineNumbers());
+                textarea.removeEventListener('keydown', (e) => this.handleCodeEditorKeydown(e));
+            }
+            // 移除模态框点击事件的清理（已移除该功能）
+            document.removeEventListener('keydown', handleEscape);
+        };
+    }
+
+    /**
+     * 处理代码编辑器键盘事件
+     */
+    handleCodeEditorKeydown(e) {
+        // Ctrl+S 保存
+        if (e.ctrlKey && e.key === 's') {
+            e.preventDefault();
+            this.saveCode();
+        }
+
+        // Tab 键插入制表符
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            const textarea = e.target;
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+
+            // 插入制表符
+            textarea.value = textarea.value.substring(0, start) + '\t' + textarea.value.substring(end);
+            textarea.selectionStart = textarea.selectionEnd = start + 1;
+
+            this.updateCodeEditorLineNumbers();
+        }
+    }
+
+    /**
      * 更新鼠标坐标显示
      * @param {MouseEvent} e - 鼠标事件
      */
@@ -2135,11 +2531,6 @@ class CanvasManager {
      * @param {Object} connectionData - 连线数据
      */
     addConnection(connectionData) {
-        console.log('添加连线:', connectionData.id, '从', connectionData.source.instanceId, '到', connectionData.target.instanceId);
-        console.log('连线数据详情:', {
-            source: connectionData.source,
-            target: connectionData.target
-        });
 
         // 查找源元件和目标元件
         // 支持手动创建的连线（使用componentId）和导入的连线（使用instanceId）

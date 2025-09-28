@@ -19,9 +19,10 @@ class FastHardwareApp {
     /**
      * 初始化应用
      */
-    init() {
+    async init() {
         this.bindEvents();
         this.initializeUI();
+        await this.initializeIconPaths();
     }
 
     /**
@@ -258,7 +259,6 @@ class FastHardwareApp {
      */
     async loadProject() {
         try {
-            console.log('开始加载项目...');
 
             // 获取项目存储路径
             const storagePath = await this.getProjectStoragePath();
@@ -289,6 +289,7 @@ class FastHardwareApp {
                 this.currentProject = projectPath;
                 this.isProjectModified = false;
 
+                console.log('📂 项目加载完成，设置当前项目:', this.currentProject);
                 this.showNotification('项目加载成功！', 'success');
             }
         } catch (error) {
@@ -306,10 +307,7 @@ class FastHardwareApp {
 
             // 获取当前画布状态
             const canvasState = this.getCurrentCanvasState();
-            if (!canvasState || canvasState.components.length === 0) {
-                this.showNotification('当前画布为空，请先添加元件', 'warning');
-                return;
-            }
+            // 移除画布元件校验，允许空画布保存项目
 
             if (this.currentProject) {
                 // 已打开项目：直接更新配置文件
@@ -692,29 +690,20 @@ void loop() {
      */
     async loadProjectConfig(projectPath) {
         try {
-            console.log('开始读取项目配置:', projectPath);
+            console.log('读取项目配置:', projectPath);
             const circuitConfigPath = `${projectPath}/circuit_config.json`;
 
             // 读取circuit_config.json文件
-            console.log('读取配置文件:', circuitConfigPath);
             const configContent = await window.electronAPI.loadFile(circuitConfigPath);
-            console.log('配置文件内容长度:', configContent.length);
             const projectData = JSON.parse(configContent);
-            console.log('解析后的项目数据:', {
-                projectName: projectData.projectName,
-                componentsCount: projectData.components?.length || 0,
-                connectionsCount: projectData.connections?.length || 0
-            });
 
             // 读取元件文件
             const componentsPath = `${projectPath}/components`;
             console.log('读取元件文件夹:', componentsPath);
             for (const component of projectData.components) {
-                console.log('读取元件:', component.componentFile, '位置配置:', component.position);
                 const componentPath = `${componentsPath}/${component.componentFile}`;
                 const componentContent = await window.electronAPI.loadFile(componentPath);
                 component.data = JSON.parse(componentContent);
-                console.log('元件数据加载完成:', component.data.name, '尺寸:', component.data.dimensions);
             }
 
             console.log('项目配置读取完成');
@@ -730,12 +719,7 @@ void loop() {
      */
     async renderProjectToCanvas(projectData) {
         try {
-            console.log('开始渲染项目到画布...');
-            console.log('项目数据:', {
-                componentsCount: projectData.components?.length || 0,
-                connectionsCount: projectData.connections?.length || 0,
-                hasCanvasData: !!projectData.canvas
-            });
+            console.log('渲染项目到画布...');
 
             // 等待canvasManager初始化完成
             let attempts = 0;
@@ -752,29 +736,13 @@ void loop() {
                 throw new Error('画布管理器初始化失败，请刷新页面重试');
             }
 
-            console.log('canvasManager已就绪，开始渲染...');
-
             // 清空当前画布
-            console.log('清空画布元件...');
             window.canvasManager.clearComponents();
-
-            // 设置画布状态
-            if (projectData.canvas) {
-                console.log('设置画布状态:', projectData.canvas);
-            }
 
             // 渲染元件
             if (projectData.components && projectData.components.length > 0) {
-                console.log('开始渲染元件，数量:', projectData.components.length);
+                console.log(`渲染 ${projectData.components.length} 个元件`);
                 for (const component of projectData.components) {
-                        console.log('渲染元件:', {
-                            name: component.data?.name,
-                            position: component.position,
-                            positionType: Array.isArray(component.position) ? 'array' : 'object',
-                            hasData: !!component.data,
-                            componentFile: component.componentFile
-                        });
-
                     if (component.data) {
                         // position是数组格式[x, y]，需要分别传递
                         const x = component.position[0];
@@ -793,9 +761,8 @@ void loop() {
 
             // 渲染连线
             if (projectData.connections && projectData.connections.length > 0) {
-                console.log('渲染连线:', projectData.connections.length, '条');
+                console.log(`渲染 ${projectData.connections.length} 条连线`);
                 for (const connection of projectData.connections) {
-                    console.log('渲染连线:', connection.id, '从', connection.source.instanceId, '到', connection.target.instanceId);
                     window.canvasManager.addConnection(connection);
                 }
             } else {
@@ -865,6 +832,12 @@ void loop() {
      */
     async showProjectInfoDialog() {
         return new Promise((resolve) => {
+            // 清理可能存在的旧模态框
+            const existingModal = document.querySelector('.settings-modal');
+            if (existingModal) {
+                document.body.removeChild(existingModal);
+            }
+
             // 创建模态框
             const modal = document.createElement('div');
             modal.className = 'settings-modal';
@@ -999,6 +972,40 @@ void loop() {
             throw new Error('创建项目文件夹失败: ' + error.message);
         }
     }
+
+
+    /**
+     * 初始化图标路径
+     * 在生产环境下，assets文件夹在程序根目录，需要设置正确的路径
+     */
+    async initializeIconPaths() {
+        try {
+            // 获取正确的assets路径
+            const assetsPath = await window.electronAPI.getAssetsPath();
+
+            // 查找所有带有data-icon属性的img标签
+            const iconImages = document.querySelectorAll('img[data-icon]');
+            iconImages.forEach(img => {
+                const iconName = `icon-${img.dataset.icon}.svg`;
+                const fullPath = `file://${assetsPath}/${iconName}`;
+                img.src = fullPath;
+            });
+
+            // 同时处理可能遗漏的旧格式路径
+            const oldIconImages = document.querySelectorAll('img[src^="assets/icon-"]');
+            oldIconImages.forEach(img => {
+                if (img.src && img.src.includes('app.asar/assets/')) {
+                    const iconName = img.src.split('/').pop(); // 获取icon文件名
+                    const fullPath = `file://${assetsPath}/${iconName}`;
+                    img.src = fullPath;
+                }
+            });
+
+            console.log('图标路径初始化完成:', assetsPath);
+        } catch (error) {
+            console.error('初始化图标路径失败:', error);
+        }
+    }
 }
 
 // 全局应用实例
@@ -1007,6 +1014,7 @@ let app;
 // DOM加载完成后初始化应用
 document.addEventListener('DOMContentLoaded', () => {
     app = new FastHardwareApp();
+    window.mainApp = app; // 设置全局引用供其他脚本使用
 });
 
 // 导出全局函数供其他脚本使用

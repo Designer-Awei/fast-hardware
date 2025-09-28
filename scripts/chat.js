@@ -20,9 +20,9 @@ class ChatManager {
     /**
      * 初始化对话管理器
      */
-    init() {
+    async init() {
         this.bindEvents();
-        this.loadInitialMessages();
+        await this.loadInitialMessages();
         this.initializeModelDisplay();
     }
 
@@ -240,7 +240,7 @@ class ChatManager {
     /**
      * 加载初始消息
      */
-    loadInitialMessages() {
+    async loadInitialMessages() {
         const initialMessage = {
             id: Date.now(),
             type: 'assistant',
@@ -255,7 +255,7 @@ class ChatManager {
     /**
      * 发送消息
      */
-    sendMessage() {
+    async sendMessage() {
         const input = document.getElementById('chat-input');
         if (!input) return;
 
@@ -293,7 +293,7 @@ class ChatManager {
         };
 
         this.messages.push(userMessage);
-        this.renderMessages();
+        await this.renderMessages();
         input.value = '';
 
         // 清除上传的图片
@@ -311,7 +311,7 @@ class ChatManager {
     /**
      * 中断当前AI回复
      */
-    interruptResponse() {
+    async interruptResponse() {
         if (!this.isTyping) return;
 
         // 设置中断标志
@@ -357,7 +357,7 @@ class ChatManager {
         this.currentUserMessage = null;
 
         // 重新渲染消息
-        this.renderMessages();
+        await this.renderMessages();
 
         // 更新按钮状态
         this.updateSendButton();
@@ -402,7 +402,7 @@ class ChatManager {
             };
 
             this.messages.push(aiMessage);
-            this.renderMessages();
+            await this.renderMessages();
             this.scrollToBottom();
         } catch (error) {
             // 如果是被中断的，不显示错误消息
@@ -422,7 +422,7 @@ class ChatManager {
             };
 
             this.messages.push(errorMessage);
-            this.renderMessages();
+            await this.renderMessages();
             this.scrollToBottom();
         } finally {
             this.isTyping = false;
@@ -564,16 +564,20 @@ class ChatManager {
     /**
      * 显示正在输入指示器
      */
-    showTypingIndicator() {
+    async showTypingIndicator() {
         const messagesContainer = document.getElementById('chat-messages');
         if (!messagesContainer) return;
+
+        // 获取正确的图标路径
+        const assetsPath = await window.electronAPI.getAssetsPath();
+        const botIconSrc = assetsPath + '/icon-bot.svg';
 
         const typingDiv = document.createElement('div');
         typingDiv.className = 'message assistant typing';
         typingDiv.id = 'typing-indicator';
         typingDiv.innerHTML = `
             <div class="message-header">
-                <div class="message-avatar"><img src="assets/icon-bot.svg" alt="AI" width="20" height="20"></div>
+                <div class="message-avatar"><img src="file://${botIconSrc}" alt="AI" width="20" height="20"></div>
                 <div class="message-time">正在输入...</div>
             </div>
             <div class="message-content">
@@ -602,7 +606,7 @@ class ChatManager {
     /**
      * 渲染消息列表
      */
-    renderMessages() {
+    async renderMessages() {
         const messagesContainer = document.getElementById('chat-messages');
         if (!messagesContainer) return;
 
@@ -611,10 +615,10 @@ class ChatManager {
         messagesContainer.innerHTML = '';
 
         // 重新添加消息
-        this.messages.forEach(message => {
-            const messageDiv = this.createMessageElement(message);
+        for (const message of this.messages) {
+            const messageDiv = await this.createMessageElement(message);
             messagesContainer.appendChild(messageDiv);
-        });
+        }
 
         // 如果有正在输入指示器，重新添加
         if (typingIndicator) {
@@ -646,7 +650,8 @@ class ChatManager {
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#39;');
 
-            const codeBlockHtml = `<div class="code-block-container"><div class="code-block-header"><span class="code-language">${lang}</span><button class="code-copy-btn" data-code-id="${codeId}" title="复制代码"><img src="assets/icon-copy.svg" alt="复制" width="14" height="14"></button></div><pre class="code-block"><code id="${codeId}">${formattedCode}</code></pre></div>`;
+            // 动态设置复制按钮图标路径
+            const codeBlockHtml = `<div class="code-block-container"><div class="code-block-header"><span class="code-language">${lang}</span><button class="code-copy-btn" data-code-id="${codeId}" title="复制代码"><img src="" alt="复制" width="14" height="14" data-icon="copy"></button></div><pre class="code-block"><code id="${codeId}">${formattedCode}</code></pre></div>`;
 
             // 存储代码块
             codeBlocks.push(codeBlockHtml);
@@ -763,9 +768,14 @@ class ChatManager {
      * @param {Object} message - 消息对象
      * @returns {HTMLElement} 消息元素
      */
-    createMessageElement(message) {
+    async createMessageElement(message) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${message.type}-message`;
+
+        // 获取正确的图标路径
+        const assetsPath = await window.electronAPI.getAssetsPath();
+        const userIconSrc = assetsPath + '/icon-user.svg';
+        const botIconSrc = assetsPath + '/icon-bot.svg';
 
         const timeString = message.timestamp.toLocaleString([], {
             year: 'numeric',
@@ -797,13 +807,20 @@ class ChatManager {
 
         messageDiv.innerHTML = `
             <div class="message-header">
-                <div class="message-avatar">${message.type === 'user' ? '<img src="assets/icon-user.svg" alt="用户" width="20" height="20">' : '<img src="assets/icon-bot.svg" alt="AI" width="20" height="20">'}</div>
+                <div class="message-avatar">${message.type === 'user' ? `<img src="file://${userIconSrc}" alt="用户" width="20" height="20">` : `<img src="file://${botIconSrc}" alt="AI" width="20" height="20">`}</div>
                 <div class="message-time">${timeString}</div>
             </div>
             <div class="message-content${isShortMessage ? ' short-message' : ''}">
                 ${contentHtml}
             </div>
         `;
+
+        // 设置代码块中图标的正确路径
+        const codeBlockIcons = messageDiv.querySelectorAll('.code-copy-btn img[data-icon]');
+        codeBlockIcons.forEach(icon => {
+            const iconName = `icon-${icon.dataset.icon}.svg`;
+            icon.src = `file://${assetsPath}/${iconName}`;
+        });
 
         // 如果是短消息，允许换行并保持两端对齐
         if (isShortMessage) {
@@ -881,10 +898,10 @@ class ChatManager {
     /**
      * 清空对话
      */
-    clearChat() {
+    async clearChat() {
         if (confirm('确定要清空所有对话记录吗？')) {
             this.messages = [];
-            this.renderMessages();
+            await this.renderMessages();
             console.log('对话已清空');
         }
     }
@@ -1168,15 +1185,20 @@ class ChatManager {
     /**
      * 更新图片上传按钮状态
      */
-    updateImageUploadButton(hasImage) {
+    async updateImageUploadButton(hasImage) {
         const uploadBtn = document.getElementById('image-upload');
         if (uploadBtn) {
+            // 获取正确的图标路径
+            const assetsPath = await window.electronAPI.getAssetsPath();
+            const eyeIconSrc = assetsPath + '/icon-eye.svg';
+            const imageIconSrc = assetsPath + '/icon-image.svg';
+
             const btnIcon = uploadBtn.querySelector('.btn-icon');
             if (hasImage) {
-                btnIcon.innerHTML = '<img src="assets/icon-eye.svg" alt="查看图片" width="20" height="20">';
+                btnIcon.innerHTML = `<img src="file://${eyeIconSrc}" alt="查看图片" width="20" height="20">`;
                 uploadBtn.title = `查看图片 (${this.uploadedImages.length}张，悬停预览)`;
             } else {
-                btnIcon.innerHTML = '<img src="assets/icon-image.svg" alt="上传图片" width="20" height="20">';
+                btnIcon.innerHTML = `<img src="file://${imageIconSrc}" alt="上传图片" width="20" height="20">`;
                 uploadBtn.title = '上传图片';
             }
         }
@@ -1347,3 +1369,6 @@ document.addEventListener('DOMContentLoaded', () => {
 // 导出到全局作用域
 window.ChatManager = ChatManager;
 window.chatManager = chatManager;
+
+
+

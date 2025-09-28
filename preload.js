@@ -145,5 +145,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /**
    * 与AI对话
    */
-  chatWithAI: (messages, model) => ipcRenderer.invoke('chatWithAI', messages, model)
+  chatWithAI: (messages, model) => ipcRenderer.invoke('chatWithAI', messages, model),
+
+  /**
+   * 获取assets文件夹路径
+   */
+  getAssetsPath: () => ipcRenderer.invoke('get-assets-path')
 });

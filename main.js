@@ -389,6 +389,17 @@ ipcMain.handle('get-platform', () => {
   return process.platform;
 });
 
+ipcMain.handle('get-assets-path', () => {
+  // 在生产环境下，assets在程序根目录
+  // 在开发环境下，assets在项目目录
+  const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+  if (isDev) {
+    return path.join(__dirname, 'assets');
+  } else {
+    return path.join(path.dirname(app.getPath('exe')), 'assets');
+  }
+});
+
 // 文件操作IPC
 ipcMain.handle('save-file', async (event, filePath, content, createDir = false) => {
   const fs = require('fs').promises;

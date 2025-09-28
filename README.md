@@ -132,8 +132,8 @@ fast-hardware/
 ├── 📁 scripts/                   # 前端脚本
 ├── 📁 styles/                    # 样式文件
 ├── 📁 dist/                      # 构建输出目录 (打包后生成)
-│   ├── Fast Hardware Setup 0.1.6.exe    # Windows安装程序
-│   ├── Fast Hardware-0.1.6-win.zip      # Windows绿色版
+│   ├── Fast Hardware Setup 0.1.8.exe    # Windows安装程序
+│   ├── Fast Hardware-0.1.8-win.zip      # Windows绿色版
 │   └── win-unpacked/                    # 未打包版本
 ├── 📄 main.js                    # Electron主进程
 ├── 📄 index.html                 # 主界面
@@ -240,7 +240,7 @@ npm run dist
 - **存储空间**: 200MB 可用空间
 
 ### 🚀 安装指南
-1. 下载 `Fast Hardware Setup 0.1.6.exe`
+1. 下载 `Fast Hardware Setup 0.1.8.exe`
 2. 双击运行安装程序
 3. 选择安装位置（可自定义）
 4. 按照提示完成安装
