@@ -40,7 +40,149 @@ class CanvasManager {
         this.connections = []; // 存储所有连线
         this.selectedConnection = null; // 当前选中的连线
 
+        // 间距管理
+        this.wireSpacingManager = new WireSpacingManager();
+
         this.init();
+    }
+
+    /**
+     * 计算元件的安全区（基础安全区 + 扩展安全区）
+     * @param {Object} component - 元件对象
+     * @returns {Object} 安全区信息
+     */
+    calculateSafeZone(component) {
+        const { position, rotation } = component;
+        const data = component.data || component;
+        const width = data.dimensions?.width || 80;
+        const height = data.dimensions?.height || 60;
+        const halfWidth = width / 2;
+        const halfHeight = height / 2;
+
+        // 计算未旋转状态下的基础安全区 (10px扩展)
+        const basicSafeZone = {
+            x: position.x - halfWidth - 10,
+            y: position.y - halfHeight - 10,
+            width: width + 20,
+            height: height + 20
+        };
+
+        // 计算四个角点
+        const corners = [
+            { x: basicSafeZone.x, y: basicSafeZone.y }, // 左上
+            { x: basicSafeZone.x + basicSafeZone.width, y: basicSafeZone.y }, // 右上
+            { x: basicSafeZone.x, y: basicSafeZone.y + basicSafeZone.height }, // 左下
+            { x: basicSafeZone.x + basicSafeZone.width, y: basicSafeZone.y + basicSafeZone.height } // 右下
+        ];
+
+        // 对角点进行旋转变换
+        const rotatedCorners = corners.map(corner => this.rotatePoint(corner, position, rotation));
+
+        return {
+            basic: basicSafeZone,
+            corners: rotatedCorners,
+            componentRect: {
+                x: position.x - halfWidth,
+                y: position.y - halfHeight,
+                width: width,
+                height: height
+            }
+        };
+    }
+
+    /**
+     * 显示元件的四个安全区角点坐标
+     * @param {Object} component - 元件对象
+     */
+    showSafeZoneCoordinates(component) {
+        const safeZone = this.calculateSafeZone(component);
+
+        // 整合为一个日志输出完整安全区坐标数组
+        const coordinates = {
+            左上角: { x: safeZone.corners[0].x.toFixed(1), y: safeZone.corners[0].y.toFixed(1) },
+            右上角: { x: safeZone.corners[1].x.toFixed(1), y: safeZone.corners[1].y.toFixed(1) },
+            左下角: { x: safeZone.corners[2].x.toFixed(1), y: safeZone.corners[2].y.toFixed(1) },
+            右下角: { x: safeZone.corners[3].x.toFixed(1), y: safeZone.corners[3].y.toFixed(1) }
+        };
+
+        console.log(`元件 "${component.data?.name || component.name}" 的安全区坐标:`, coordinates);
+
+        // 显示元件各边的连线情况
+        this.showComponentWireInfo(component);
+
+        // 可视化显示安全区（可选，用于调试）
+        if (this.debugMode) {
+            this.drawSafeZone(safeZone);
+        }
+    }
+
+    /**
+     * 显示元件各边的连线情况
+     * @param {Object} component - 元件对象
+     */
+    showComponentWireInfo(component) {
+        const componentId = component.id;
+        const wireInfo = {};
+
+        // 统计每个边的连线
+        ['side1', 'side2', 'side3', 'side4'].forEach(side => {
+            const sideKey = `${componentId}-${side}`;
+            const sideWires = this.wireSpacingManager.sideWires.get(sideKey) || [];
+
+            if (sideWires.length > 0) {
+                // 获取每个连线的引脚名称
+                const pinNames = sideWires.map(wireId => {
+                    const wire = this.wireSpacingManager.wireRegistry.get(wireId);
+                    if (wire) {
+                        // 找到连接到这个边的引脚
+                        if (wire.source.componentId === componentId && wire.source.side === side) {
+                            return wire.source.pinName || '未知';
+                        }
+                        if (wire.target.componentId === componentId && wire.target.side === side) {
+                            return wire.target.pinName || '未知';
+                        }
+                    }
+                    return '未知';
+                });
+
+                wireInfo[side] = pinNames;
+            }
+        });
+
+        console.log(`元件 "${component.data?.name || component.name}" 的连线情况:`, wireInfo);
+    }
+
+    /**
+     * 绘制安全区（调试用）
+     * @param {Object} safeZone - 安全区信息
+     */
+    drawSafeZone(safeZone) {
+        if (!this.ctx) return;
+
+        this.ctx.save();
+        this.ctx.strokeStyle = '#ff6b6b';
+        this.ctx.lineWidth = 1;
+        this.ctx.setLineDash([5, 5]);
+
+        // 绘制安全区矩形
+        this.ctx.strokeRect(
+            safeZone.basic.x * this.scale + this.offsetX,
+            safeZone.basic.y * this.scale + this.offsetY,
+            safeZone.basic.width * this.scale,
+            safeZone.basic.height * this.scale
+        );
+
+        // 绘制四个角点
+        this.ctx.fillStyle = '#ff6b6b';
+        safeZone.corners.forEach(corner => {
+            const screenX = corner.x * this.scale + this.offsetX;
+            const screenY = corner.y * this.scale + this.offsetY;
+            this.ctx.beginPath();
+            this.ctx.arc(screenX, screenY, 3, 0, Math.PI * 2);
+            this.ctx.fill();
+        });
+
+        this.ctx.restore();
     }
 
     /**
@@ -232,6 +374,10 @@ class CanvasManager {
 
             // 点击了元件主体 - 选中元件并准备拖动
             this.selectComponent(clickedComponent);
+
+            // 显示元件的四个安全区角点坐标
+            this.showSafeZoneCoordinates(clickedComponent);
+
             this.isDraggingComponent = true;
             this.dragStartPos = mousePos;
             this.componentDragStartPos = { ...clickedComponent.position };
@@ -649,12 +795,27 @@ class CanvasManager {
             conn.source.componentId === componentId || conn.target.componentId === componentId
         );
 
+        // 收集需要更新的边
+        const sidesToUpdate = new Set();
+
         connectionsToDelete.forEach(conn => {
+            // 从间距管理器注销
+            const updatedSides = this.wireSpacingManager.unregisterWire(conn.id);
+            updatedSides.forEach(side => {
+                sidesToUpdate.add(`${side.componentId}-${side.side}`);
+            });
+
             const index = this.connections.indexOf(conn);
             if (index > -1) {
                 this.connections.splice(index, 1);
                 console.log(`删除相关连线: ${conn.source.pinName} -> ${conn.target.pinName}`);
             }
+        });
+
+        // 更新受影响的连线路径
+        sidesToUpdate.forEach(sideKey => {
+            const [componentId, side] = sideKey.split('-');
+            this.updateConnectionsForSide(componentId, side);
         });
     }
 
@@ -664,6 +825,9 @@ class CanvasManager {
     deleteSelectedConnection() {
         if (!this.selectedConnection) return;
 
+        // 从间距管理器注销
+        const updatedSides = this.wireSpacingManager.unregisterWire(this.selectedConnection.id);
+
         const sourcePin = this.selectedConnection.source.pinName;
         const targetPin = this.selectedConnection.target.pinName;
         const index = this.connections.indexOf(this.selectedConnection);
@@ -672,6 +836,11 @@ class CanvasManager {
             this.connections.splice(index, 1);
             console.log(`删除连线: ${sourcePin} -> ${targetPin}`);
         }
+
+        // 更新受影响的连线路径
+        updatedSides.forEach(side => {
+            this.updateConnectionsForSide(side.componentId, side.side);
+        });
 
         this.selectedConnection = null;
         this.draw();
@@ -704,6 +873,34 @@ class CanvasManager {
             const targetId = conn.target.instanceId || conn.target.componentId;
             return sourceId === componentId || targetId === componentId;
         });
+
+        // 按连线ID排序，确保更新顺序稳定（影响动态长度分配）
+        relatedConnections.sort((a, b) => a.id.localeCompare(b.id));
+
+        // 为每个相关连线更新路径
+        relatedConnections.forEach(connection => {
+            this.updateConnectionPath(connection);
+        });
+    }
+
+    /**
+     * 更新特定元件特定边上的所有连线路径
+     * @param {string} componentId - 元件ID
+     * @param {string} side - 边名称
+     */
+    updateConnectionsForSide(componentId, side) {
+        // 找到与此元件此边相关的所有连线
+        const relatedConnections = this.connections.filter(conn => {
+            const sourceId = conn.source.instanceId || conn.source.componentId;
+            const targetId = conn.target.instanceId || conn.target.componentId;
+            return (sourceId === componentId && conn.source.side === side) ||
+                   (targetId === componentId && conn.target.side === side);
+        });
+
+        console.log(`更新元件 ${componentId} 边 ${side} 的 ${relatedConnections.length} 条连线路径`);
+
+        // 按连线ID排序，确保更新顺序稳定
+        relatedConnections.sort((a, b) => a.id.localeCompare(b.id));
 
         // 为每个相关连线更新路径
         relatedConnections.forEach(connection => {
@@ -742,9 +939,97 @@ class CanvasManager {
             connection.source.position = sourcePinPos;
             connection.target.position = targetPinPos;
 
-            // 重新计算连线路径
-            connection.path = this.calculateConnectionPath(sourcePinPos, targetPinPos);
+            // 获取引脚的边信息（用于计算引出线段）
+            const sourcePinInfo = this.getPinInfo(sourceComponent, sourcePinIdentifier);
+            const targetPinInfo = this.getPinInfo(targetComponent, targetPinIdentifier);
+
+            if (sourcePinInfo && targetPinInfo) {
+                // 计算引出线段端点（使用已固定的长度）
+                const sourceOutlet = this.calculateOutletPoint({
+                    position: sourcePinPos,
+                    side: sourcePinInfo.side,
+                    componentId: sourceComponent.id
+                }, sourceComponent.rotation || 0, connection.id);
+
+                const targetOutlet = this.calculateOutletPoint({
+                    position: targetPinPos,
+                    side: targetPinInfo.side,
+                    componentId: targetComponent.id
+                }, targetComponent.rotation || 0, connection.id);
+
+                // 从引出线段端点开始使用路径规划逻辑
+                const mainPath = this.calculateConnectionPath(sourceOutlet, targetOutlet);
+
+                // 构建完整路径：引脚点 -> 引出端点 -> 主路径 -> 目标引出端点 -> 目标引脚点
+                connection.path = [
+                    sourcePinPos,  // 源引脚点
+                    sourceOutlet,  // 源引出端点
+                    ...mainPath.slice(1, -1), // 主路径中间点（去掉重复的起点和终点）
+                    targetOutlet,  // 目标引出端点
+                    targetPinPos   // 目标引脚点
+                ];
+
+                // 保存引出线段端点信息和边信息
+                connection.source.outletPoint = sourceOutlet;
+                connection.source.side = sourcePinInfo.side;
+                connection.target.outletPoint = targetOutlet;
+                connection.target.side = targetPinInfo.side;
+            } else {
+                // 如果无法获取引脚边信息，回退到直接路径规划
+                console.warn('无法获取引脚边信息，使用直接路径规划');
+                connection.path = this.calculateConnectionPath(sourcePinPos, targetPinPos);
+            }
         }
+    }
+
+    /**
+     * 获取元件中指定引脚的完整信息
+     * @param {Object} component - 元件对象
+     * @param {string} pinIdentifier - 引脚标识（可以是pinId或pinName）
+     * @returns {Object|null} 引脚信息或null
+     */
+    getPinInfo(component, pinIdentifier) {
+        const { data, position, rotation } = component;
+        const { x: compX, y: compY } = position;
+
+        // 计算元件边界
+        const width = data.dimensions?.width || 80;
+        const height = data.dimensions?.height || 60;
+
+        const componentRect = {
+            x: compX - width / 2,
+            y: compY - height / 2,
+            width: width,
+            height: height
+        };
+
+        // 获取所有引脚位置
+        const pinCalculator = new CanvasPinPositionCalculator(componentRect);
+        const allPins = pinCalculator.calculateAllPositions(data.pins);
+
+        // 找到指定引脚
+        let targetPin;
+        if (pinIdentifier.includes('-')) {
+            // 新的pinId格式：side-order
+            const [side, order] = pinIdentifier.split('-');
+            targetPin = allPins.find(pin => pin.side === side && pin.order === parseInt(order));
+        } else {
+            // 兼容旧的pinName格式
+            targetPin = allPins.find(pin => pin.pinName === pinIdentifier);
+        }
+
+        if (!targetPin) {
+            console.warn('未找到引脚:', pinIdentifier, '在元件:', data.name);
+            return null;
+        }
+
+        // 对引脚位置进行旋转变换
+        const rotatedPosition = this.rotatePoint(targetPin.position, { x: compX, y: compY }, rotation);
+
+        return {
+            ...targetPin,
+            position: rotatedPosition
+        };
     }
 
     /**
@@ -985,7 +1270,52 @@ class CanvasManager {
 
         const sourcePin = connection.source.pinName;
         const targetPin = connection.target.pinName;
+
+        // 获取引脚的边信息，用于显示引出线段方向
+        const sourceComponent = this.components.find(c => c.id === connection.source.componentId);
+        const targetComponent = this.components.find(c => c.id === connection.target.componentId);
+
+        let sourceOutletDirection = '未知';
+        let targetOutletDirection = '未知';
+
+        if (sourceComponent && connection.source.pinId) {
+            const sourcePinInfo = this.getPinInfo(sourceComponent, connection.source.pinId);
+            if (sourcePinInfo) {
+                sourceOutletDirection = this.getOutletDirectionText(sourcePinInfo.side, sourceComponent.rotation || 0);
+            }
+        }
+
+        if (targetComponent && connection.target.pinId) {
+            const targetPinInfo = this.getPinInfo(targetComponent, connection.target.pinId);
+            if (targetPinInfo) {
+                targetOutletDirection = this.getOutletDirectionText(targetPinInfo.side, targetComponent.rotation || 0);
+            }
+        }
+
         console.log(`选中连线 (可编辑): ${sourcePin} -> ${targetPin}`);
+        console.log(`引出线段方向: 起始点${sourceOutletDirection}, 结束点${targetOutletDirection}`);
+    }
+
+    /**
+     * 获取引出线段方向的文本描述
+     * @param {string} side - 引脚所在边 ('side1', 'side2', 'side3', 'side4')
+     * @param {number} rotation - 元件旋转角度（度）
+     * @returns {string} 方向描述文本
+     */
+    getOutletDirectionText(side, rotation) {
+        // 获取基础方向向量
+        const direction = this.getPinSideDirection(side, rotation);
+
+        // 将方向向量转换为可读文本
+        const threshold = 0.1; // 方向判断阈值
+
+        if (Math.abs(direction.dx) > Math.abs(direction.dy)) {
+            // 水平方向为主
+            return direction.dx > threshold ? '向右' : '向左';
+        } else {
+            // 垂直方向为主
+            return direction.dy > threshold ? '向下' : '向上';
+        }
     }
 
     /**
@@ -1977,21 +2307,77 @@ void loop() {
      * @param {Object} targetPin - 目标引脚
      */
     createConnection(sourcePin, targetPin) {
+        // 生成连线ID
+        const connectionId = `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+        // 获取源和目标元件的旋转角度
+        const sourceComponent = this.components.find(c => c.id === sourcePin.componentId);
+        const targetComponent = this.components.find(c => c.id === targetPin.componentId);
+
+        const sourceRotation = sourceComponent?.rotation || 0;
+        const targetRotation = targetComponent?.rotation || 0;
+
+        // 1. 先注册连线到间距管理器（分配长度）
+        const wireInfo = {
+            source: {
+                componentId: sourcePin.componentId,
+                side: sourcePin.side,
+                pinName: sourcePin.pinName
+            },
+            target: {
+                componentId: targetPin.componentId,
+                side: targetPin.side,
+                pinName: targetPin.pinName
+            },
+            path: [] // 暂时为空，后续更新
+        };
+
+        this.wireSpacingManager.registerWire(connectionId, wireInfo);
+
+        // 2. 使用分配的长度计算正确的引出端点
+        const sourceOutlet = this.calculateOutletPoint({
+            position: sourcePin.position,
+            side: sourcePin.side,
+            componentId: sourcePin.componentId
+        }, sourceRotation, connectionId);
+
+        const targetOutlet = this.calculateOutletPoint({
+            position: targetPin.position,
+            side: targetPin.side,
+            componentId: targetPin.componentId
+        }, targetRotation, connectionId);
+
+        // 3. 从引出线段端点开始使用现有的路径规划逻辑
+        const mainPath = this.calculateConnectionPath(sourceOutlet, targetOutlet);
+
+        // 4. 构建完整路径：引脚点 -> 引出端点 -> 主路径 -> 目标引出端点 -> 目标引脚点
+        const fullPath = [
+            sourcePin.position,  // 源引脚点
+            sourceOutlet,        // 源引出端点
+            ...mainPath.slice(1, -1), // 主路径中间点（去掉重复的起点和终点）
+            targetOutlet,        // 目标引出端点
+            targetPin.position   // 目标引脚点
+        ];
+
         const connection = {
-            id: `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            id: connectionId,
             source: {
                 componentId: sourcePin.componentId,
                 pinId: sourcePin.pinId,          // 新增：引脚唯一标识
                 pinName: sourcePin.pinName,      // 保留：引脚名称（用于显示）
-                position: { ...sourcePin.position }
+                position: { ...sourcePin.position },
+                side: sourcePin.side,            // 新增：引脚所在边
+                outletPoint: sourceOutlet         // 新增：引出线段端点
             },
             target: {
                 componentId: targetPin.componentId,
                 pinId: targetPin.pinId,          // 新增：引脚唯一标识
                 pinName: targetPin.pinName,      // 保留：引脚名称（用于显示）
-                position: { ...targetPin.position }
+                position: { ...targetPin.position },
+                side: targetPin.side,            // 新增：引脚所在边
+                outletPoint: targetOutlet         // 新增：引出线段端点
             },
-            path: this.calculateConnectionPath(sourcePin.position, targetPin.position),
+            path: fullPath,
             style: {
                 color: '#2196f3',
                 width: 2
@@ -2000,7 +2386,83 @@ void loop() {
         };
 
         this.connections.push(connection);
+
+        // 5. 更新wireInfo中的路径
+        wireInfo.path = fullPath;
+
         return connection;
+    }
+
+    /**
+     * 计算引脚的引出线段端点
+     * @param {Object} pin - 引脚信息 (包含side, position, componentId等)
+     * @param {number} componentRotation - 元件旋转角度（度）
+     * @param {string} wireId - 连线ID（用于计算动态长度）
+     * @returns {Object} 引出线段端点位置
+     */
+    calculateOutletPoint(pin, componentRotation = 0, wireId = null) {
+        // 获取引出线段长度
+        let outletLength = 10; // 默认长度
+
+        if (wireId && pin.componentId && pin.side) {
+            // 使用间距管理器获取固定长度（或计算新长度）
+            outletLength = this.wireSpacingManager.calculateOutletLength(
+                pin.componentId,
+                pin.side,
+                wireId
+            );
+        }
+
+        // 获取引脚所在边的方向向量（考虑元件旋转）
+        const direction = this.getPinSideDirection(pin.side, componentRotation);
+
+        // 计算引出线段端点：从引脚位置沿所在边方向引出指定长度
+        const outletPoint = {
+            x: pin.position.x + direction.dx * outletLength,
+            y: pin.position.y + direction.dy * outletLength
+        };
+
+        return outletPoint;
+    }
+
+    /**
+     * 获取引脚所在边的方向向量（考虑元件旋转）
+     * @param {string} side - 引脚所在边 ('side1', 'side2', 'side3', 'side4')
+     * @param {number} componentRotation - 元件旋转角度（度）
+     * @returns {Object} 方向向量 {dx, dy}
+     */
+    getPinSideDirection(side, componentRotation = 0) {
+        // 基础方向映射（未旋转状态）
+        const baseDirections = {
+            'side1': { dx: 0, dy: -1 },  // 上边：向上
+            'side2': { dx: 1, dy: 0 },   // 右边：向右
+            'side3': { dx: 0, dy: 1 },   // 下边：向下
+            'side4': { dx: -1, dy: 0 }   // 左边：向左
+        };
+
+        const baseDirection = baseDirections[side];
+        if (!baseDirection) {
+            console.warn('未知的引脚边:', side);
+            return { dx: 0, dy: 1 }; // 默认向下
+        }
+
+        // 如果元件有旋转，需要对方向向量进行旋转变换
+        if (componentRotation !== 0) {
+            const radian = (componentRotation * Math.PI) / 180;
+            const cos = Math.cos(radian);
+            const sin = Math.sin(radian);
+
+            // 对方向向量进行旋转变换
+            const rotatedDx = baseDirection.dx * cos - baseDirection.dy * sin;
+            const rotatedDy = baseDirection.dx * sin + baseDirection.dy * cos;
+
+            return {
+                dx: rotatedDx,
+                dy: rotatedDy
+            };
+        }
+
+        return baseDirection;
     }
 
     /**
@@ -2016,11 +2478,7 @@ void loop() {
         const dx = endPos.x - startPos.x;
         const dy = endPos.y - startPos.y;
 
-        // 如果水平或垂直距离很小，使用直线
-        if (Math.abs(dx) < 20 || Math.abs(dy) < 20) {
-            return [startPos, endPos];
-        }
-
+        // 强制使用正交线段，移除直线连接的逻辑
         // 计算中间点（使用曼哈顿距离的折线）
         const midX = startPos.x + dx / 2;
         const midY = startPos.y + dy / 2;
@@ -2053,6 +2511,58 @@ void loop() {
     }
 
     /**
+     * 根据宽度倍数计算连线颜色
+     * @param {number} multiplier - 宽度倍数
+     * @returns {string} 颜色字符串
+     */
+    calculateConnectionColor(multiplier) {
+        // 基础颜色：浅蓝色 #2196f3 (RGB: 33, 150, 243)
+        // 目标颜色：深蓝色 #1565c0 (RGB: 21, 101, 192)
+        const baseColor = { r: 33, g: 150, b: 243 };
+        const targetColor = { r: 21, g: 101, b: 192 };
+
+        // 1x倍率使用基础颜色，之后逐渐趋近深蓝色
+        if (multiplier <= 1) {
+            return '#2196f3';
+        }
+
+        // 计算插值比例 (限制最大值为3，避免颜色过于接近)
+        const maxMultiplier = 3;
+        const ratio = Math.min((multiplier - 1) / (maxMultiplier - 1), 1);
+
+        // 线性插值计算RGB值
+        const r = Math.round(baseColor.r + (targetColor.r - baseColor.r) * ratio);
+        const g = Math.round(baseColor.g + (targetColor.g - baseColor.g) * ratio);
+        const b = Math.round(baseColor.b + (targetColor.b - baseColor.b) * ratio);
+
+        // 转换为十六进制颜色字符串
+        return `rgb(${r}, ${g}, ${b})`;
+    }
+
+    /**
+     * 计算连线在指定引脚上的宽度倍数
+     * @param {Object} connection - 连线对象
+     * @param {Object} pin - 引脚信息 (componentId, pinId)
+     * @returns {number} 宽度倍数 (1x, 2x, 3x, ...)
+     */
+    calculateConnectionWidthMultiplier(connection, pin) {
+        // 找到该引脚的所有连线
+        const pinConnections = this.connections.filter(conn => {
+            return (conn.source.componentId === pin.componentId && conn.source.pinId === pin.pinId) ||
+                   (conn.target.componentId === pin.componentId && conn.target.pinId === pin.pinId);
+        });
+
+        // 按照连线ID排序，确保顺序一致
+        pinConnections.sort((a, b) => a.id.localeCompare(b.id));
+
+        // 找到当前连线在排序后的位置
+        const position = pinConnections.findIndex(conn => conn.id === connection.id);
+
+        // 宽度倍数 = 1 + (位置 × 0.5) (第一条是1x，第二条是1.5x，第三条是2x，等等)
+        return 1 + (position * 0.5);
+    }
+
+    /**
      * 绘制单条连线
      * @param {Object} connection - 连线对象
      */
@@ -2061,15 +2571,30 @@ void loop() {
 
         this.ctx.save();
 
+        // 计算源引脚和目标引脚的宽度倍数，取最大值
+        const sourceMultiplier = this.calculateConnectionWidthMultiplier(connection, {
+            componentId: connection.source.componentId,
+            pinId: connection.source.pinId
+        });
+        const targetMultiplier = this.calculateConnectionWidthMultiplier(connection, {
+            componentId: connection.target.componentId,
+            pinId: connection.target.pinId
+        });
+        const widthMultiplier = Math.max(sourceMultiplier, targetMultiplier);
+
+        // 基础厚度 (默认2px)
+        const baseThickness = connection.style.thickness || 2;
+        const dynamicThickness = baseThickness * widthMultiplier;
+
         // 根据选中状态设置样式
         if (connection.selected) {
             this.ctx.strokeStyle = '#ff4444'; // 红色（选中状态）
-            this.ctx.lineWidth = (connection.style.thickness + 2) / this.scale; // 更粗
-            this.ctx.setLineDash([8 / this.scale, 4 / this.scale]); // 虚线
+            this.ctx.lineWidth = (dynamicThickness + 2) / this.scale; // 更粗
+            // 移除虚线，改为红色实线
         } else {
-            // 使用默认颜色或样式中定义的颜色
-            this.ctx.strokeStyle = connection.style.color || '#2196f3'; // 默认蓝色
-            this.ctx.lineWidth = connection.style.thickness / this.scale;
+            // 根据宽度倍数计算颜色深度
+            this.ctx.strokeStyle = this.calculateConnectionColor(widthMultiplier);
+            this.ctx.lineWidth = dynamicThickness / this.scale;
         }
 
         this.ctx.lineCap = 'round';
@@ -2573,6 +3098,15 @@ void loop() {
             return null;
         }
 
+        // 从pinId解析side信息 (格式: side-order)
+        const parseSideFromPinId = (pinId) => {
+            const parts = pinId.split('-');
+            return parts.length >= 2 ? parts[0] : 'unknown';
+        };
+
+        const sourceSide = parseSideFromPinId(connectionData.source.pinId);
+        const targetSide = parseSideFromPinId(connectionData.target.pinId);
+
         // 创建连线实例
         const connectionInstance = {
             id: connectionData.id,
@@ -2580,12 +3114,14 @@ void loop() {
                 ...connectionData.source,
                 instanceId: connectionData.source.instanceId || connectionData.source.componentId || sourceComponent.id, // 确保instanceId正确设置
                 componentId: sourceComponent.id, // 添加componentId以支持更新逻辑
+                side: sourceSide, // 添加side信息
                 position: sourcePos
             },
             target: {
                 ...connectionData.target,
                 instanceId: connectionData.target.instanceId || connectionData.target.componentId || targetComponent.id, // 确保instanceId正确设置
                 componentId: targetComponent.id, // 添加componentId以支持更新逻辑
+                side: targetSide, // 添加side信息
                 position: targetPos
             },
             path: connectionData.path || [],
@@ -2602,6 +3138,23 @@ void loop() {
         // 添加到连线列表
         this.connections.push(connectionInstance);
 
+        // 注册到间距管理器（确保长度计算正确）
+        const wireInfo = {
+            source: {
+                componentId: connectionInstance.source.componentId,
+                side: connectionInstance.source.side,
+                pinName: connectionInstance.source.pinName
+            },
+            target: {
+                componentId: connectionInstance.target.componentId,
+                side: connectionInstance.target.side,
+                pinName: connectionInstance.target.pinName
+            },
+            path: connectionInstance.path
+        };
+
+        this.wireSpacingManager.registerWire(connectionInstance.id, wireInfo);
+
         // 触发重新渲染，确保连线立即可见
         this.draw();
 
@@ -2614,6 +3167,11 @@ void loop() {
     clearComponents() {
         this.components = [];
         this.connections = []; // 同时清除连线
+
+        // 清理间距管理器的状态
+        this.wireSpacingManager.sideWires.clear();
+        this.wireSpacingManager.wireRegistry.clear();
+
         this.draw();
     }
 
@@ -2902,5 +3460,289 @@ class CanvasPinPositionCalculator {
         if (totalPins <= 4) return 8;       // 3-4个：8px
         if (totalPins <= 6) return 6;       // 5-6个：6px
         return 4;                           // 7个以上：4px
+    }
+}
+
+/**
+ * 连线间距管理器
+ * 负责管理连线间的间距，确保可读性和美观性
+ */
+class WireSpacingManager {
+    constructor() {
+        // 间距配置
+        this.config = {
+            defaultOutletLength: 10,    // 默认引出线段长度
+            outletLengthIncrement: 10,  // 引出线段长度增量
+            minWireSpacing: 10          // 最小线条间距
+        };
+
+        // 跟踪每条边的连线情况
+        // 结构: Map<componentId, Map<side, Array<wireId>>>
+        this.sideWires = new Map();
+
+        // 连线注册表
+        this.wireRegistry = new Map();
+    }
+
+    /**
+     * 注册连线
+     * @param {string} wireId - 连线ID
+     * @param {Object} wireInfo - 连线信息
+     */
+    registerWire(wireId, wireInfo) {
+        this.wireRegistry.set(wireId, wireInfo);
+
+        // 先注册到边的连线列表中
+        const sourceKey = `${wireInfo.source.componentId}-${wireInfo.source.side}`;
+        const targetKey = `${wireInfo.target.componentId}-${wireInfo.target.side}`;
+
+        this._addToSide(sourceKey, wireId);
+        if (sourceKey !== targetKey) {
+            this._addToSide(targetKey, wireId);
+        }
+
+        // 在注册完成后，基于在列表中的实际位置分配固定的引出长度
+        // 这样可以确保长度分配是基于连线在列表中的顺序，而不是创建顺序
+        const sourceOutletLength = this.calculateOutletLength(
+            wireInfo.source.componentId,
+            wireInfo.source.side,
+            wireId
+        );
+        const targetOutletLength = this.calculateOutletLength(
+            wireInfo.target.componentId,
+            wireInfo.target.side,
+            wireId
+        );
+
+        // 保存分配的长度
+        wireInfo.source.outletLength = sourceOutletLength;
+        wireInfo.target.outletLength = targetOutletLength;
+
+        // 调试日志
+        console.log(`连线 ${wireId} 已注册:`);
+        console.log(`  源边 ${sourceKey}: ${this.sideWires.get(sourceKey)?.length || 0} 条连线`);
+        console.log(`  源长度: ${wireInfo.source.outletLength}px, 目标长度: ${wireInfo.target.outletLength}px`);
+        if (sourceKey !== targetKey) {
+            console.log(`  目标边 ${targetKey}: ${this.sideWires.get(targetKey)?.length || 0} 条连线`);
+        }
+    }
+
+    /**
+     * 注销连线
+     * @param {string} wireId - 连线ID
+     */
+    unregisterWire(wireId) {
+        if (!this.wireRegistry.has(wireId)) return [];
+
+        const wireInfo = this.wireRegistry.get(wireId);
+
+        // 从边的连线列表中移除
+        const sourceKey = `${wireInfo.source.componentId}-${wireInfo.source.side}`;
+        const targetKey = `${wireInfo.target.componentId}-${wireInfo.target.side}`;
+
+        this._removeFromSide(sourceKey, wireId);
+        if (sourceKey !== targetKey) {
+            this._removeFromSide(targetKey, wireId);
+        }
+
+        this.wireRegistry.delete(wireId);
+
+        // 删除连线后，重新分配该边上剩余连线的长度
+        const sourceParts = sourceKey.split('-');
+        const targetParts = targetKey.split('-');
+        const sidesToUpdate = [];
+
+        if (sourceParts.length >= 2) {
+            this.redistributeSideLengths(sourceParts[0], sourceParts[1]);
+            sidesToUpdate.push({
+                componentId: sourceParts[0],
+                side: sourceParts[1]
+            });
+        }
+        if (targetKey !== sourceKey && targetParts.length >= 2) {
+            this.redistributeSideLengths(targetParts[0], targetParts[1]);
+            sidesToUpdate.push({
+                componentId: targetParts[0],
+                side: targetParts[1]
+            });
+        }
+
+        return sidesToUpdate;
+    }
+
+    /**
+     * 计算引出线段长度
+     * @param {string} componentId - 元件ID
+     * @param {string} side - 边名称
+     * @param {string} wireId - 连线ID
+     * @returns {number} 引出线段长度
+     */
+    calculateOutletLength(componentId, side, wireId) {
+        // 获取已注册的连线信息
+        const wireInfo = this.wireRegistry.get(wireId);
+        if (wireInfo) {
+            // 如果连线已注册，检查是否已有固定的引出长度
+            const isSource = wireInfo.source.componentId === componentId && wireInfo.source.side === side;
+            const isTarget = wireInfo.target.componentId === componentId && wireInfo.target.side === side;
+
+            if (isSource && wireInfo.source.outletLength !== undefined) {
+                return wireInfo.source.outletLength;
+            }
+            if (isTarget && wireInfo.target.outletLength !== undefined) {
+                return wireInfo.target.outletLength;
+            }
+        }
+
+        // 基于连线在列表中的实际位置分配长度
+        const sideKey = `${componentId}-${side}`;
+        const sideWires = this.sideWires.get(sideKey) || [];
+
+        // 找到当前连线在列表中的位置
+        const wireIndex = sideWires.indexOf(wireId);
+
+        if (wireIndex === -1) {
+            console.warn(`连线 ${wireId} 不在边 ${sideKey} 的列表中`);
+            return this.config.defaultOutletLength;
+        }
+
+        // 基于在列表中的位置分配长度：基础长度 + 位置索引 * 增量
+        const outletLength = this.config.defaultOutletLength +
+                           (wireIndex * this.config.outletLengthIncrement);
+
+        // 调试日志
+        console.log(`计算连线 ${wireId} 在边 ${sideKey} 的引出长度:`);
+        console.log(`  在列表中的位置: ${wireIndex}, 连线总数: ${sideWires.length}, 计算长度: ${outletLength}px`);
+
+        return outletLength;
+    }
+
+    /**
+     * 重新分配边的所有连线长度（用于删除连线后重新调整）
+     * @param {string} componentId - 元件ID
+     * @param {string} side - 边名称
+     */
+    redistributeSideLengths(componentId, side) {
+        const sideKey = `${componentId}-${side}`;
+        const sideWires = this.sideWires.get(sideKey) || [];
+
+        console.log(`重新分配边 ${sideKey} 的连线长度，共 ${sideWires.length} 条连线`);
+
+        // 为该边上的每个连线重新分配长度
+        sideWires.forEach((wireId, index) => {
+            const newLength = this.config.defaultOutletLength +
+                            (index * this.config.outletLengthIncrement);
+
+            // 更新连线信息中的长度
+            const wireInfo = this.wireRegistry.get(wireId);
+            if (wireInfo) {
+                const isSource = wireInfo.source.componentId === componentId && wireInfo.source.side === side;
+                const isTarget = wireInfo.target.componentId === componentId && wireInfo.target.side === side;
+
+                if (isSource) {
+                    wireInfo.source.outletLength = newLength;
+                    console.log(`  连线 ${wireId} 源长度更新为: ${newLength}px`);
+                }
+                if (isTarget) {
+                    wireInfo.target.outletLength = newLength;
+                    console.log(`  连线 ${wireId} 目标长度更新为: ${newLength}px`);
+                }
+            }
+        });
+    }
+
+    /**
+     * 检查连线间距是否满足要求
+     * @param {string} wireId - 连线ID
+     * @param {Array} wirePath - 连线路径
+     * @returns {boolean} 是否满足间距要求
+     */
+    checkWireSpacing(wireId, wirePath) {
+        // 简化实现：检查与其他连线的最小距离
+        for (const [otherId, otherWire] of this.wireRegistry) {
+            if (otherId === wireId) continue;
+
+            const minDistance = this._calculatePathDistance(wirePath, otherWire.path);
+            if (minDistance < this.config.minWireSpacing) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 添加连线到边的列表
+     * @private
+     */
+    _addToSide(sideKey, wireId) {
+        if (!this.sideWires.has(sideKey)) {
+            this.sideWires.set(sideKey, []);
+        }
+        const sideList = this.sideWires.get(sideKey);
+        if (!sideList.includes(wireId)) {
+            sideList.push(wireId);
+        }
+    }
+
+    /**
+     * 从边的列表中移除连线
+     * @private
+     */
+    _removeFromSide(sideKey, wireId) {
+        const sideList = this.sideWires.get(sideKey);
+        if (sideList) {
+            const index = sideList.indexOf(wireId);
+            if (index !== -1) {
+                sideList.splice(index, 1);
+            }
+            // 如果列表为空，清理
+            if (sideList.length === 0) {
+                this.sideWires.delete(sideKey);
+            }
+        }
+    }
+
+    /**
+     * 计算两条路径之间的最小距离
+     * @private
+     */
+    _calculatePathDistance(path1, path2) {
+        let minDistance = Infinity;
+
+        // 简化实现：检查每对线段之间的距离
+        for (let i = 0; i < path1.length - 1; i++) {
+            for (let j = 0; j < path2.length - 1; j++) {
+                const dist = this._calculateSegmentDistance(
+                    path1[i], path1[i + 1],
+                    path2[j], path2[j + 1]
+                );
+                minDistance = Math.min(minDistance, dist);
+            }
+        }
+
+        return minDistance;
+    }
+
+    /**
+     * 计算两条线段之间的最小距离
+     * @private
+     */
+    _calculateSegmentDistance(p1, p2, p3, p4) {
+        // 简化的线段距离计算
+        const distances = [
+            this._pointDistance(p1, p3),
+            this._pointDistance(p1, p4),
+            this._pointDistance(p2, p3),
+            this._pointDistance(p2, p4)
+        ];
+
+        return Math.min(...distances);
+    }
+
+    /**
+     * 计算两点之间的距离
+     * @private
+     */
+    _pointDistance(p1, p2) {
+        return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
     }
 }
