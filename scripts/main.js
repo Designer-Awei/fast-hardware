@@ -289,6 +289,12 @@ class FastHardwareApp {
                 this.currentProject = projectPath;
                 this.isProjectModified = false;
 
+                // 清理代码编辑器的缓存，确保加载新项目的代码
+                if (window.canvasInstance) {
+                    window.canvasInstance.lastSavedCodeContent = null;
+                    window.canvasInstance.currentCodePath = null;
+                }
+
                 console.log('📂 项目加载完成，设置当前项目:', this.currentProject);
                 this.showNotification('项目加载成功！', 'success');
             }
@@ -581,7 +587,7 @@ class FastHardwareApp {
             }
 
             // 生成基础的Arduino代码模板
-            const codeContent = this.generateArduinoCode(canvasState, projectName);
+            const generatedCodeContent = this.generateArduinoCode(canvasState, projectName);
 
             // 检查是否存在与项目名称一致的.ino文件
             const projectCodePath = `${projectPath}/${projectName}.ino`;
@@ -590,25 +596,43 @@ class FastHardwareApp {
             // 优先使用项目名称作为文件名
             let targetCodePath = projectCodePath;
 
-            // 如果项目名称的.ino文件不存在，则检查是否有其他.ino文件
+            // 检查是否已经有用户编辑过的代码
+            let existingCodeContent = null;
+            let hasUserEditedCode = false;
+
             try {
-                await window.electronAPI.loadFile(projectCodePath);
-                // 如果能读取到，说明文件存在，使用项目名称
+                // 尝试读取现有代码文件
+                existingCodeContent = await window.electronAPI.loadFile(projectCodePath);
+                targetCodePath = projectCodePath;
+
+                // 检查现有代码是否与自动生成的模板不同
+                // 简单比较：如果现有代码不包含模板的特征注释，说明是用户编辑过的
+                hasUserEditedCode = !existingCodeContent.includes(`// ${projectName} - Fast Hardware生成的Arduino代码`);
+
             } catch (error) {
                 // 项目名称的.ino文件不存在，检查是否有其他.ino文件
                 try {
-                    await window.electronAPI.loadFile(defaultCodePath);
-                    // 如果默认文件存在，继续使用默认文件名
+                    existingCodeContent = await window.electronAPI.loadFile(defaultCodePath);
                     targetCodePath = defaultCodePath;
+
+                    // 检查现有代码是否与自动生成的模板不同
+                    hasUserEditedCode = !existingCodeContent.includes(`// ${projectName} - Fast Hardware生成的Arduino代码`);
+
                 } catch (error2) {
                     // 都没有找到，使用项目名称创建新文件
                     targetCodePath = projectCodePath;
+                    hasUserEditedCode = false;
                 }
             }
 
-            // 保存到.ino文件
-            await window.electronAPI.saveFile(targetCodePath, codeContent);
-            console.log(`固件代码保存到: ${targetCodePath}`);
+            // 只有在没有用户编辑过的代码时才覆盖，否则保留用户编辑的内容
+            if (!hasUserEditedCode) {
+                // 保存自动生成的代码到.ino文件
+                await window.electronAPI.saveFile(targetCodePath, generatedCodeContent);
+                console.log(`固件代码保存到: ${targetCodePath} (自动生成)`);
+            } else {
+                console.log(`固件代码保留用户编辑内容: ${targetCodePath} (跳过自动生成)`);
+            }
 
             console.log('固件代码更新完成');
         } catch (error) {

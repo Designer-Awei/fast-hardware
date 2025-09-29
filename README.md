@@ -10,7 +10,7 @@
 
 [🇨🇳 中文](README.md) | [🇺🇸 English](README_EN.md)
 
-[![Version](https://img.shields.io/badge/version-0.1.8-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
+[![Version](https://img.shields.io/badge/version-0.1.9-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
 [![Electron](https://img.shields.io/badge/Electron-27.0.0-47848F.svg)](https://electronjs.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-16+-339933.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -62,7 +62,7 @@
 ### 🚧 LLM智能助手 (规划中)
 自然语言交互，智能推荐硬件方案，自动生成电路设计。
 
-## ✨ 最新特性 (v0.1.8)
+## ✨ 最新特性 (v0.1.9)
 
 - **LLM智能助手**: 集成SiliconFlow AI API，支持多种AI模型的智能对话
 - **智能Markdown渲染**: 集成marked库，支持标题、列表、代码块等完整语法
@@ -132,8 +132,8 @@ fast-hardware/
 ├── 📁 scripts/                   # 前端脚本
 ├── 📁 styles/                    # 样式文件
 ├── 📁 dist/                      # 构建输出目录 (打包后生成)
-│   ├── Fast Hardware Setup 0.1.8.exe    # Windows安装程序
-│   ├── Fast Hardware-0.1.8-win.zip      # Windows绿色版
+│   ├── Fast Hardware Setup 0.1.9.exe    # Windows安装程序
+│   ├── Fast Hardware-0.1.9-win.zip      # Windows绿色版
 │   └── win-unpacked/                    # 未打包版本
 ├── 📄 main.js                    # Electron主进程
 ├── 📄 index.html                 # 主界面
@@ -240,7 +240,7 @@ npm run dist
 - **存储空间**: 200MB 可用空间
 
 ### 🚀 安装指南
-1. 下载 `Fast Hardware Setup 0.1.8.exe`
+1. 下载 `Fast Hardware Setup 0.1.9.exe`
 2. 双击运行安装程序
 3. 选择安装位置（可自定义）
 4. 按照提示完成安装

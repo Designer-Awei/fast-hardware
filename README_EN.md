@@ -10,7 +10,7 @@
 
 [🇨🇳 中文](README.md) | [🇺🇸 English](README_EN.md)
 
-[![Version](https://img.shields.io/badge/version-0.1.8-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
+[![Version](https://img.shields.io/badge/version-0.1.9-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
 [![Electron](https://img.shields.io/badge/Electron-27.0.0-47848F.svg)](https://electronjs.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-16+-339933.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -73,7 +73,7 @@
 - **🎨 Automatic Generation**: Automatically generate circuit diagrams based on dialogue
 - **⚡ API Integration**: Support for multiple LLM service providers
 
-## ✨ Latest Features (v0.1.8)
+## ✨ Latest Features (v0.1.9)
 
 ### 🚀 LLM Intelligent Assistant Integration (Core Feature)
 - **🎯 SiliconFlow AI API Integration**: Integration of multiple AI models (GLM-4-9B, GLM-4.1V-9B-Thinking, Qwen3-8B, Hunyuan-MT-7B)
@@ -615,6 +615,25 @@ When encountering problems, follow these steps:
 4. **Error Diagnosis**: `npm run error-help`
 
 ## 📝 Changelog
+
+### 🎉 v0.1.9 (2025-09-24)
+
+#### 🐛 Code Editor Bug Fixes (Core Feature)
+- 🔧 **Project Save Code Override Fix**: Fixed the issue where saving projects in the circuit design canvas would override user-edited firmware code
+- 🛡️ **Smart Code Protection Mechanism**: System automatically detects user editing traces, only generates automatic code when no user-edited content exists
+- 💾 **Code Editor State Caching**: Optimized content loading logic when opening/closing the code editor to ensure editing state persistence
+- 📝 **Conditional Code Generation**: Smart judgment during project saving whether to override existing code, protecting user custom code
+
+#### ✅ Code Editor Experience Optimization
+- 🎯 **Cache Priority Loading**: Code editor prioritizes loading last saved content when reopened
+- 🔄 **Project Switching Cleanup**: Automatically cleans code cache when switching projects to prevent content confusion
+- 📊 **Detailed Status Logging**: Added detailed logs for code loading and saving for easier debugging
+- ⚡ **Save Timing Optimization**: Ensures code saving is completed before performing other operations
+
+#### ✅ Technical Architecture Improvements
+- 🔧 **IPC Communication Optimization**: Improved code path passing between main and renderer processes
+- 🛡️ **Enhanced Error Handling**: Error handling and user prompts when code saving fails
+- 📋 **State Management Perfection**: Code editor state management and lifecycle management
 
 ### 🎉 v0.1.8 (2025-09-24)
 

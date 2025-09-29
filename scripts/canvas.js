@@ -1278,6 +1278,9 @@ class CanvasManager {
 
             // 清理事件监听器
             this.cleanupCodeEditorEvents();
+
+            // 不清理lastSavedCodeContent，让它在编辑器重新打开时保持可用
+            // 只有在切换项目或明确需要时才清理
         }
     }
 
@@ -1289,8 +1292,14 @@ class CanvasManager {
             let codeContent = '';
             let codePath = '未命名.ino';
 
+            // 首先检查是否有最后保存的代码内容（优先级最高）
+            if (this.lastSavedCodeContent && this.currentCodePath) {
+                codeContent = this.lastSavedCodeContent;
+                codePath = this.currentCodePath;
+                console.log('加载最后保存的代码内容');
+            }
             // 检查是否有当前项目
-            if (window.mainApp?.currentProject) {
+            else if (window.mainApp?.currentProject) {
                 const projectPath = window.mainApp.currentProject;
                 const projectData = await window.mainApp.loadProjectConfig(projectPath);
 
@@ -1412,15 +1421,24 @@ void loop() {
 
             // 检查是否真的创建了新项目（currentProject是否发生了变化）
             if (window.mainApp.currentProject && window.mainApp.currentProject !== previousProject) {
-                // 确实创建了新项目，现在保存代码文件
+                // 确实创建了新项目，现在立即保存代码文件
                 const projectName = window.mainApp.currentProject.split('/').pop() || window.mainApp.currentProject.split('\\').pop();
                 const codeFilePath = `${window.mainApp.currentProject}/${projectName}.ino`;
 
                 try {
+                    // 立即保存代码内容，确保同步
                     await window.electronAPI.saveFile(codeFilePath, codeContent);
                     console.log('代码文件保存成功:', codeFilePath);
+
+                    // 更新当前代码路径，以便后续编辑器重新打开时能正确加载
+                    this.currentCodePath = codeFilePath;
+
+                    // 确保代码编辑器重新打开时能加载到最新保存的代码
+                    this.lastSavedCodeContent = codeContent;
+
                 } catch (error) {
                     console.warn('保存代码文件时出错:', error);
+                    throw error; // 如果代码保存失败，需要让用户知道
                 }
             } else {
                 // 用户取消了保存或者保存失败，不执行任何操作
