@@ -84,7 +84,7 @@
                             </div>
                         </div>
                         <div class="canvas-container">
-                            <canvas id="main-canvas" width="800" height="600"></canvas>
+                            <canvas id="main-canvas" width="800" height="600" tabindex="0"></canvas>
                             <div class="canvas-overlay">
                                 <div class="canvas-status">
                                     <span>缩放: <span id="zoom-level">100%</span></span>
@@ -449,6 +449,10 @@
                                 <div class="shortcuts-grid">
                                     <div class="shortcut-group">
                                         <h5>画布操作</h5>
+                                        <div class="shortcut-item">
+                                            <kbd class="key">Shift</kbd> + <kbd class="key">选中</kbd>
+                                            <span>多选元件</span>
+                                        </div>
                                         <div class="shortcut-item">
                                             <kbd class="key">Ctrl</kbd> + <kbd class="key">Z</kbd>
                                             <span>撤回操作</span>

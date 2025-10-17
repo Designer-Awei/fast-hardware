@@ -18,10 +18,10 @@ class CanvasManager {
         this.components = [];
 
         // 选中状态管理
-        this.selectedComponent = null; // 当前选中的元件
-        this.isDraggingComponent = false; // 是否正在拖动元件
+        this.selectedComponents = []; // 当前选中的元件数组（支持多选）
+        this.isDraggingComponents = false; // 是否正在拖动元件
         this.dragStartPos = null; // 拖动开始时的鼠标位置
-        this.componentDragStartPos = null; // 拖动开始时元件的位置
+        this.componentsDragStartPos = null; // 拖动开始时各元件的位置
 
         // 连线系统相关属性
         this.pinInteraction = {
@@ -277,7 +277,7 @@ class CanvasManager {
         const state = {
             components: JSON.parse(JSON.stringify(this.components)),
             connections: JSON.parse(JSON.stringify(this.connections)),
-            selectedComponent: this.selectedComponent ? this.selectedComponent.id : null,
+            selectedComponents: this.selectedComponents.map(c => c.id),
             selectedConnection: this.selectedConnection ? this.selectedConnection.id : null
         };
 
@@ -292,7 +292,7 @@ class CanvasManager {
         // 清空重做栈
         this.redoStack = [];
 
-        console.log('状态已保存到撤回栈，当前栈大小:', this.undoStack.length);
+        console.log('状态已保存到撤回栈，当前栈大小:', this.undoStack.length, '元件数量:', this.components.length);
     }
 
     /**
@@ -304,11 +304,16 @@ class CanvasManager {
             return false;
         }
 
+        console.log('执行撤回:', {
+            undoStackLength: this.undoStack.length,
+            redoStackLength: this.redoStack.length
+        });
+
         // 保存当前状态到重做栈
         const currentState = {
             components: JSON.parse(JSON.stringify(this.components)),
             connections: JSON.parse(JSON.stringify(this.connections)),
-            selectedComponent: this.selectedComponent ? this.selectedComponent.id : null,
+            selectedComponents: this.selectedComponents.map(c => c.id),
             selectedConnection: this.selectedConnection ? this.selectedConnection.id : null
         };
         this.redoStack.push(currentState);
@@ -317,7 +322,10 @@ class CanvasManager {
         const previousState = this.undoStack.pop();
         this.restoreState(previousState);
 
-        console.log('撤回操作执行完成');
+        console.log('撤回操作执行完成:', {
+            undoStackLength: this.undoStack.length,
+            redoStackLength: this.redoStack.length
+        });
         return true;
     }
 
@@ -330,11 +338,16 @@ class CanvasManager {
             return false;
         }
 
+        console.log('执行重做:', {
+            undoStackLength: this.undoStack.length,
+            redoStackLength: this.redoStack.length
+        });
+
         // 保存当前状态到撤回栈
         const currentState = {
             components: JSON.parse(JSON.stringify(this.components)),
             connections: JSON.parse(JSON.stringify(this.connections)),
-            selectedComponent: this.selectedComponent ? this.selectedComponent.id : null,
+            selectedComponents: this.selectedComponents.map(c => c.id),
             selectedConnection: this.selectedConnection ? this.selectedConnection.id : null
         };
         this.undoStack.push(currentState);
@@ -343,7 +356,10 @@ class CanvasManager {
         const nextState = this.redoStack.pop();
         this.restoreState(nextState);
 
-        console.log('重做操作执行完成');
+        console.log('重做操作执行完成:', {
+            undoStackLength: this.undoStack.length,
+            redoStackLength: this.redoStack.length
+        });
         return true;
     }
 
@@ -359,8 +375,8 @@ class CanvasManager {
         this.connections = JSON.parse(JSON.stringify(state.connections));
 
         // 恢复选中状态
-        this.selectedComponent = state.selectedComponent ?
-            this.components.find(c => c.id === state.selectedComponent) : null;
+        this.selectedComponents = state.selectedComponents ?
+            state.selectedComponents.map(id => this.components.find(c => c.id === id)).filter(Boolean) : [];
         this.selectedConnection = state.selectedConnection ?
             this.connections.find(c => c.id === state.selectedConnection) : null;
 
@@ -449,14 +465,16 @@ class CanvasManager {
             return;
         }
 
-        // 然后检查是否点击了连线（非编辑符号区域）
-        const clickedConnection = this.getConnectionAtPosition(worldPos);
-        if (clickedConnection) {
-            this.selectConnection(clickedConnection);
-            this.canvas.style.cursor = 'pointer';
-            e.preventDefault();
-            this.draw();
-            return;
+        // 然后检查是否点击了连线（非编辑符号区域）- 仅在非shift多选模式下
+        if (!e.shiftKey) {
+            const clickedConnection = this.getConnectionAtPosition(worldPos);
+            if (clickedConnection) {
+                this.selectConnection(clickedConnection);
+                this.canvas.style.cursor = 'pointer';
+                e.preventDefault();
+                this.draw();
+                return;
+            }
         }
 
         // 检查是否点击了元件
@@ -477,16 +495,42 @@ class CanvasManager {
                 return;
             }
 
-            // 点击了元件主体 - 选中元件并准备拖动
-            this.selectComponent(clickedComponent);
+            // 点击了元件主体 - 处理选中逻辑
+            if (this.selectedComponents.includes(clickedComponent) && this.selectedComponents.length > 1) {
+                // 点击已选中的元件（且当前有多选）：直接开始拖拽所有选中元件
+                // 不改变选中状态
+            } else if (this.selectedComponents.includes(clickedComponent) && this.selectedComponents.length === 1) {
+                // 点击已选中的元件（单选状态）：重新选择，确保选中状态正确
+                this.selectComponent(clickedComponent);
+            } else {
+                // 点击未选中的元件
+                if (e.shiftKey) {
+                    // Shift+点击：添加到多选
+                    this.addToSelection(clickedComponent);
+                } else {
+                    // 普通点击：单选模式
+                    this.selectComponent(clickedComponent);
+                }
+            }
 
-            // 显示元件的四个安全区角点坐标
-            this.showSafeZoneCoordinates(clickedComponent);
+            // 显示元件的四个安全区角点坐标（仅在单选时显示）
+            if (this.selectedComponents.length === 1) {
+                this.showSafeZoneCoordinates(clickedComponent);
+            }
 
-            this.isDraggingComponent = true;
+            // 准备拖动选中的元件
+            this.isDraggingComponents = true;
             this.dragStartPos = mousePos;
-            this.componentDragStartPos = { ...clickedComponent.position };
+            this.componentsDragStartPos = {};
+            this.selectedComponents.forEach(component => {
+                this.componentsDragStartPos[component.id] = { ...component.position };
+            });
             this.canvas.style.cursor = 'grabbing';
+            // 确保canvas获得焦点，保持键盘事件可用
+            this.canvas.focus();
+
+            // 保存拖拽前的状态，用于撤回
+            this.saveState();
             e.preventDefault();
         } else {
             // 点击空白区域 - 取消选中并开始画布拖拽
@@ -533,8 +577,8 @@ class CanvasManager {
             return;
         }
 
-        if (this.isDraggingComponent && this.selectedComponent && this.dragStartPos) {
-            // 拖动元件
+        if (this.isDraggingComponents && this.selectedComponents.length > 0 && this.dragStartPos) {
+            // 拖动多个元件
             const deltaX = mousePos.x - this.dragStartPos.x;
             const deltaY = mousePos.y - this.dragStartPos.y;
 
@@ -542,12 +586,17 @@ class CanvasManager {
             const worldDeltaX = deltaX / this.scale;
             const worldDeltaY = deltaY / this.scale;
 
-            // 更新元件位置
-            this.selectedComponent.position.x = this.componentDragStartPos.x + worldDeltaX;
-            this.selectedComponent.position.y = this.componentDragStartPos.y + worldDeltaY;
+            // 更新所有选中的元件位置
+            this.selectedComponents.forEach(component => {
+                const originalPos = this.componentsDragStartPos[component.id];
+                if (originalPos) {
+                    component.position.x = originalPos.x + worldDeltaX;
+                    component.position.y = originalPos.y + worldDeltaY;
 
-            // 实时更新相关连线路径
-            this.updateConnectionsForComponent(this.selectedComponent.id);
+                    // 实时更新相关连线路径
+                    this.updateConnectionsForComponent(component.id);
+                }
+            });
 
             this.draw();
         } else if (this.isDragging) {
@@ -566,7 +615,7 @@ class CanvasManager {
             // 检查鼠标悬停状态
             const hoveredComponent = this.getComponentAtPosition(worldPos);
 
-            if (this.selectedComponent) {
+            if (this.selectedComponents.length > 0) {
                 // 如果有选中元件，检查是否悬停在引脚上
                 const hoveredPin = this.detectPinAtPosition(mousePos);
                 if (hoveredPin) {
@@ -577,14 +626,14 @@ class CanvasManager {
                         this.pinInteraction.activePin = hoveredPin;
                         this.draw(); // 重新绘制以显示连接器
                     }
-                } else if (hoveredComponent && hoveredComponent !== this.selectedComponent) {
+                } else if (hoveredComponent && !this.selectedComponents.includes(hoveredComponent)) {
                     this.canvas.style.cursor = 'pointer';
                     // 清除引脚激活状态
                     if (this.pinInteraction.activePin) {
                         this.pinInteraction.activePin = null;
                         this.draw();
                     }
-                } else if (hoveredComponent === this.selectedComponent) {
+                } else if (hoveredComponent && this.selectedComponents.includes(hoveredComponent)) {
                     this.canvas.style.cursor = 'pointer';
                 } else {
                     this.canvas.style.cursor = 'grab';
@@ -712,20 +761,45 @@ class CanvasManager {
             return;
         }
 
-        if (this.isDraggingComponent) {
+        if (this.isDraggingComponents) {
             // 结束元件拖动
-            this.isDraggingComponent = false;
+            this.isDraggingComponents = false;
             this.dragStartPos = null;
-            this.componentDragStartPos = null;
+            this.componentsDragStartPos = null;
             this.canvas.style.cursor = 'pointer';
 
-            // 保存状态用于撤回（元件移动完成）
-            this.saveState();
+            // 确保canvas获得焦点，保持键盘事件可用
+            this.canvas.focus();
+
+            // 检查是否真的移动了位置，如果有移动则保存新状态
+            let hasMoved = false;
+            if (this.componentsDragStartPos) {
+                for (const component of this.selectedComponents) {
+                    const originalPos = this.componentsDragStartPos[component.id];
+                    if (originalPos && typeof originalPos.x === 'number' && typeof originalPos.y === 'number') {
+                        if (Math.abs(component.position.x - originalPos.x) > 0.1 ||
+                            Math.abs(component.position.y - originalPos.y) > 0.1) {
+                            hasMoved = true;
+                            break;
+                        }
+                    } else {
+                        // 如果没有初始位置记录，认为有移动（可能是刚添加的元件）
+                        hasMoved = true;
+                        break;
+                    }
+                }
+            } else {
+                // 如果没有初始位置记录，认为有移动
+                hasMoved = true;
+            }
+
+            // 拖拽开始时已经保存了状态，这里不需要额外保存
+            // 撤回将回到拖拽前的状态
 
             // 最终确认连线路径（虽然拖拽过程中已实时更新，但这里确保最终状态正确）
-            if (this.selectedComponent) {
-                this.updateConnectionsForComponent(this.selectedComponent.id);
-            }
+            this.selectedComponents.forEach(component => {
+                this.updateConnectionsForComponent(component.id);
+            });
         } else if (this.isDragging) {
             // 结束画布拖拽
             this.isDragging = false;
@@ -811,14 +885,16 @@ class CanvasManager {
      * 选中元件
      * @param {Object} component - 要选中的元件
      */
+    /**
+     * 选中单个元件（替换当前选择）
+     * @param {Object} component - 要选中的元件
+     */
     selectComponent(component) {
-        // 如果已经选中了其他元件，先取消选中
-        if (this.selectedComponent && this.selectedComponent !== component) {
-            this.selectedComponent.selected = false;
-        }
+        // 取消所有当前选中的元件
+        this.deselectAllComponents();
 
         // 选中新元件
-        this.selectedComponent = component;
+        this.selectedComponents = [component];
         component.selected = true;
 
         const direction = this.getDirectionFromRotation(component.rotation || 0);
@@ -826,15 +902,58 @@ class CanvasManager {
     }
 
     /**
-     * 取消选中元件
+     * 添加元件到多选列表（不替换现有选择）
+     * @param {Object} component - 要添加到选择列表的元件
+     */
+    addToSelection(component) {
+        if (!this.selectedComponents.includes(component)) {
+            this.selectedComponents.push(component);
+            component.selected = true;
+            console.log(`添加到多选: ${component.data.name}`);
+        }
+    }
+
+    /**
+     * 从多选列表中移除元件
+     * @param {Object} component - 要移除的元件
+     */
+    removeFromSelection(component) {
+        const index = this.selectedComponents.indexOf(component);
+        if (index > -1) {
+            this.selectedComponents.splice(index, 1);
+            component.selected = false;
+            console.log(`从多选中移除: ${component.data.name}`);
+        }
+    }
+
+    /**
+     * 切换元件的选中状态
+     * @param {Object} component - 要切换的元件
+     */
+    toggleComponentSelection(component) {
+        if (this.selectedComponents.includes(component)) {
+            this.removeFromSelection(component);
+        } else {
+            this.addToSelection(component);
+        }
+    }
+
+    /**
+     * 取消选中所有元件
+     */
+    deselectAllComponents() {
+        this.selectedComponents.forEach(component => {
+            component.selected = false;
+        });
+        this.selectedComponents = [];
+        console.log('取消选中所有元件');
+    }
+
+    /**
+     * 取消选中元件（向后兼容）
      */
     deselectComponent() {
-        if (this.selectedComponent) {
-            const direction = this.getDirectionFromRotation(this.selectedComponent.rotation || 0);
-            this.selectedComponent.selected = false;
-            console.log(`取消选中元件: ${this.selectedComponent.data.name} (${direction})`);
-        }
-        this.selectedComponent = null;
+        this.deselectAllComponents();
     }
 
     /**
@@ -843,8 +962,25 @@ class CanvasManager {
      */
     handleKeyDown(e) {
         // 只有在画布获得焦点时才处理键盘事件
-        if (!this.canvas.contains(document.activeElement) &&
-            document.activeElement !== document.body) {
+        // 或者在拖拽操作后保持撤回功能的可用性
+        const isCanvasFocused = this.canvas.contains(document.activeElement) ||
+                               document.activeElement === document.body ||
+                               document.activeElement === this.canvas;
+
+        // 对于撤回操作，即使焦点不在canvas上也允许执行
+        const isUndoRedo = e.ctrlKey && e.key.toLowerCase() === 'z';
+
+        // 调试信息
+        if (isUndoRedo) {
+            console.log('Ctrl+Z pressed:', {
+                isCanvasFocused,
+                activeElement: document.activeElement,
+                canvas: this.canvas,
+                undoStackLength: this.undoStack.length
+            });
+        }
+
+        if (!isCanvasFocused && !isUndoRedo) {
             return;
         }
 
@@ -872,7 +1008,7 @@ class CanvasManager {
                 e.preventDefault();
                 break;
             case 'r':
-                if (this.selectedComponent) {
+                if (this.selectedComponents.length === 1) {
                     this.rotateSelectedComponent();
                     e.preventDefault();
                 }
@@ -890,23 +1026,31 @@ class CanvasManager {
      * 删除选中的元件
      */
     deleteSelectedComponent() {
-        if (!this.selectedComponent) return;
+        if (this.selectedComponents.length === 0) return;
 
         // 保存状态用于撤回
         this.saveState();
 
-        const componentName = this.selectedComponent.data.name;
-        const direction = this.getDirectionFromRotation(this.selectedComponent.rotation || 0);
-        const index = this.components.indexOf(this.selectedComponent);
+        // 复制要删除的元件列表，避免在遍历时修改原数组
+        const componentsToDelete = [...this.selectedComponents];
 
-        if (index > -1) {
-            // 删除与此元件相关的所有连线
-            this.deleteConnectionsForComponent(this.selectedComponent.id);
-            this.components.splice(index, 1);
-            console.log(`删除元件: ${componentName} (${direction})`);
-        }
+        componentsToDelete.forEach(component => {
+            const componentName = component.data.name;
+            const direction = this.getDirectionFromRotation(component.rotation || 0);
+            const index = this.components.indexOf(component);
 
-        this.selectedComponent = null;
+            if (index > -1) {
+                // 删除与此元件相关的所有连线
+                this.deleteConnectionsForComponent(component.id);
+                this.components.splice(index, 1);
+                console.log(`删除元件: ${componentName} (${direction})`);
+            }
+        });
+
+        // 清空选中状态
+        this.selectedComponents = [];
+        // 确保canvas获得焦点，保持键盘事件可用
+        this.canvas.focus();
         this.draw();
     }
 
@@ -1243,27 +1387,31 @@ class CanvasManager {
      * 旋转选中的元件 (逆时针90度)
      */
     rotateSelectedComponent() {
-        if (!this.selectedComponent) return;
+        if (this.selectedComponents.length !== 1) return;
+
+        const component = this.selectedComponents[0];
 
         // 保存状态用于撤回
         this.saveState();
 
         // 初始化旋转角度和方向
-        if (typeof this.selectedComponent.rotation === 'undefined') {
-            this.selectedComponent.rotation = 0;
-            this.selectedComponent.direction = 'up';
+        if (typeof component.rotation === 'undefined') {
+            component.rotation = 0;
+            component.direction = 'up';
         }
 
         // 逆时针旋转90度 (每次减少90度)
-        this.selectedComponent.rotation = (this.selectedComponent.rotation - 90 + 360) % 360;
+        component.rotation = (component.rotation - 90 + 360) % 360;
 
         // 根据新的旋转角度更新方向
-        this.selectedComponent.direction = this.getDirectionFromRotation(this.selectedComponent.rotation);
+        component.direction = this.getDirectionFromRotation(component.rotation);
 
         // 旋转后更新相关连线路径
-        this.updateConnectionsForComponent(this.selectedComponent.id);
+        this.updateConnectionsForComponent(component.id);
 
-        console.log(`逆时针旋转元件 ${this.selectedComponent.data.name} 到 ${this.selectedComponent.rotation}° (${this.selectedComponent.direction})`);
+        console.log(`逆时针旋转元件 ${component.data.name} 到 ${component.rotation}° (${component.direction})`);
+        // 确保canvas获得焦点，保持键盘事件可用
+        this.canvas.focus();
         this.draw();
     }
 
@@ -1458,56 +1606,59 @@ class CanvasManager {
      */
     detectPinAtPosition(mousePos) {
         // 只有在有选中元件时才检测引脚
-        if (!this.selectedComponent) return null;
+        if (this.selectedComponents.length === 0) return null;
 
         const worldPos = this.screenToWorld(mousePos);
-        const component = this.selectedComponent;
-        const { data, position, rotation } = component;
-        const { x: compX, y: compY } = position;
 
-        // 计算元件边界
-        const width = data.dimensions?.width || 80;
-        const height = data.dimensions?.height || 60;
-        const halfWidth = width / 2;
-        const halfHeight = height / 2;
+        // 在所有选中的元件中查找鼠标悬停的引脚
+        for (const component of this.selectedComponents) {
+            const { data, position, rotation } = component;
+            const { x: compX, y: compY } = position;
 
-        // 创建元件矩形区域（未旋转状态）
-        const componentRect = {
-            x: compX - halfWidth,
-            y: compY - halfHeight,
-            width: width,
-            height: height
-        };
+            // 计算元件边界
+            const width = data.dimensions?.width || 80;
+            const height = data.dimensions?.height || 60;
+            const halfWidth = width / 2;
+            const halfHeight = height / 2;
 
-        // 获取所有引脚位置（未旋转状态下的位置）
-        const pinCalculator = new CanvasPinPositionCalculator(componentRect);
-        const allPins = pinCalculator.calculateAllPositions(data.pins);
+            // 创建元件矩形区域（未旋转状态）
+            const componentRect = {
+                x: compX - halfWidth,
+                y: compY - halfHeight,
+                width: width,
+                height: height
+            };
 
-        // 检测鼠标是否在某个引脚附近
-        for (const pin of allPins) {
-            // 对引脚位置进行旋转变换
-            const rotatedPosition = this.rotatePoint(pin.position, { x: compX, y: compY }, rotation);
+            // 获取所有引脚位置（未旋转状态下的位置）
+            const pinCalculator = new CanvasPinPositionCalculator(componentRect);
+            const allPins = pinCalculator.calculateAllPositions(data.pins);
 
-            const distance = Math.sqrt(
-                Math.pow(worldPos.x - rotatedPosition.x, 2) +
-                Math.pow(worldPos.y - rotatedPosition.y, 2)
-            );
+            // 检测鼠标是否在某个引脚附近
+            for (const pin of allPins) {
+                // 对引脚位置进行旋转变换
+                const rotatedPosition = this.rotatePoint(pin.position, { x: compX, y: compY }, rotation);
 
-            // 如果鼠标在引脚15像素范围内
-            if (distance <= 15) {
-                // 生成唯一的引脚ID：边名-序号
-                const pinId = `${pin.side}-${pin.order}`;
+                const distance = Math.sqrt(
+                    Math.pow(worldPos.x - rotatedPosition.x, 2) +
+                    Math.pow(worldPos.y - rotatedPosition.y, 2)
+                );
 
-                return {
-                    componentId: component.id,
-                    component: component,
-                    pinId: pinId,              // 新增：唯一的引脚标识
-                    pinName: pin.pinName,      // 保留：引脚名称（用于显示）
-                    position: rotatedPosition, // 返回旋转后的实际位置
-                    side: pin.side,
-                    order: pin.order,          // 新增：引脚序号
-                    type: pin.type
-                };
+                // 如果鼠标在引脚15像素范围内
+                if (distance <= 15) {
+                    // 生成唯一的引脚ID：边名-序号
+                    const pinId = `${pin.side}-${pin.order}`;
+
+                    return {
+                        componentId: component.id,
+                        component: component,
+                        pinId: pinId,              // 新增：唯一的引脚标识
+                        pinName: pin.pinName,      // 保留：引脚名称（用于显示）
+                        position: rotatedPosition, // 返回旋转后的实际位置
+                        side: pin.side,
+                        order: pin.order,          // 新增：引脚序号
+                        type: pin.type
+                    };
+                }
             }
         }
 
@@ -2289,6 +2440,11 @@ void loop() {
             this.drawComponent(component);
         });
 
+        // 绘制多选框（如果有多个元件被选中）
+        if (this.selectedComponents.length > 1) {
+            this.drawMultiSelectionBox();
+        }
+
         // 绘制连线编辑符号（如果处于编辑模式）
         if (this.pinInteraction.connectionEditMode && this.selectedConnection) {
             this.drawConnectionEditHandles(this.selectedConnection);
@@ -2303,6 +2459,68 @@ void loop() {
         if (this.pinInteraction.hoveredPin) {
             this.drawPinConnector(this.pinInteraction.hoveredPin, 'active');
         }
+    }
+
+    /**
+     * 绘制多选框
+     */
+    drawMultiSelectionBox() {
+        if (this.selectedComponents.length <= 1) return;
+
+        // 计算所有选中元件的边界框（考虑旋转）
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+        this.selectedComponents.forEach(component => {
+            const data = component.data || component;
+            const width = data.dimensions?.width || 80;
+            const height = data.dimensions?.height || 60;
+            const halfWidth = width / 2;
+            const halfHeight = height / 2;
+            const rotation = component.rotation || 0;
+
+            // 获取元件中心点
+            const center = component.position;
+
+            // 获取元件的四个角点（相对于中心点）
+            const corners = [
+                { x: -halfWidth, y: -halfHeight }, // 左上
+                { x: halfWidth, y: -halfHeight },  // 右上
+                { x: halfWidth, y: halfHeight },   // 右下
+                { x: -halfWidth, y: halfHeight }   // 左下
+            ];
+
+            // 对每个角点应用旋转变换
+            corners.forEach(corner => {
+                const rotatedCorner = this.rotatePoint(corner, { x: 0, y: 0 }, rotation);
+
+                // 转换为世界坐标
+                const worldX = center.x + rotatedCorner.x;
+                const worldY = center.y + rotatedCorner.y;
+
+                minX = Math.min(minX, worldX);
+                minY = Math.min(minY, worldY);
+                maxX = Math.max(maxX, worldX);
+                maxY = Math.max(maxY, worldY);
+            });
+        });
+
+        // 添加一些边距
+        const padding = 10;
+        minX -= padding;
+        minY -= padding;
+        maxX += padding;
+        maxY += padding;
+
+        // 设置虚线样式
+        this.ctx.save();
+        this.ctx.strokeStyle = '#2196f3'; // 蓝色
+        this.ctx.lineWidth = 2 / this.scale; // 根据缩放调整线宽
+        this.ctx.setLineDash([8 / this.scale, 4 / this.scale]); // 虚线模式
+
+        // 绘制虚线框
+        this.ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
+
+        this.ctx.restore();
     }
 
     /**
