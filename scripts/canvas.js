@@ -40,6 +40,11 @@ class CanvasManager {
         this.connections = []; // 存储所有连线
         this.selectedConnection = null; // 当前选中的连线
 
+        // 撤回功能
+        this.undoStack = []; // 撤回操作栈
+        this.redoStack = []; // 重做操作栈
+        this.maxUndoSteps = 50; // 最大撤回步数
+
         // 间距管理
         this.wireSpacingManager = new WireSpacingManager();
 
@@ -263,6 +268,106 @@ class CanvasManager {
             // 画布尺寸变化后需要重新绘制
             this.draw();
         }
+    }
+
+    /**
+     * 保存当前画布状态到撤回栈
+     */
+    saveState() {
+        const state = {
+            components: JSON.parse(JSON.stringify(this.components)),
+            connections: JSON.parse(JSON.stringify(this.connections)),
+            selectedComponent: this.selectedComponent ? this.selectedComponent.id : null,
+            selectedConnection: this.selectedConnection ? this.selectedConnection.id : null
+        };
+
+        // 添加到撤回栈
+        this.undoStack.push(state);
+
+        // 限制撤回栈大小
+        if (this.undoStack.length > this.maxUndoSteps) {
+            this.undoStack.shift();
+        }
+
+        // 清空重做栈
+        this.redoStack = [];
+
+        console.log('状态已保存到撤回栈，当前栈大小:', this.undoStack.length);
+    }
+
+    /**
+     * 执行撤回操作
+     */
+    undo() {
+        if (this.undoStack.length === 0) {
+            console.log('没有可撤回的操作');
+            return false;
+        }
+
+        // 保存当前状态到重做栈
+        const currentState = {
+            components: JSON.parse(JSON.stringify(this.components)),
+            connections: JSON.parse(JSON.stringify(this.connections)),
+            selectedComponent: this.selectedComponent ? this.selectedComponent.id : null,
+            selectedConnection: this.selectedConnection ? this.selectedConnection.id : null
+        };
+        this.redoStack.push(currentState);
+
+        // 恢复到上一个状态
+        const previousState = this.undoStack.pop();
+        this.restoreState(previousState);
+
+        console.log('撤回操作执行完成');
+        return true;
+    }
+
+    /**
+     * 执行重做操作
+     */
+    redo() {
+        if (this.redoStack.length === 0) {
+            console.log('没有可重做的操作');
+            return false;
+        }
+
+        // 保存当前状态到撤回栈
+        const currentState = {
+            components: JSON.parse(JSON.stringify(this.components)),
+            connections: JSON.parse(JSON.stringify(this.connections)),
+            selectedComponent: this.selectedComponent ? this.selectedComponent.id : null,
+            selectedConnection: this.selectedConnection ? this.selectedConnection.id : null
+        };
+        this.undoStack.push(currentState);
+
+        // 恢复到下一个状态
+        const nextState = this.redoStack.pop();
+        this.restoreState(nextState);
+
+        console.log('重做操作执行完成');
+        return true;
+    }
+
+    /**
+     * 从状态对象恢复画布状态
+     * @param {Object} state - 状态对象
+     */
+    restoreState(state) {
+        // 恢复元件
+        this.components = JSON.parse(JSON.stringify(state.components));
+
+        // 恢复连线
+        this.connections = JSON.parse(JSON.stringify(state.connections));
+
+        // 恢复选中状态
+        this.selectedComponent = state.selectedComponent ?
+            this.components.find(c => c.id === state.selectedComponent) : null;
+        this.selectedConnection = state.selectedConnection ?
+            this.connections.find(c => c.id === state.selectedConnection) : null;
+
+        // 重新绘制画布
+        this.draw();
+
+        console.log('画布状态已恢复');
     }
 
     /**
@@ -614,6 +719,9 @@ class CanvasManager {
             this.componentDragStartPos = null;
             this.canvas.style.cursor = 'pointer';
 
+            // 保存状态用于撤回（元件移动完成）
+            this.saveState();
+
             // 最终确认连线路径（虽然拖拽过程中已实时更新，但这里确保最终状态正确）
             if (this.selectedComponent) {
                 this.updateConnectionsForComponent(this.selectedComponent.id);
@@ -740,6 +848,19 @@ class CanvasManager {
             return;
         }
 
+        // 处理Ctrl+Z撤回功能
+        if (e.ctrlKey && e.key.toLowerCase() === 'z') {
+            if (e.shiftKey) {
+                // Ctrl+Shift+Z 重做
+                this.redo();
+            } else {
+                // Ctrl+Z 撤回
+                this.undo();
+            }
+            e.preventDefault();
+            return;
+        }
+
         switch (e.key.toLowerCase()) {
             case 'delete':
             case 'backspace':
@@ -770,6 +891,9 @@ class CanvasManager {
      */
     deleteSelectedComponent() {
         if (!this.selectedComponent) return;
+
+        // 保存状态用于撤回
+        this.saveState();
 
         const componentName = this.selectedComponent.data.name;
         const direction = this.getDirectionFromRotation(this.selectedComponent.rotation || 0);
@@ -824,6 +948,9 @@ class CanvasManager {
      */
     deleteSelectedConnection() {
         if (!this.selectedConnection) return;
+
+        // 保存状态用于撤回
+        this.saveState();
 
         // 从间距管理器注销
         const updatedSides = this.wireSpacingManager.unregisterWire(this.selectedConnection.id);
@@ -1083,6 +1210,9 @@ class CanvasManager {
      * @param {Object} newPin - 新的引脚信息
      */
     updateConnectionEnd(connection, end, newPin) {
+        // 保存状态用于撤回
+        this.saveState();
+
         // 更新连线端点信息
         if (end === 'source') {
             connection.source = {
@@ -1114,6 +1244,9 @@ class CanvasManager {
      */
     rotateSelectedComponent() {
         if (!this.selectedComponent) return;
+
+        // 保存状态用于撤回
+        this.saveState();
 
         // 初始化旋转角度和方向
         if (typeof this.selectedComponent.rotation === 'undefined') {
@@ -3019,6 +3152,8 @@ void loop() {
      * @param {string} orientation - 元件朝向（可选，up/down/left/right）
      */
     addComponent(componentData, x, y, instanceId = null, orientation = 'up') {
+        // 保存状态用于撤回
+        this.saveState();
 
         // 将orientation转换为direction
         const directionMap = {
@@ -3074,6 +3209,8 @@ void loop() {
      * @param {Object} connectionData - 连线数据
      */
     addConnection(connectionData) {
+        // 保存状态用于撤回
+        this.saveState();
 
         // 查找源元件和目标元件
         // 支持手动创建的连线（使用componentId）和导入的连线（使用instanceId）
