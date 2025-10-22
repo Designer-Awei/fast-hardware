@@ -1,0 +1,57 @@
+{
+  "name": "MPU-6050 姿态感知",
+  "id": "std-mpu6050-姿态感知-171157",
+  "description": "用于测量三轴角速度和三轴的线速度",
+  "category": "sensor",
+  "pins": {
+    "side1": [
+      {
+        "pinName": "INT",
+        "type": "special",
+        "order": 1
+      },
+      {
+        "pinName": "AD0",
+        "type": "special",
+        "order": 2
+      },
+      {
+        "pinName": "XCL",
+        "type": "analog_io",
+        "order": 3
+      },
+      {
+        "pinName": "XDA",
+        "type": "analog_io",
+        "order": 4
+      },
+      {
+        "pinName": "SDA",
+        "type": "digital_io",
+        "order": 5
+      },
+      {
+        "pinName": "SCL",
+        "type": "digital_io",
+        "order": 6
+      },
+      {
+        "pinName": "GND",
+        "type": "ground",
+        "order": 7
+      },
+      {
+        "pinName": "VCC",
+        "type": "power",
+        "order": 8
+      }
+    ],
+    "side2": [],
+    "side3": [],
+    "side4": []
+  },
+  "dimensions": {
+    "width": 200,
+    "height": 80
+  }
+}

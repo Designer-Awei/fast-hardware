@@ -75,7 +75,10 @@ async function saveWindowConfig(window) {
  */
 async function getCustomComponentLibPath() {
   try {
-    const envPath = path.join(app.getPath('userData'), 'env.local');
+    const envPath = app.isPackaged
+      ? path.join(app.getPath('userData'), 'env.local')
+      : path.join(__dirname, 'env.local');
+
     const envContent = await fs.readFile(envPath, 'utf8');
     const lines = envContent.split('\n');
 
@@ -599,8 +602,16 @@ ipcMain.handle('saveComponent', async (event, component, savePath) => {
       baseDir = customLibPath;
       console.log(`使用自定义元件库路径: ${baseDir}`);
     } else {
-      baseDir = path.join(__dirname, 'data', 'system-components');
-      console.log(`使用默认元件库路径: ${baseDir}`);
+      // 使用正确的路径解析（支持打包环境）
+      if (app.isPackaged) {
+        // 打包后的应用：使用resources目录
+        baseDir = path.join(process.resourcesPath, 'data', 'system-components');
+        console.log(`使用打包环境默认路径: ${baseDir}`);
+      } else {
+        // 开发环境：使用项目目录
+        baseDir = path.join(__dirname, 'data', 'system-components');
+        console.log(`使用开发环境默认路径: ${baseDir}`);
+      }
     }
 
     // 确保基础目录存在
@@ -649,8 +660,16 @@ ipcMain.handle('saveComponentForce', async (event, component, savePath) => {
       baseDir = customLibPath;
       console.log(`使用自定义元件库路径: ${baseDir}`);
     } else {
-      baseDir = path.join(__dirname, 'data', 'system-components');
-      console.log(`使用默认元件库路径: ${baseDir}`);
+      // 使用正确的路径解析（支持打包环境）
+      if (app.isPackaged) {
+        // 打包后的应用：使用resources目录
+        baseDir = path.join(process.resourcesPath, 'data', 'system-components');
+        console.log(`使用打包环境默认路径: ${baseDir}`);
+      } else {
+        // 开发环境：使用项目目录
+        baseDir = path.join(__dirname, 'data', 'system-components');
+        console.log(`使用开发环境默认路径: ${baseDir}`);
+      }
     }
 
     // 确保基础目录存在
@@ -693,12 +712,19 @@ ipcMain.handle('saveComponentEditMode', async (event, component) => {
     // 确定基础目录 - 优先使用自定义元件库路径
     let baseDir;
     const customLibPath = await getCustomComponentLibPath();
+
     if (customLibPath) {
       baseDir = customLibPath;
       console.log(`编辑模式使用自定义元件库路径: ${baseDir}`);
     } else {
-      baseDir = path.join(__dirname, 'data', 'system-components');
-      console.log(`编辑模式使用默认元件库路径: ${baseDir}`);
+      // 使用正确的路径解析（支持打包环境）
+      if (app.isPackaged) {
+        // 打包后的应用：使用resources目录
+        baseDir = path.join(process.resourcesPath, 'data', 'system-components');
+      } else {
+        // 开发环境：使用项目目录
+        baseDir = path.join(__dirname, 'data', 'system-components');
+      }
     }
 
     // 确保基础目录存在
@@ -724,8 +750,22 @@ ipcMain.handle('saveComponentEditMode', async (event, component) => {
         await fs.access(filePath);
         console.log(`找到原文件在自定义库: ${filePath}`);
       } catch {
-        // 如果两个库中都没有该文件，报错
-        throw new Error(`找不到原元件文件: ${component.id}`);
+        // 如果两个库中都没有该文件，作为最后的后备方案，尝试在默认路径下查找
+        const defaultBaseDir = path.join(__dirname, 'data', 'system-components');
+        const defaultTargetDir = path.join(defaultBaseDir, 'standard');
+        const defaultFilePath = path.join(defaultTargetDir, originalFileName);
+
+        try {
+          await fs.access(defaultFilePath);
+          console.log(`在默认路径找到原文件: ${defaultFilePath}`);
+          baseDir = defaultBaseDir;
+          targetDir = defaultTargetDir;
+          filePath = defaultFilePath;
+          prefix = 'std';
+        } catch {
+          // 如果所有路径都找不到该文件，报错
+          throw new Error(`找不到原元件文件: ${component.id}`);
+        }
       }
     }
 
@@ -811,7 +851,17 @@ ipcMain.handle('deleteComponent', async (event, component) => {
   try {
     console.log(`删除元件: ${component.name}, ID: ${component.id}`);
 
-    const baseDir = path.join(__dirname, 'data', 'system-components');
+    // 使用正确的路径解析（支持打包环境）
+    let baseDir;
+    if (app.isPackaged) {
+      // 打包后的应用：使用resources目录
+      baseDir = path.join(process.resourcesPath, 'data', 'system-components');
+      console.log(`删除元件使用打包环境路径: ${baseDir}`);
+    } else {
+      // 开发环境：使用项目目录
+      baseDir = path.join(__dirname, 'data', 'system-components');
+      console.log(`删除元件使用开发环境路径: ${baseDir}`);
+    }
     const fileName = `${component.id}.json`;
 
     // 尝试在标准库中查找并删除

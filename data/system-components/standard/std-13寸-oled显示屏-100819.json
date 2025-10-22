@@ -1,6 +1,6 @@
 {
-  "name": "1.31寸 OLED显示屏",
-  "id": "std-131寸-oled显示屏-120000",
+  "name": "1.3寸 OLED显示屏",
+  "id": "std-13寸-oled显示屏-100819",
   "description": "128*64分辨率的OLED显示屏，I2C接口，控制芯片SSH1106，驱动电压3.3V-5V",
   "category": "auxiliary",
   "pins": {
