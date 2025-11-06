@@ -984,10 +984,10 @@ class ComponentDesigner {
                 console.log(`复用模式：为元件 "${this.component.name}" 生成新ID，保存到 ${selectedPath} 库`);
                 componentId = this.generateComponentIdForPath(selectedPath);
             } else {
-                // 新建模式：直接生成ID
+                // 新建模式：根据选择的路径生成ID（修复：原来只用std前缀）
                 // 注意：编辑模式不会到达这里，因为编辑模式直接调用 handleEditModeSave
-                console.log(`新建模式：为元件 "${this.component.name}" 生成新ID`);
-                componentId = this.generateComponentId();
+                console.log(`新建模式：为元件 "${this.component.name}" 生成新ID，保存到 ${selectedPath} 库`);
+                componentId = this.generateComponentIdForPath(selectedPath);
             }
 
             const finalComponent = {

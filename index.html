@@ -27,6 +27,9 @@
                 </button>
             </div>
             <div class="nav-actions">
+                <button class="nav-btn" id="new-project">
+                    新建项目
+                </button>
                 <button class="nav-btn" id="save-project">
                     保存项目
                 </button>
@@ -40,6 +43,12 @@
         <main class="main-content">
             <!-- 电路搭建标签页 -->
             <div id="circuit-design-tab" class="tab-content active">
+                <!-- 项目标签栏 -->
+                <div class="project-tabs-bar">
+                    <div class="project-tabs-container" id="project-tabs-container">
+                        <!-- 项目标签页将动态添加到这里 -->
+                    </div>
+                </div>
                 <div class="workspace">
                     <!-- 左侧悬浮元件库面板 -->
                     <aside class="floating-panel" id="component-floating-panel">
@@ -577,7 +586,6 @@
 
 
       <!-- JavaScript文件 -->
-      <script src="scripts/main.js"></script>
     <script src="scripts/floating-panel.js"></script>
     <script src="scripts/tabs.js"></script>
     <script src="scripts/canvas.js"></script>
@@ -586,5 +594,7 @@
     <script src="scripts/component-designer.js"></script>
     <script src="scripts/settings.js"></script>
     <script src="scripts/resizer.js"></script>
+    <script src="scripts/project-tabs.js"></script>
+    <script src="scripts/main.js"></script>
 </body>
 </html>

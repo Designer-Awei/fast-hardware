@@ -13,6 +13,9 @@ class FastHardwareApp {
         this.currentProject = null; // 当前打开的项目路径
         this.isProjectModified = false; // 项目是否被修改
 
+        // 项目标签管理器
+        this.projectTabsManager = null;
+
         this.init();
     }
 
@@ -23,6 +26,9 @@ class FastHardwareApp {
         this.bindEvents();
         this.initializeUI();
         await this.initializeIconPaths();
+        
+        // 初始化项目标签管理器
+        this.projectTabsManager = new ProjectTabsManager(this);
     }
 
     /**
@@ -86,18 +92,29 @@ class FastHardwareApp {
      * @param {string} tabName - 标签页名称
      */
     switchTab(tabName) {
+        console.log('切换标签页:', tabName);
 
         // 更新按钮状态
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.classList.remove('active');
         });
-        document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+        const targetBtn = document.querySelector(`[data-tab="${tabName}"]`);
+        if (targetBtn) {
+            targetBtn.classList.add('active');
+        } else {
+            console.error('未找到标签按钮:', tabName);
+        }
 
         // 更新内容区域
         document.querySelectorAll('.tab-content').forEach(content => {
             content.classList.remove('active');
         });
-        document.getElementById(`${tabName}-tab`).classList.add('active');
+        const targetContent = document.getElementById(`${tabName}-tab`);
+        if (targetContent) {
+            targetContent.classList.add('active');
+        } else {
+            console.error('未找到标签内容:', `${tabName}-tab`);
+        }
 
         // 更新当前标签页状态
         this.currentTab = tabName;
@@ -282,12 +299,18 @@ class FastHardwareApp {
                 // 读取项目配置文件
                 const projectData = await this.loadProjectConfig(projectPath);
 
-                // 渲染项目到画布
-                await this.renderProjectToCanvas(projectData);
+                // 添加路径信息
+                projectData.path = projectPath;
 
-                // 设置当前项目状态
-                this.currentProject = projectPath;
-                this.isProjectModified = false;
+                // 添加到项目标签管理器（如果已初始化）
+                if (this.projectTabsManager) {
+                    this.projectTabsManager.addExistingProject(projectData);
+                } else {
+                    // 如果项目标签管理器还未初始化，直接渲染到画布
+                    await this.renderProjectToCanvas(projectData);
+                    this.currentProject = projectPath;
+                    this.isProjectModified = false;
+                }
 
                 // 清理代码编辑器的缓存，确保加载新项目的代码
                 if (window.canvasInstance) {
@@ -320,6 +343,15 @@ class FastHardwareApp {
                 console.log('更新已打开的项目:', this.currentProject);
                 await this.updateExistingProject(this.currentProject, canvasState);
                 this.isProjectModified = false;
+                
+                // 标记项目标签为已保存
+                if (this.projectTabsManager) {
+                    const activeProject = this.projectTabsManager.getActiveProject();
+                    if (activeProject) {
+                        this.projectTabsManager.markProjectAsSaved(activeProject.id);
+                    }
+                }
+                
                 this.showNotification('项目更新成功！', 'success');
             } else {
                 // 新项目：显示对话框进行保存
@@ -345,6 +377,16 @@ class FastHardwareApp {
                 // 设置为当前项目
                 this.currentProject = projectPath;
                 this.isProjectModified = false;
+
+                // 更新项目标签管理器
+                if (this.projectTabsManager) {
+                    const activeProject = this.projectTabsManager.getActiveProject();
+                    if (activeProject) {
+                        this.projectTabsManager.updateProjectName(activeProject.id, projectInfo.name);
+                        this.projectTabsManager.updateProjectPath(activeProject.id, projectPath);
+                        this.projectTabsManager.markProjectAsSaved(activeProject.id);
+                    }
+                }
 
                 this.showNotification('项目保存成功！', 'success');
             }
@@ -1038,7 +1080,8 @@ let app;
 // DOM加载完成后初始化应用
 document.addEventListener('DOMContentLoaded', () => {
     app = new FastHardwareApp();
-    window.mainApp = app; // 设置全局引用供其他脚本使用
+    window.app = app; // 设置全局引用供其他脚本使用
+    window.mainApp = app; // 向后兼容
 });
 
 // 导出全局函数供其他脚本使用

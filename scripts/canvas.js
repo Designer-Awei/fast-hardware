@@ -8,8 +8,8 @@ class CanvasManager {
         this.canvas = null;
         this.ctx = null;
         this.scale = 1;
-        this.offsetX = 0;
-        this.offsetY = 0;
+        this.offsetX = 50; // 默认画布偏移，左下角
+        this.offsetY = 550; // 默认画布偏移，会在init中根据实际画布高度调整
         this.isDragging = false;
         this.lastMouseX = 0;
         this.lastMouseY = 0;
@@ -49,6 +49,21 @@ class CanvasManager {
         this.wireSpacingManager = new WireSpacingManager();
 
         this.init();
+    }
+
+    /**
+     * 标记项目为已修改
+     */
+    markProjectAsModified() {
+        if (window.app && window.app.projectTabsManager) {
+            const activeProject = window.app.projectTabsManager.getActiveProject();
+            if (activeProject) {
+                window.app.projectTabsManager.markProjectAsModified(activeProject.id);
+            }
+        }
+        if (window.app) {
+            window.app.isProjectModified = true;
+        }
     }
 
     /**
@@ -1049,6 +1064,10 @@ class CanvasManager {
 
         // 清空选中状态
         this.selectedComponents = [];
+        
+        // 标记项目为已修改
+        this.markProjectAsModified();
+        
         // 确保canvas获得焦点，保持键盘事件可用
         this.canvas.focus();
         this.draw();
@@ -3416,6 +3435,9 @@ void loop() {
         // 添加到元件列表
         this.components.push(componentInstance);
 
+        // 标记项目为已修改
+        this.markProjectAsModified();
+
         // 触发重新渲染
         this.draw();
 
@@ -3509,6 +3531,9 @@ void loop() {
         };
 
         this.wireSpacingManager.registerWire(connectionInstance.id, wireInfo);
+
+        // 标记项目为已修改
+        this.markProjectAsModified();
 
         // 触发重新渲染，确保连线立即可见
         this.draw();
@@ -3645,6 +3670,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 导出到全局作用域（在实例创建后）
     window.CanvasManager = CanvasManager;
     window.canvasManager = canvasManager;
+    window.canvasInstance = canvasManager; // 添加canvasInstance别名以兼容其他代码
 
     // 监听标签页切换事件，确保画布正确渲染
     document.addEventListener('tabActivated', (e) => {

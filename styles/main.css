@@ -16,6 +16,106 @@ body {
     overflow: hidden;
 }
 
+/* 项目标签栏样式 */
+.project-tabs-bar {
+    background: #ffffff;
+    border-bottom: 1px solid #e0e0e0;
+    padding: 0;
+    height: 40px; /* 固定高度，不再使用min-height */
+    flex-shrink: 0; /* 防止被压缩 */
+    display: flex;
+    align-items: center;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.project-tabs-container {
+    display: flex;
+    gap: 4px;
+    padding: 4px 8px;
+    flex: 1;
+    height: 100%; /* 填满父容器高度 */
+    align-items: center; /* 垂直居中 */
+}
+
+.project-tab {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px; /* 减小上下padding，确保不超出40px高度 */
+    background: #f5f5f5;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px 6px 0 0;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 120px;
+    max-width: 200px;
+    height: 32px; /* 固定标签高度 */
+    flex-shrink: 0; /* 防止被压缩 */
+    box-sizing: border-box; /* 确保padding和border计入高度 */
+    position: relative;
+}
+
+.project-tab:hover {
+    background: #e8e8e8;
+}
+
+.project-tab.active {
+    background: #667eea;
+    color: white;
+    border-color: #667eea;
+}
+
+.project-tab-name {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 13px;
+}
+
+.project-tab-modified {
+    color: #ff6b6b;
+    font-size: 16px;
+    line-height: 1;
+}
+
+.project-tab.active .project-tab-modified {
+    color: #ffd6d6;
+}
+
+.project-tab-close {
+    background: none;
+    border: none;
+    color: #666;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0; /* 可以通过padding-top调整垂直位置（例如：padding-top: 1px 向下移动） */
+    width: 18px;
+    height: 18px;
+    display: block; /* 改为block，不再使用flex居中 */
+    border-radius: 3px;
+    transition: all 0.2s ease;
+    text-align: center; /* 水平居中文字 */
+    flex-shrink: 0; /* 防止被压缩 */
+    box-sizing: border-box; /* 确保padding计入宽高 */
+    position: relative; /* 允许使用top进行微调 */
+    top: 1px; /* 向上微调1px，可根据需要调整（负值向上，正值向下） */
+}
+
+.project-tab-close:hover {
+    background: rgba(0,0,0,0.1);
+}
+
+.project-tab.active .project-tab-close {
+    color: white;
+}
+
+.project-tab.active .project-tab-close:hover {
+    background: rgba(255,255,255,0.2);
+}
+
 #app {
     height: 100vh;
     display: flex;
@@ -2423,12 +2523,23 @@ kbd.key {
     opacity: 1;
 }
 
+/* 电路设计标签页容器 */
+#circuit-design-tab {
+    display: none;
+    flex-direction: column;
+    height: 100%;
+}
+
+#circuit-design-tab.active {
+    display: flex;
+}
+
 /* 调整现有工作区布局以适应悬浮面板 */
 .workspace {
     display: flex;
-    height: 100%;
-    position: relative;
     flex: 1;
+    position: relative;
+    overflow: hidden;
 }
 
 .workspace .canvas-section {

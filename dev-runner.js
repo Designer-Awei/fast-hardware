@@ -19,8 +19,9 @@ const watchExtensions = ['.js', '.html', '.css', '.json', '.mjs', '.txt'];
 
 /**
  * 需要忽略的目录
+ * 注意：data 文件夹完全忽略，避免项目保存时触发热重载
  */
-const ignoreDirs = ['node_modules', 'dist', '.git', 'data', 'data/system-components', 'data/system-components/standard', 'data/system-components/custom'];
+const ignoreDirs = ['node_modules', 'dist', '.git', 'data'];
 
 /**
  * 启动Electron应用

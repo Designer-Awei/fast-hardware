@@ -651,17 +651,23 @@
 /* 通知样式 */
 .notification {
     position: fixed;
-    top: 20px;
+    top: 50px; /* 与导航栏底部对齐，正好是项目标签页这一行 */
     right: 20px;
     background: #333;
     color: white;
-    padding: 12px 20px;
+    padding: 0 20px; /* 移除上下padding，使用固定高度 */
+    height: 40px; /* 与项目标签页高度一致 */
+    display: flex;
+    align-items: center; /* 垂直居中文本 */
     border-radius: 6px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    z-index: 1001;
+    z-index: 999; /* 降低z-index，避免遮挡按钮 */
     transform: translateX(400px);
     transition: transform 0.3s ease;
     max-width: 300px;
+    white-space: nowrap; /* 防止文本换行 */
+    overflow: hidden;
+    text-overflow: ellipsis; /* 超长文本显示省略号 */
 }
 
 .notification.show {
