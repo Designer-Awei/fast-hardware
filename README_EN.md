@@ -10,7 +10,7 @@
 
 [🇨🇳 中文](README.md) | [🇺🇸 English](README_EN.md)
 
-[![Version](https://img.shields.io/badge/version-0.1.9-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
+[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
 [![Electron](https://img.shields.io/badge/Electron-27.0.0-47848F.svg)](https://electronjs.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-16+-339933.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -73,10 +73,35 @@
 - **🎨 Automatic Generation**: Automatically generate circuit diagrams based on dialogue
 - **⚡ API Integration**: Support for multiple LLM service providers
 
-## ✨ Latest Features (v0.1.9)
+## ✨ Latest Features (v0.2.0)
 
-### 🚀 LLM Intelligent Assistant Integration (Core Feature)
-- **🎯 SiliconFlow AI API Integration**: Integration of multiple AI models (GLM-4-9B, GLM-4.1V-9B-Thinking, Qwen3-8B, Hunyuan-MT-7B)
+### 🚀 Multi-Project Tab Management System (Core Feature)
+- **📑 Multiple Project Tabs**: New project tab bar supporting multiple simultaneous open projects with quick switching
+- **➕ New Project Button**: Quickly create blank projects with consistent default canvas positions
+- **🔄 Independent Canvas States**: Each project has completely independent canvas data and view states
+- **🔴 Modified State Indicator**: Red dot appears when project is modified, disappears after saving
+- **💾 Smart State Management**: Automatic save and restore of canvas states when switching projects
+
+### ✨ UI/UX Optimizations
+- **📍 Notification Position**: Moved to the right side of project tab bar, 40px height, no longer blocking buttons
+- **🎨 Project Tab Bar**: Fixed 40px height with horizontal scrolling support
+- **📐 Canvas Origin**: New projects automatically positioned at bottom-left, consistent with opened projects
+
+### 🐛 Critical Bug Fixes
+- **🖼️ VLM Multi-image Upload**: Fixed duplicate image sending causing 500 errors
+- **🔧 Component Save Prefix**: Fixed custom component prefix incorrectly using 'std' instead of 'ctm'
+- **🎯 Canvas State Isolation**: Fixed content confusion or loss when switching projects
+
+### 🛠️ Developer Experience
+- **📊 Detailed Error Logs**: Complete diagnostic information for VLM API 500 errors
+- **🔥 Hot Reload Optimization**: Dev mode ignores data folder changes to prevent reload on project save
+
+---
+
+### Previous Version Highlights (v0.1.9)
+
+### 🚀 LLM Intelligent Assistant Integration
+- **🎯 SiliconFlow AI API Integration**: Multiple AI models (GLM-4-9B, GLM-4.1V-9B-Thinking, Qwen3-8B, Hunyuan-MT-7B)
 - **💬 Intelligent Dialogue Interface**: Complete chat system with streaming output and markdown rendering
 - **📝 Smart Markdown Rendering**: Integration of marked library supporting titles, lists, code blocks, bold/italic formats
 - **🔧 Code Block Processing Engine**: Intelligent extraction of code blocks, placeholder replacement, rendering, and precise insertion

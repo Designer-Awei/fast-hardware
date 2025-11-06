@@ -456,8 +456,9 @@ class ChatManager {
                 content: '你是一个专业的硬件开发助手，擅长Arduino、ESP32等嵌入式开发，熟悉各种传感器、执行器和通信模块。你可以帮助用户进行电路设计、元件选型和代码编写。请用markdown格式回复，提供清晰的结构化信息。'
             });
 
-            // 添加历史消息（最近几条）
-            const recentMessages = this.messages.slice(-10); // 最近10条消息
+            // 添加历史消息（最近几条，排除当前正在发送的消息）
+            // 注意：this.messages 中已经包含了当前消息，所以要排除最后一条
+            const recentMessages = this.messages.slice(-10, -1); // 最近10条消息，但不包括最后一条（当前消息）
             for (const msg of recentMessages) {
                 if (msg.type === 'user') {
                     // 检查消息是否包含图片
@@ -544,6 +545,27 @@ class ChatManager {
                 });
             }
 
+            // 记录请求详情（用于调试）
+            console.log('📤 发送API请求:', {
+                model: model,
+                messageCount: messages.length,
+                hasImages: images && images.length > 0,
+                imageCount: images ? images.length : 0,
+                imageDetails: images ? images.map((img, idx) => {
+                    if (!img || !img.dataUrl) return null;
+                    const sizeInBytes = (img.dataUrl.length * 3) / 4;
+                    const sizeInMB = (sizeInBytes / (1024 * 1024)).toFixed(2);
+                    return {
+                        index: idx,
+                        name: img.name || '未命名',
+                        format: img.dataUrl.split(';')[0].split(':')[1] || '未知',
+                        sizeInMB: sizeInMB,
+                        urlLength: img.dataUrl.length
+                    };
+                }).filter(Boolean) : [],
+                timestamp: new Date().toISOString()
+            });
+
             // 调用API
             const result = await window.electronAPI.chatWithAI(messages, model);
 
@@ -551,13 +573,94 @@ class ChatManager {
                 console.log('✅ AI回复成功获取，长度:', result.content.length);
                 return result.content;
             } else {
-                console.error('❌ AI API调用失败:', result.error);
-                return `🤖 抱歉，AI服务暂时不可用。\n\n错误信息: ${result.error}\n\n请检查API密钥配置或稍后重试。`;
+                // 详细的错误日志
+                console.error('❌ AI API调用失败 - 详细信息:', {
+                    error: result.error,
+                    errorType: result.errorType || '未知',
+                    statusCode: result.statusCode || '未知',
+                    model: model,
+                    timestamp: new Date().toISOString(),
+                    requestDetails: {
+                        messageCount: messages.length,
+                        hasImages: images && images.length > 0,
+                        imageCount: images ? images.length : 0
+                    }
+                });
+                
+                // 如果是500错误且有调试信息，详细打印
+                if (result.statusCode === 500 && result.debugInfo) {
+                    console.error('🚨 ===== 500 服务器内部错误详细分析 =====');
+                    console.error('📸 请求包含图片:', result.debugInfo.hasImages);
+                    
+                    if (result.debugInfo.imageCount > 0) {
+                        console.error('📊 图片详情:');
+                        result.debugInfo.imageDetails.forEach(img => {
+                            console.error(`  - 图片 ${img.index}: ${img.sizeInMB} MB (${img.sizeInBytes} bytes)`);
+                        });
+                        console.error(`📊 图片总数: ${result.debugInfo.imageCount}`);
+                        console.error(`📊 图片总大小: ${result.debugInfo.totalImageSizeInMB} MB (${result.debugInfo.totalImageSizeInBytes} bytes)`);
+                    }
+                    
+                    console.error(`📊 请求体总大小: ${result.debugInfo.requestBodySizeInMB} MB (${result.debugInfo.requestBodySizeInBytes} bytes)`);
+                    console.error(`📊 消息数量: ${result.debugInfo.messageCount}`);
+                    console.error(`📊 模型: ${result.debugInfo.model}`);
+                    console.error(`📊 max_tokens: ${result.debugInfo.maxTokens}`);
+                    console.error(`📊 响应头:`, result.debugInfo.responseHeaders);
+                    console.error(`📊 响应体 (前1000字符):`, result.debugInfo.responseBody);
+                    console.error('🚨 ==========================================');
+                    
+                    // 智能分析可能的原因
+                    const issues = [];
+                    if (result.debugInfo.imageCount > 0) {
+                        result.debugInfo.imageDetails.forEach(img => {
+                            if (parseFloat(img.sizeInMB) > 5) {
+                                issues.push(`图片 ${img.index} 过大 (${img.sizeInMB} MB > 5 MB)`);
+                            }
+                        });
+                        if (parseFloat(result.debugInfo.totalImageSizeInMB) > 15) {
+                            issues.push(`图片总大小过大 (${result.debugInfo.totalImageSizeInMB} MB > 15 MB)`);
+                        }
+                    }
+                    if (parseFloat(result.debugInfo.requestBodySizeInMB) > 20) {
+                        issues.push(`请求体过大 (${result.debugInfo.requestBodySizeInMB} MB > 20 MB)`);
+                    }
+                    
+                    if (issues.length > 0) {
+                        console.error('⚠️ 检测到以下可能的问题:');
+                        issues.forEach(issue => console.error(`  - ${issue}`));
+                    }
+                }
+                
+                // 根据错误类型提供更具体的错误信息
+                let errorMsg = `🤖 抱歉，AI服务暂时不可用。\n\n`;
+                
+                if (result.statusCode === 500) {
+                    errorMsg += `⚠️ 服务器内部错误 (500)\n\n`;
+                    errorMsg += `可能的原因：\n`;
+                    errorMsg += `- 图片过大（单张建议 < 5MB）\n`;
+                    errorMsg += `- 多图总量过大\n`;
+                    errorMsg += `- 请求参数超出限制\n`;
+                    errorMsg += `- 服务器暂时过载\n\n`;
+                } else if (result.statusCode === 429) {
+                    errorMsg += `⚠️ 请求过于频繁 (429)\n\n`;
+                } else if (result.statusCode === 401 || result.statusCode === 403) {
+                    errorMsg += `⚠️ 认证失败 (${result.statusCode})\n请检查API密钥配置\n\n`;
+                }
+                
+                errorMsg += `详细错误: ${result.error}\n\n`;
+                errorMsg += `请检查控制台查看完整日志`;
+                
+                return errorMsg;
             }
 
         } catch (error) {
-            console.error('❌ 生成AI回复失败:', error);
-            return '🤖 抱歉，发生了网络错误，请稍后重试。';
+            console.error('❌ 生成AI回复失败 - 异常捕获:', {
+                errorName: error.name,
+                errorMessage: error.message,
+                errorStack: error.stack,
+                timestamp: new Date().toISOString()
+            });
+            return '🤖 抱歉，发生了网络错误，请稍后重试。\n\n请检查控制台查看详细错误信息。';
         }
     }
 

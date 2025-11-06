@@ -1200,18 +1200,80 @@ async function callSiliconFlowAPI(messages, model) {
                 usage: responseData.usage
               });
             } else {
-              console.log('❌ API返回错误状态');
+              // 详细的错误日志
+              console.error('❌ API返回错误状态 - 详细信息:');
+              console.error('📊 状态码:', res.statusCode);
+              console.error('📊 完整响应体:', JSON.stringify(responseData, null, 2));
+              console.error('📊 响应体原始内容 (前1000字符):', body.substring(0, 1000));
+              console.error('📊 错误类型:', responseData.error?.type || '未知');
+              console.error('📊 错误代码:', responseData.error?.code || '未知');
+              console.error('📊 错误消息:', responseData.error?.message || '未知错误');
+              console.error('📊 错误参数:', responseData.error?.param || '无');
+              console.error('📊 响应头:', JSON.stringify(res.headers));
+              
+              // 特别针对500错误 - 收集详细分析数据
+              let debugInfo = null;
+              if (res.statusCode === 500) {
+                // 统计图片信息
+                let imageCount = 0;
+                let totalImageSize = 0;
+                const imageDetails = [];
+                
+                requestData.messages.forEach(msg => {
+                  if (Array.isArray(msg.content)) {
+                    msg.content.forEach(c => {
+                      if (c.type === 'image_url' && c.image_url?.url) {
+                        imageCount++;
+                        const imageData = c.image_url.url;
+                        const sizeInBytes = (imageData.length * 3) / 4;
+                        const sizeInMB = (sizeInBytes / 1024 / 1024).toFixed(2);
+                        totalImageSize += sizeInBytes;
+                        imageDetails.push({
+                          index: imageCount,
+                          sizeInMB: sizeInMB,
+                          sizeInBytes: sizeInBytes
+                        });
+                      }
+                    });
+                  }
+                });
+                
+                const requestBodySize = Buffer.byteLength(JSON.stringify(requestData));
+                
+                debugInfo = {
+                  hasImages: imageCount > 0,
+                  imageCount: imageCount,
+                  imageDetails: imageDetails,
+                  totalImageSizeInMB: (totalImageSize / 1024 / 1024).toFixed(2),
+                  totalImageSizeInBytes: totalImageSize,
+                  requestBodySizeInMB: (requestBodySize / 1024 / 1024).toFixed(2),
+                  requestBodySizeInBytes: requestBodySize,
+                  messageCount: requestData.messages.length,
+                  model: requestData.model,
+                  maxTokens: requestData.max_tokens,
+                  responseBody: body.substring(0, 1000),
+                  responseHeaders: res.headers
+                };
+              }
+              
               resolve({
                 success: false,
-                error: `API请求失败: ${res.statusCode} - ${responseData.error?.message || '未知错误'}`
+                statusCode: res.statusCode,
+                errorType: responseData.error?.type || '未知',
+                error: `API请求失败: ${res.statusCode} - ${responseData.error?.message || '未知错误'}`,
+                rawError: responseData.error,
+                debugInfo: debugInfo // 500错误的详细调试信息
               });
             }
           } catch (parseError) {
-            console.log('❌ 响应数据解析失败:', parseError.message);
-            console.log('🔍 原始响应内容:', body.substring(0, 200) + '...');
+            console.error('❌ 响应数据解析失败:', parseError.message);
+            console.error('🔍 原始响应内容 (前500字符):', body.substring(0, 500));
+            console.error('🔍 响应内容长度:', body.length);
             resolve({
               success: false,
-              error: `解析响应失败: ${parseError.message}`
+              statusCode: res.statusCode,
+              error: `解析响应失败: ${parseError.message}`,
+              rawResponse: body.substring(0, 500)
             });
           }
         });
