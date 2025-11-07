@@ -8,6 +8,8 @@ class ChatManager {
         this.messages = [];
         this.isTyping = false;
         this.selectedModel = 'THUDM/GLM-4-9B-0414';
+        this.defaultChatModel = 'THUDM/GLM-4-9B-0414'; // 默认对话模型
+        this.defaultVisualModel = 'Qwen/Qwen2.5-VL-32B-Instruct'; // 默认视觉模型
         this.uploadedImages = []; // 支持多图上传
         this.currentImageIndex = 0; // 当前显示的图片索引
         this.hidePreviewTimeout = null; // 延迟隐藏定时器
@@ -24,25 +26,112 @@ class ChatManager {
     async init() {
         this.bindEvents();
         await this.loadInitialMessages();
-        this.initializeModelDisplay();
+        await this.initializeModelDisplay();
     }
 
     /**
      * 初始化模型显示
      */
-    initializeModelDisplay() {
-        // 设置默认显示的模型
-        const modelNameElement = document.getElementById('current-model');
-        if (modelNameElement) {
-            modelNameElement.textContent = this.selectedModel;
-
-            // 设置对应的描述
-            const defaultOption = document.querySelector(`.model-option[data-model="${this.selectedModel}"]`);
-            if (defaultOption) {
-                const description = defaultOption.getAttribute('data-desc');
-                modelNameElement.title = description;
-            }
+    async initializeModelDisplay() {
+        console.log('🔧 开始初始化模型显示，当前 selectedModel:', this.selectedModel);
+        
+        // 等待 modelConfigManager 加载完成（对象和数据都要检查）
+        if (!window.modelConfigManager || window.modelConfigManager.models.length === 0) {
+            console.log('⏳ modelConfigManager 未就绪，等待加载...');
+            await this.waitForModelConfig();
         }
+
+        // 设置默认显示的模型
+        if (window.modelConfigManager && window.modelConfigManager.models.length > 0) {
+            console.log('🔍 尝试获取模型信息:', this.selectedModel);
+            const modelInfo = window.modelConfigManager.getModelByName(this.selectedModel);
+            console.log('📦 获取到的模型信息:', modelInfo);
+            
+            if (modelInfo) {
+                this.updateModelDisplay(modelInfo);
+                console.log('✅ 模型显示初始化完成:', `${modelInfo.type}/${modelInfo.displayName}`);
+            } else {
+                console.warn('⚠️ 未找到模型信息，保持 HTML 默认显示');
+                // 不修改显示，保持 HTML 中的默认值 "Chat/GLM-4-9B"
+            }
+        } else {
+            console.warn('⚠️ modelConfigManager 数据未就绪，保持 HTML 默认显示');
+            // 不修改显示，保持 HTML 中的默认值 "Chat/GLM-4-9B"
+        }
+    }
+
+    /**
+     * 等待模型配置加载完成
+     */
+    async waitForModelConfig(maxWait = 5000) {
+        const startTime = Date.now();
+        console.log('⏳ 开始等待 modelConfigManager...');
+        
+        // 等待 modelConfigManager 对象创建
+        while (!window.modelConfigManager && (Date.now() - startTime < maxWait)) {
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        if (!window.modelConfigManager) {
+            console.warn('⚠️ modelConfigManager 对象加载超时');
+            return;
+        }
+        console.log('✅ modelConfigManager 对象已创建');
+        
+        // 等待 models 数据加载完成
+        let checkCount = 0;
+        while (window.modelConfigManager.models.length === 0 && (Date.now() - startTime < maxWait)) {
+            checkCount++;
+            if (checkCount % 10 === 0) {
+                console.log(`⏳ 等待 models 数据加载... (${checkCount * 50}ms)`);
+            }
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        
+        if (window.modelConfigManager.models.length === 0) {
+            console.warn('⚠️ modelConfigManager 数据加载超时，models 数组仍为空');
+        } else {
+            console.log('✅ modelConfigManager 数据加载完成，共', window.modelConfigManager.models.length, '个模型');
+            console.log('📋 模型列表:', window.modelConfigManager.models.map(m => m.name).join(', '));
+        }
+    }
+
+    /**
+     * 更新模型显示
+     * @param {Object} modelInfo - 模型信息对象
+     * @param {boolean} updateSelection - 是否同时更新选中状态
+     */
+    updateModelDisplay(modelInfo, updateSelection = true) {
+        const modelNameElement = document.getElementById('current-model');
+        if (modelNameElement && modelInfo) {
+            const typeCapitalized = modelInfo.type.charAt(0).toUpperCase() + modelInfo.type.slice(1);
+            const displayText = `${typeCapitalized}/${modelInfo.displayName}`;
+            console.log('🎨 更新模型显示:', displayText);
+            modelNameElement.textContent = displayText;
+            modelNameElement.title = modelInfo.description;
+            
+            // 同时更新下拉选项的选中状态
+            if (updateSelection) {
+                this.updateModelSelection(modelInfo.name);
+            }
+        } else {
+            console.warn('⚠️ updateModelDisplay 失败 - element:', !!modelNameElement, 'modelInfo:', !!modelInfo);
+        }
+    }
+
+    /**
+     * 更新模型选项的选中状态
+     * @param {string} modelName - 模型名称
+     */
+    updateModelSelection(modelName) {
+        const modelOptions = document.querySelectorAll('.model-option');
+        modelOptions.forEach(option => {
+            if (option.getAttribute('data-model') === modelName) {
+                option.classList.add('selected');
+                console.log('✅ 设置选中状态:', modelName);
+            } else {
+                option.classList.remove('selected');
+            }
+        });
     }
 
     /**
@@ -57,7 +146,6 @@ class ChatManager {
         // 模型选择器相关元素
         const modelSelectBtn = document.getElementById('model-select');
         const modelDropdown = document.getElementById('model-dropdown');
-        const modelOptions = document.querySelectorAll('.model-option');
 
         // 图片上传相关元素
         const imageUploadBtn = document.getElementById('image-upload');
@@ -105,14 +193,7 @@ class ChatManager {
             }
         });
 
-        // 模型选项点击事件
-        modelOptions.forEach(option => {
-            option.addEventListener('click', () => {
-                const model = option.getAttribute('data-model');
-                const desc = option.getAttribute('data-desc');
-                this.selectModel(model, desc);
-            });
-        });
+        // 模型选项点击事件由 model-config.js 动态绑定
 
         // 图片上传事件
         if (imageUploadBtn) {
@@ -382,7 +463,47 @@ class ChatManager {
         this.currentAbortController = new AbortController();
 
         try {
-            const currentModel = document.getElementById('current-model')?.textContent || 'THUDM/GLM-4-9B-0414';
+            // 使用实际的API模型名称，而不是UI显示文本
+            let currentModel = this.selectedModel || this.defaultChatModel;
+            
+            // 🔄 智能模型切换逻辑
+            if (window.modelConfigManager) {
+                const modelInfo = window.modelConfigManager.getModelByName(currentModel);
+                
+                if (images && images.length > 0) {
+                    // 场景1: 有图片输入 - 切换到视觉模型
+                    if (modelInfo && modelInfo.type !== 'visual') {
+                        currentModel = this.defaultVisualModel;
+                        console.log(`🔄 检测到图片输入，自动从 ${modelInfo.displayName} 切换到视觉模型`);
+                        
+                        // 更新UI显示
+                        const visualModelInfo = window.modelConfigManager.getModelByName(currentModel);
+                        if (visualModelInfo) {
+                            this.updateModelDisplay(visualModelInfo);
+                            if (window.showNotification) {
+                                window.showNotification(`已自动切换到视觉模型 ${visualModelInfo.displayName}`, 'info');
+                            }
+                        }
+                    }
+                } else {
+                    // 场景2: 纯文本输入 - 切换回对话模型
+                    if (modelInfo && modelInfo.type !== 'chat' && modelInfo.type !== 'thinking') {
+                        currentModel = this.defaultChatModel;
+                        console.log(`🔄 检测到纯文本输入，自动从 ${modelInfo.displayName} 切换到对话模型`);
+                        
+                        // 更新UI显示
+                        const chatModelInfo = window.modelConfigManager.getModelByName(currentModel);
+                        if (chatModelInfo) {
+                            this.updateModelDisplay(chatModelInfo);
+                            if (window.showNotification) {
+                                window.showNotification(`已自动切换到对话模型 ${chatModelInfo.displayName}`, 'info');
+                            }
+                        }
+                    }
+                }
+            }
+            
+            console.log('🚀 准备调用AI API - 使用模型:', currentModel);
             const aiResponse = await this.generateAIResponse(userMessage, currentModel, images);
 
             // 检查是否被中断
@@ -457,53 +578,58 @@ class ChatManager {
                 content: '你是一个专业的硬件开发助手，擅长Arduino、ESP32等嵌入式开发，熟悉各种传感器、执行器和通信模块。你可以帮助用户进行电路设计、元件选型和代码编写。请用markdown格式回复，提供清晰的结构化信息。'
             });
 
-            // 添加历史消息（最近几条，排除当前正在发送的消息）
-            // 注意：this.messages 中已经包含了当前消息，所以要排除最后一条
-            const recentMessages = this.messages.slice(-10, -1); // 最近10条消息，但不包括最后一条（当前消息）
+            // 添加历史消息 - 使用固定对话轮数策略
+            // 策略：保留最近N轮完整对话，对于包含图片的历史消息只保留文本（AI回复已包含图片描述）
+            const conversationRounds = images && images.length > 0 ? 2 : 4; // 有图片时保留2轮，无图片时保留4轮
+            const recentMessages = this.messages.slice(-(conversationRounds * 2 + 1), -1); // 排除当前消息
+            
+            console.log(`📜 准备添加历史消息: ${recentMessages.length} 条 (约${Math.floor(recentMessages.length / 2)}轮对话)`);
+            
             for (const msg of recentMessages) {
                 if (msg.type === 'user') {
-                    // 检查消息是否包含图片
+                    // 处理用户消息
                     if (msg.images && msg.images.length > 0) {
-                        // 重新构建包含多图片的消息格式
-                        const contentArray = [];
-
-                        // 添加文本内容
+                        // 历史消息包含图片：只添加文本部分，不重复发送图片
+                        // 因为AI的回复已经包含了对图片的描述
                         if (msg.content && msg.content.trim()) {
-                            contentArray.push({
-                                type: 'text',
-                                text: msg.content
+                            messages.push({
+                                role: 'user',
+                                content: msg.content
                             });
+                            console.log(`👤 历史用户消息 [ID:${msg.id}] (原含${msg.images.length}张图片，仅保留文本)`);
+                        } else {
+                            // 如果用户消息只有图片没有文字，添加一个占位文本
+                            messages.push({
+                                role: 'user',
+                                content: '[用户发送了图片]'
+                            });
+                            console.log(`👤 历史用户消息 [ID:${msg.id}] (仅图片消息，使用占位文本)`);
                         }
-
-                        // 添加所有图片内容
-                        for (const image of msg.images) {
-                            if (image && image.dataUrl) {
-                                contentArray.push({
-                                    type: 'image_url',
-                                    image_url: {
-                                        url: image.dataUrl
-                                    }
-                                });
-                            }
-                        }
-
-                        messages.push({
-                            role: 'user',
-                            content: contentArray
-                        });
-
-                        console.log(`📸 历史消息包含 ${msg.images.length} 张图片`);
                     } else {
+                        // 纯文本历史消息：正常添加
                         messages.push({
                             role: 'user',
                             content: msg.content
                         });
+                        console.log(`👤 历史用户消息 [ID:${msg.id}] (纯文本)`);
                     }
                 } else if (msg.type === 'assistant') {
+                    // 处理AI回复 - 限制长度，避免上下文过长
+                    const maxLength = images && images.length > 0 ? 1500 : 3000;
+                    const assistantContent = msg.content.length > maxLength 
+                        ? msg.content.substring(0, maxLength) + '\n...[内容过长已截断]'
+                        : msg.content;
+                    
                     messages.push({
                         role: 'assistant',
-                        content: msg.content
+                        content: assistantContent
                     });
+                    
+                    if (msg.content.length > maxLength) {
+                        console.log(`✂️ 历史AI回复 [ID:${msg.id}] 过长(${msg.content.length}字符)，已截断至${maxLength}字符`);
+                    } else {
+                        console.log(`🤖 历史AI回复 [ID:${msg.id}] 长度: ${msg.content.length} 字符`);
+                    }
                 }
             }
 
@@ -537,7 +663,7 @@ class ChatManager {
                     content: contentArray
                 });
 
-                console.log(`📸 构建多模态消息，包含 ${images.length} 张图片:`, images.map(img => img.name).join(', '));
+                console.log(`📸 当前消息包含 ${images.length} 张图片:`, images.map(img => `${img.name} (${(img.dataUrl.length * 3 / 4 / 1024 / 1024).toFixed(2)}MB)`).join(', '));
             } else {
                 // 添加当前用户消息
                 messages.push({
@@ -545,6 +671,28 @@ class ChatManager {
                     content: userMessage
                 });
             }
+
+            // 统计所有图片（用于调试重复问题）
+            let totalImageCount = 0;
+            const allImageSizes = [];
+            let totalTextLength = 0;
+            for (const msg of messages) {
+                if (msg.role === 'user' && Array.isArray(msg.content)) {
+                    for (const item of msg.content) {
+                        if (item.type === 'image_url' && item.image_url?.url) {
+                            totalImageCount++;
+                            const sizeInMB = (item.image_url.url.length * 3 / 4 / 1024 / 1024).toFixed(2);
+                            allImageSizes.push(sizeInMB);
+                        } else if (item.type === 'text') {
+                            totalTextLength += item.text.length;
+                        }
+                    }
+                } else if (typeof msg.content === 'string') {
+                    totalTextLength += msg.content.length;
+                }
+            }
+            console.log(`🖼️ 本次请求实际包含图片总数: ${totalImageCount}，大小分布:`, allImageSizes.map((s, i) => `图${i+1}:${s}MB`).join(', '));
+            console.log(`📝 本次请求文本总长度: ${totalTextLength} 字符，消息结构:`, messages.map(m => `${m.role}(${typeof m.content === 'string' ? m.content.length + '字' : m.content.length + '项'})`).join(' → '));
 
             // 记录请求详情（用于调试）
             console.log('📤 发送API请求:', {
@@ -1218,31 +1366,45 @@ class ChatManager {
 
     /**
      * 选择模型
+     * @param {string} model - 模型名称
+     * @param {string} typeOrDesc - 模型类型或描述
      */
-    selectModel(model, description) {
+    selectModel(model, typeOrDesc) {
+        // 调试：检查传入的模型名称
+        console.log('🔍 selectModel 接收到的参数 - model:', model, 'typeOrDesc:', typeOrDesc);
+        
         this.selectedModel = model;
+        console.log('✅ 已设置 this.selectedModel =', this.selectedModel);
 
-        // 更新UI显示
-        const modelNameElement = document.getElementById('current-model');
-        if (modelNameElement) {
-            modelNameElement.textContent = model;
-            modelNameElement.title = description;
-        }
-
-        // 更新选中状态
-        const modelOptions = document.querySelectorAll('.model-option');
-        modelOptions.forEach(option => {
-            if (option.getAttribute('data-model') === model) {
-                option.classList.add('selected');
+        // 更新UI显示和选中状态
+        if (window.modelConfigManager) {
+            const modelInfo = window.modelConfigManager.getModelByName(model);
+            if (modelInfo) {
+                // updateModelDisplay 会自动调用 updateModelSelection
+                this.updateModelDisplay(modelInfo);
             } else {
-                option.classList.remove('selected');
+                const modelNameElement = document.getElementById('current-model');
+                if (modelNameElement) {
+                    modelNameElement.textContent = model;
+                    modelNameElement.title = typeOrDesc || model;
+                }
+                // 手动更新选中状态
+                this.updateModelSelection(model);
             }
-        });
+        } else {
+            const modelNameElement = document.getElementById('current-model');
+            if (modelNameElement) {
+                modelNameElement.textContent = model;
+                modelNameElement.title = typeOrDesc || model;
+            }
+            // 手动更新选中状态
+            this.updateModelSelection(model);
+        }
 
         // 关闭下拉菜单
         this.closeModelDropdown();
 
-        console.log(`已选择AI模型: ${model} (${description})`);
+        console.log(`已选择AI模型: ${model} (${typeOrDesc || ''})`);
     }
 
     /**
@@ -1621,6 +1783,8 @@ let chatManager;
 
 document.addEventListener('DOMContentLoaded', () => {
     chatManager = new ChatManager();
+    // 暴露到全局作用域供其他模块使用
+    window.chatManager = chatManager;
 });
 
 // 导出到全局作用域

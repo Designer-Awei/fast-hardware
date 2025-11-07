@@ -403,6 +403,60 @@ ipcMain.handle('get-assets-path', () => {
   }
 });
 
+/**
+ * 加载模型配置文件
+ */
+ipcMain.handle('loadModelConfig', async () => {
+  try {
+    const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+    let configPath;
+    
+    if (isDev) {
+      // 开发环境：从项目根目录读取
+      configPath = path.join(__dirname, 'model_config.json');
+    } else {
+      // 生产环境：从程序根目录读取
+      configPath = path.join(path.dirname(app.getPath('exe')), 'model_config.json');
+    }
+    
+    console.log('📂 读取模型配置文件:', configPath);
+    const configContent = await fs.readFile(configPath, 'utf-8');
+    const config = JSON.parse(configContent);
+    console.log('✅ 模型配置加载成功:', config.models.length, '个模型');
+    return config;
+  } catch (error) {
+    console.error('❌ 加载模型配置失败:', error);
+    // 返回默认配置
+    return {
+      version: '1.0.0',
+      models: [
+        {
+          id: 'glm-4-9b',
+          name: 'THUDM/GLM-4-9B-0414',
+          displayName: 'GLM-4-9B',
+          type: 'chat',
+          capabilities: ['text', 'code'],
+          description: '默认对话模型',
+          enabled: true
+        },
+        {
+          id: 'glm-4v-thinking',
+          name: 'THUDM/GLM-4.1V-9B-Thinking',
+          displayName: 'GLM-4.1V',
+          type: 'visual',
+          capabilities: ['text', 'image', 'code', 'thinking'],
+          description: '视觉思考模型',
+          enabled: true
+        }
+      ],
+      autoDispatch: {
+        enabled: false,
+        fallback: 'glm-4-9b'
+      }
+    };
+  }
+});
+
 // 文件操作IPC
 ipcMain.handle('save-file', async (event, filePath, content, createDir = false) => {
   const fs = require('fs').promises;
@@ -1045,7 +1099,20 @@ ipcMain.handle('open-external', async (event, url) => {
 // 保存API密钥到env.local文件
 ipcMain.handle('save-api-key', async (event, apiKey) => {
   try {
-    const envPath = path.join(app.getPath('userData'), 'env.local');
+    // 区分开发环境和生产环境
+    const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+    let envPath;
+    
+    if (isDev) {
+      // 开发环境：写入项目根目录的 env.local
+      envPath = path.join(__dirname, 'env.local');
+      console.log('📝 开发环境：保存API密钥到项目根目录:', envPath);
+    } else {
+      // 生产环境：写入 AppData 的 env.local
+      envPath = path.join(app.getPath('userData'), 'env.local');
+      console.log('📝 生产环境：保存API密钥到用户数据目录:', envPath);
+    }
+    
     let envContent = '';
 
     // 尝试读取现有文件内容
@@ -1053,11 +1120,14 @@ ipcMain.handle('save-api-key', async (event, apiKey) => {
       envContent = await fs.readFile(envPath, 'utf8');
     } catch {
       // 如果文件不存在，使用默认内容
-      envContent = `# Fast Hardware Environment Configuration
-# This file contains sensitive configuration data
-# DO NOT commit this file to version control
+      envContent = `# Fast Hardware 环境配置文件 / Fast Hardware Environment Configuration
+# 此文件包含敏感的配置数据 / This file contains sensitive configuration data
+# 不要将此文件提交到版本控制中 / DO NOT commit this file to version control
 
-# SiliconFlow API Key
+
+# SiliconFlow API 密钥 / SiliconFlow API Key
+# 用于访问SiliconFlow AI服务的API密钥 / API key for accessing SiliconFlow AI services
+
 SILICONFLOW_API_KEY=`;
     }
 
@@ -1083,10 +1153,10 @@ SILICONFLOW_API_KEY=`;
     // 写入文件
     await fs.writeFile(envPath, newContent, 'utf8');
 
-    console.log('API密钥已保存到env.local文件');
-    return { success: true };
+    console.log('✅ API密钥已保存到env.local文件');
+    return { success: true, path: envPath };
   } catch (error) {
-    console.error('保存API密钥失败:', error);
+    console.error('❌ 保存API密钥失败:', error);
     return { success: false, error: error.message };
   }
 });
@@ -1094,7 +1164,19 @@ SILICONFLOW_API_KEY=`;
 // 从env.local文件读取API密钥
 ipcMain.handle('load-api-key', async () => {
   try {
-    const envPath = path.join(app.getPath('userData'), 'env.local');
+    // 区分开发环境和生产环境
+    const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+    let envPath;
+    
+    if (isDev) {
+      // 开发环境：从项目根目录读取 env.local
+      envPath = path.join(__dirname, 'env.local');
+      console.log('📖 开发环境：从项目根目录读取API密钥:', envPath);
+    } else {
+      // 生产环境：从 AppData 读取 env.local
+      envPath = path.join(app.getPath('userData'), 'env.local');
+      console.log('📖 生产环境：从用户数据目录读取API密钥:', envPath);
+    }
 
     // 读取文件内容
     const envContent = await fs.readFile(envPath, 'utf8');
@@ -1104,14 +1186,16 @@ ipcMain.handle('load-api-key', async () => {
     for (const line of lines) {
       if (line.startsWith('SILICONFLOW_API_KEY=')) {
         const apiKey = line.substring('SILICONFLOW_API_KEY='.length).trim();
+        console.log('✅ API密钥读取成功');
         return { success: true, apiKey: apiKey || null };
       }
     }
 
     // 如果没找到，返回null
+    console.log('⚠️ 未找到API密钥配置');
     return { success: true, apiKey: null };
   } catch (error) {
-    console.log('读取API密钥失败:', error.message);
+    console.log('❌ 读取API密钥失败:', error.message);
     return { success: false, error: error.message, apiKey: null };
   }
 });

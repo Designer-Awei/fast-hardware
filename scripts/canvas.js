@@ -265,8 +265,14 @@ class CanvasManager {
         // 延迟初始化，确保容器完全渲染
         setTimeout(() => {
             this.resizeCanvas();
-            this.resetView(); // 设置初始视图
+            this.resetView(); // 设置初始视图（内部会调用draw()）
             this.bindEvents();
+            
+            // 确保画布内容可见（额外保险）
+            requestAnimationFrame(() => {
+                this.draw();
+                console.log('🎨 画布初始化完成');
+            });
         }, 100);
     }
 

@@ -942,7 +942,7 @@
     min-height: 40px; /* 固定最小高度 */
     box-sizing: border-box;
     z-index: 100; /* 确保悬浮在最上层 */
-    backdrop-filter: blur(4px);
+    /* backdrop-filter: blur(4px); */
     background: rgba(255, 255, 255, 0.95);
 }
 
@@ -1432,8 +1432,9 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(2px);
+    background: rgba(0, 0, 0, 0.6);
+    /* 移除 backdrop-filter 以避免性能问题和视觉卡顿 */
+    /* backdrop-filter: blur(2px); */
 }
 
 .preview-content {
@@ -1622,8 +1623,8 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(2px);
+    background: rgba(0, 0, 0, 0.6);
+    /* backdrop-filter: blur(2px); */
 }
 
 .save-path-dialog .dialog-content {
@@ -1777,8 +1778,8 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(2px);
+    background: rgba(0, 0, 0, 0.6);
+    /* backdrop-filter: blur(2px); */
 }
 
 .duplicate-dialog .dialog-content {
@@ -1903,8 +1904,8 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(2px);
+    background: rgba(0, 0, 0, 0.6);
+    /* backdrop-filter: blur(2px); */
 }
 
 .validation-error-dialog .dialog-content {
@@ -2037,8 +2038,8 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(2px);
+    background: rgba(0, 0, 0, 0.6);
+    /* backdrop-filter: blur(2px); */
 }
 
 .file-error-dialog .dialog-content {
@@ -2479,8 +2480,8 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(2px);
+    background: rgba(0, 0, 0, 0.6);
+    /* backdrop-filter: blur(2px); */
 }
 
 .delete-confirmation-dialog .dialog-content {

@@ -149,7 +149,7 @@
 
                                 <div class="model-selector">
                                     <button class="control-btn model-select-btn" id="model-select" title="选择AI模型">
-                                        <span class="model-name" id="current-model">THUDM/GLM-4.1V-9B-Thinking</span>
+                                        <span class="model-name" id="current-model">Chat/GLM-4-9B</span>
                                         <span class="btn-icon"><img src="" alt="切换" width="14" height="14" data-icon="chevron-up"></span>
                                     </button>
                                 </div>
@@ -161,26 +161,7 @@
 
                             <!-- 模型选择下拉框 -->
                             <div class="model-dropdown" id="model-dropdown">
-                                <div class="model-option" data-model="THUDM/GLM-4-9B-0414" data-desc="默认对话模型">
-                                    THUDM/GLM-4-9B-0414
-                                    <span class="model-desc">默认对话模型</span>
-                                </div>
-                                <div class="model-option" data-model="THUDM/GLM-4.1V-9B-Thinking" data-desc="推理模型，支持图文输入">
-                                    THUDM/GLM-4.1V-9B-Thinking
-                                    <span class="model-desc">推理模型，支持图文输入</span>
-                                </div>
-                                <div class="model-option" data-model="Qwen/Qwen2.5-VL-32B-Instruct" data-desc="视觉模型，支持图文输入">
-                                    Qwen/Qwen2.5-VL-32B-Instruct
-                                    <span class="model-desc">视觉模型，支持图文输入</span>
-                                </div>
-                                <div class="model-option" data-model="Qwen/Qwen3-8B" data-desc="推理模型">
-                                    Qwen/Qwen3-8B
-                                    <span class="model-desc">推理模型</span>
-                                </div>
-                                <div class="model-option" data-model="tencent/Hunyuan-MT-7B" data-desc="多语言翻译模型">
-                                    tencent/Hunyuan-MT-7B
-                                    <span class="model-desc">多语言翻译模型</span>
-                                </div>
+                                <!-- 模型选项将从 model_config.json 动态加载 -->
                             </div>
                         </div>
                     </section>
@@ -586,6 +567,7 @@
 
 
       <!-- JavaScript文件 -->
+    <script src="scripts/model-config.js"></script>
     <script src="scripts/floating-panel.js"></script>
     <script src="scripts/tabs.js"></script>
     <script src="scripts/canvas.js"></script>

@@ -112,6 +112,16 @@ class FastHardwareApp {
         const targetContent = document.getElementById(`${tabName}-tab`);
         if (targetContent) {
             targetContent.classList.add('active');
+            
+            // 切换到电路设计标签时，重绘画布
+            if (tabName === 'circuit-design' && window.canvasInstance) {
+                // 延迟一帧确保DOM完全渲染
+                requestAnimationFrame(() => {
+                    window.canvasInstance.resizeCanvas();
+                    window.canvasInstance.draw();
+                    console.log('✅ 画布已重绘');
+                });
+            }
         } else {
             console.error('未找到标签内容:', `${tabName}-tab`);
         }

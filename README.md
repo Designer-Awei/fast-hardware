@@ -10,7 +10,7 @@
 
 [🇨🇳 中文](README.md) | [🇺🇸 English](README_EN.md)
 
-[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
+[![Version](https://img.shields.io/badge/version-0.2.1-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
 [![Electron](https://img.shields.io/badge/Electron-27.0.0-47848F.svg)](https://electronjs.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-16+-339933.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -62,7 +62,44 @@
 ### 🚧 LLM智能助手 (规划中)
 自然语言交互，智能推荐硬件方案，自动生成电路设计。
 
-## ✨ 最新特性 (v0.2.0)
+## ✨ 最新特性 (v0.2.1)
+
+### 🤖 智能模型自动切换系统
+- **双向智能切换**: 图片输入自动切换到视觉模型，纯文本自动切回对话模型
+- **默认模型配置**: Chat/GLM-4-9B (对话)，Visual/Qwen2.5-VL-32B (视觉)
+- **实时UI更新**: 切换时自动更新模型选择器显示并通知用户
+- **保留用户选择**: 手动选择 Chat/Thinking 模型时不会被强制切换
+
+### 📊 模型配置管理系统
+- **配置文件化**: 创建 `model_config.json` 统一管理所有AI模型
+- **动态加载**: 应用启动时自动读取配置文件，支持热更新
+- **统一显示格式**: `Type/DisplayName` (如 Chat/GLM-4-9B)
+- **新增模型**: Qwen3-VL-30B 视觉长文本模型
+- **简化配置**: 移除不必要的 autoDispatch 字段
+
+### 💬 对话历史智能管理
+- **固定轮数策略**: 有图片时保留2轮对话，纯文本时保留4轮对话
+- **图片去重优化**: 历史消息中的图片不再重复发送（AI回复已包含描述）
+- **智能截断**: 带图请求时AI历史截断到1500字符，纯文本时3000字符
+- **Token优化**: 显著降低API调用的Token消耗和请求体积
+
+### 🎨 UI/UX 体验提升
+- **模型显示初始化**: 修复启动时显示完整模型名称的问题
+- **选中状态同步**: 模型初始化后自动高亮选中状态
+- **画布初始渲染**: 修复画布首次加载空白需要点击才显示的问题
+- **性能优化**: 移除所有 `backdrop-filter: blur` 效果，消除视觉卡顿
+- **历史消息编辑**: 支持编辑和重新发送历史消息，带悬停交互动画
+
+### 🐛 Bug修复与优化
+- **API Key路径**: 修复开发/生产环境API Key保存路径问题
+- **VLM 500错误**: 修复图片重复提交导致的API错误
+- **模型名称传递**: 修复模型切换后API使用错误模型名的问题
+- **请求超时**: 将API超时时间从60秒延长到180秒
+- **详细错误日志**: 增强VLM API错误诊断信息，便于问题排查
+
+---
+
+## 历史版本 (v0.2.0)
 
 ### 🚀 项目多标签页管理系统
 - **多项目同时打开**: 支持同时打开多个项目，通过标签页快速切换

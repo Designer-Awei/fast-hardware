@@ -1,0 +1,67 @@
+{
+  "version": "1.0.0",
+  "lastUpdate": "2025-11-07",
+  "models": [
+    {
+      "id": "glm-4-9b",
+      "name": "THUDM/GLM-4-9B-0414",
+      "displayName": "GLM-4-9B",
+      "type": "chat",
+      "capabilities": ["text", "code"],
+      "description": "默认对话模型",
+      "maxTokens": 8192,
+      "priority": 100,
+      "enabled": true,
+      "costLevel": "low"
+    },
+    {
+      "id": "qwen3-8b",
+      "name": "Qwen/Qwen3-8B",
+      "displayName": "Qwen3-8B",
+      "type": "thinking",
+      "capabilities": ["text", "code", "thinking"],
+      "description": "思考模型",
+      "maxTokens": 8192,
+      "priority": 95,
+      "enabled": true,
+      "costLevel": "low"
+    },
+    {
+      "id": "glm-4v-thinking",
+      "name": "THUDM/GLM-4.1V-9B-Thinking",
+      "displayName": "GLM-4.1V",
+      "type": "visual",
+      "capabilities": ["text", "image", "code", "thinking"],
+      "description": "视觉思考模型",
+      "maxTokens": 8192,
+      "priority": 90,
+      "enabled": true,
+      "costLevel": "medium"
+    },
+    {
+      "id": "qwen-vl",
+      "name": "Qwen/Qwen2.5-VL-32B-Instruct",
+      "displayName": "Qwen2.5-VL-32B",
+      "type": "visual",
+      "capabilities": ["text", "image", "long_context"],
+      "description": "视觉长文本模型",
+      "maxTokens": 32768,
+      "priority": 85,
+      "enabled": true,
+      "costLevel": "high"
+    },
+    {
+      "id": "qwen3-vl-30b",
+      "name": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+      "displayName": "Qwen3-VL-30B",
+      "type": "visual",
+      "capabilities": ["text", "image", "long_context"],
+      "description": "Qwen3 视觉长文本模型",
+      "maxTokens": 32768,
+      "priority": 80,
+      "enabled": true,
+      "costLevel": "high"
+    }
+  ]
+}
+

@@ -150,5 +150,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /**
    * 获取assets文件夹路径
    */
-  getAssetsPath: () => ipcRenderer.invoke('get-assets-path')
+  getAssetsPath: () => ipcRenderer.invoke('get-assets-path'),
+
+  /**
+   * 加载模型配置文件
+   */
+  loadModelConfig: () => ipcRenderer.invoke('loadModelConfig')
 });
