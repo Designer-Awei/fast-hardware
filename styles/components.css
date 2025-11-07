@@ -115,6 +115,88 @@
     background: #28a745;
 }
 
+/* 消息操作按钮容器 - 绝对定位悬浮样式 */
+.message-actions {
+    position: absolute;
+    bottom: -38px; /* 在消息气泡下方，留出足够间距 */
+    right: 0;
+    display: none; /* 默认隐藏 */
+    flex-direction: row;
+    gap: 6px;
+    padding: 0;
+    background: transparent;
+    z-index: 10; /* 确保按钮在其他元素上方 */
+}
+
+/* 消息操作按钮显示状态 - 完全由JavaScript控制 */
+.message-actions.show {
+    display: flex !important;
+}
+
+/* 消息操作按钮样式 - 参考图片添加按钮（缩小尺寸） */
+.message-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+    color: #5a5a5a; /* 设置深灰色，SVG会继承此颜色 */
+}
+
+/* 覆盖通用编辑按钮样式 */
+.message-actions .edit-btn,
+.message-actions .resend-btn {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 32px !important;
+    height: 32px !important;
+    border: 1px solid #ddd !important;
+    border-radius: 6px !important;
+    background: white !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+    flex-shrink: 0 !important;
+    color: #5a5a5a !important;
+    padding: 0 !important;
+    font-size: inherit !important;
+    font-weight: inherit !important;
+}
+
+.message-action-btn:hover,
+.message-actions .edit-btn:hover,
+.message-actions .resend-btn:hover {
+    background: #f8f9fa !important;
+    border-color: #667eea !important;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
+    color: #333 !important; /* 悬停时颜色更深 */
+}
+
+.message-action-btn:active,
+.message-actions .edit-btn:active,
+.message-actions .resend-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 4px rgba(102, 126, 234, 0.1);
+}
+
+.message-action-btn img {
+    width: 16px;
+    height: 16px;
+    opacity: 0.9;
+    transition: opacity 0.2s ease;
+}
+
+.message-action-btn:hover img {
+    opacity: 1;
+}
+
 /* 保存成功提示动画 */
 @keyframes fadeInOut {
     0% { opacity: 0; transform: translateY(-20px); }

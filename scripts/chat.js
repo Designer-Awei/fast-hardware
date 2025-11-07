@@ -11,6 +11,7 @@ class ChatManager {
         this.uploadedImages = []; // 支持多图上传
         this.currentImageIndex = 0; // 当前显示的图片索引
         this.hidePreviewTimeout = null; // 延迟隐藏定时器
+        this.hideActionsTimeout = null; // 消息操作按钮延迟隐藏定时器
         this.isInterrupted = false; // 中断标志
         this.currentUserMessage = null; // 当前用户消息，用于中断恢复
         this.currentAbortController = null; // 用于中断API请求
@@ -874,11 +875,14 @@ class ChatManager {
     async createMessageElement(message) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${message.type}-message`;
+        messageDiv.dataset.messageId = message.id; // 添加消息ID用于后续操作
 
         // 获取正确的图标路径
         const assetsPath = await window.electronAPI.getAssetsPath();
         const userIconSrc = assetsPath + '/icon-user.svg';
         const botIconSrc = assetsPath + '/icon-bot.svg';
+        const editIconSrc = assetsPath + '/icon-edit.svg';
+        const refreshIconSrc = assetsPath + '/icon-refresh.svg';
 
         const timeString = message.timestamp.toLocaleString([], {
             year: 'numeric',
@@ -908,6 +912,18 @@ class ChatManager {
         // 检测是否为单行短消息（只对用户消息生效）
         const isShortMessage = message.type === 'user' && this.isShortMessage(message.content, contentHtml, message.images);
 
+        // 为用户消息添加编辑和重新发送按钮
+        const userActionsHtml = message.type === 'user' ? `
+            <div class="message-actions">
+                <button class="message-action-btn edit-btn" title="编辑消息" data-message-id="${message.id}">
+                    <img src="file://${editIconSrc}" alt="编辑" width="16" height="16">
+                </button>
+                <button class="message-action-btn resend-btn" title="重新发送" data-message-id="${message.id}">
+                    <img src="file://${refreshIconSrc}" alt="重新发送" width="16" height="16">
+                </button>
+            </div>
+        ` : '';
+
         messageDiv.innerHTML = `
             <div class="message-header">
                 <div class="message-avatar">${message.type === 'user' ? `<img src="file://${userIconSrc}" alt="用户" width="20" height="20">` : `<img src="file://${botIconSrc}" alt="AI" width="20" height="20">`}</div>
@@ -916,6 +932,7 @@ class ChatManager {
             <div class="message-content${isShortMessage ? ' short-message' : ''}">
                 ${contentHtml}
             </div>
+            ${userActionsHtml}
         `;
 
         // 设置代码块中图标的正确路径
@@ -940,7 +957,57 @@ class ChatManager {
             }, 0);
         }
 
-        // 代码块中的复制按钮已经使用本地SVG，不需要额外初始化
+        // 为用户消息绑定编辑和重新发送事件
+        if (message.type === 'user') {
+            const editBtn = messageDiv.querySelector('.edit-btn');
+            const resendBtn = messageDiv.querySelector('.resend-btn');
+            const actionsContainer = messageDiv.querySelector('.message-actions');
+
+            if (editBtn) {
+                editBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.editMessage(message.id);
+                });
+            }
+
+            if (resendBtn) {
+                resendBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.resendMessage(message.id);
+                });
+            }
+
+            // 添加延迟隐藏逻辑
+            if (actionsContainer) {
+                // 鼠标进入消息区域时，添加show类确保显示
+                messageDiv.addEventListener('mouseenter', () => {
+                    if (this.hideActionsTimeout) {
+                        clearTimeout(this.hideActionsTimeout);
+                        this.hideActionsTimeout = null;
+                    }
+                    actionsContainer.classList.add('show');
+                });
+
+                // 鼠标离开消息区域时，延迟隐藏按钮
+                messageDiv.addEventListener('mouseleave', () => {
+                    this.hideMessageActions(actionsContainer);
+                });
+
+                // 鼠标进入操作按钮区域时，取消隐藏
+                actionsContainer.addEventListener('mouseenter', () => {
+                    if (this.hideActionsTimeout) {
+                        clearTimeout(this.hideActionsTimeout);
+                        this.hideActionsTimeout = null;
+                    }
+                    actionsContainer.classList.add('show');
+                });
+
+                // 鼠标离开操作按钮区域时，延迟隐藏
+                actionsContainer.addEventListener('mouseleave', () => {
+                    this.hideMessageActions(actionsContainer);
+                });
+            }
+        }
 
         return messageDiv;
     }
@@ -1040,6 +1107,93 @@ class ChatManager {
         URL.revokeObjectURL(url);
 
         console.log('对话记录已导出');
+    }
+
+    /**
+     * 延迟隐藏消息操作按钮
+     * @param {HTMLElement} actionsContainer - 操作按钮容器元素
+     */
+    hideMessageActions(actionsContainer) {
+        // 清除之前的延迟隐藏定时器
+        if (this.hideActionsTimeout) {
+            clearTimeout(this.hideActionsTimeout);
+        }
+
+        // 设置300ms延迟隐藏
+        this.hideActionsTimeout = setTimeout(() => {
+            // 检查鼠标是否还在按钮区域内
+            if (actionsContainer && !actionsContainer.matches(':hover')) {
+                actionsContainer.classList.remove('show');
+            }
+        }, 300); // 300ms延迟，与图片预览一致
+    }
+
+    /**
+     * 编辑历史消息
+     * @param {number} messageId - 消息ID
+     */
+    async editMessage(messageId) {
+        // 查找消息
+        const messageIndex = this.messages.findIndex(msg => msg.id === messageId);
+        if (messageIndex === -1) return;
+
+        const message = this.messages[messageIndex];
+        if (message.type !== 'user') return;
+
+        // 将消息内容填充到输入框
+        const input = document.getElementById('chat-input');
+        if (!input) return;
+
+        input.value = message.content;
+        input.focus();
+
+        // 如果有图片，恢复图片
+        if (message.images && message.images.length > 0) {
+            this.uploadedImages = [...message.images];
+            this.currentImageIndex = 0;
+            this.showImagePreview();
+        }
+
+        // 不删除消息，让用户可以选择：
+        // 1. 直接点击发送 → 作为新消息发送（可能切换了模型）
+        // 2. 点击重新发送 → 删除原消息后重新发送
+
+        console.log(`📝 编辑消息 ID: ${messageId}，内容已填充到输入框`);
+    }
+
+    /**
+     * 重新发送历史消息
+     * @param {number} messageId - 消息ID
+     */
+    async resendMessage(messageId) {
+        // 查找消息
+        const messageIndex = this.messages.findIndex(msg => msg.id === messageId);
+        if (messageIndex === -1) return;
+
+        const message = this.messages[messageIndex];
+        if (message.type !== 'user') return;
+
+        // 删除原消息及其之后的所有消息（包括AI回复）
+        this.messages.splice(messageIndex);
+        await this.renderMessages();
+
+        // 重新发送消息
+        const userMessage = {
+            id: Date.now(),
+            type: 'user',
+            content: message.content,
+            timestamp: new Date(),
+            images: message.images || []
+        };
+
+        this.messages.push(userMessage);
+        await this.renderMessages();
+        this.scrollToBottom();
+
+        // 开始AI回复
+        this.simulateAIResponse(message.content, this.selectedModel, message.images || []);
+
+        console.log(`🔄 重新发送消息 ID: ${messageId}`);
     }
 
     /**

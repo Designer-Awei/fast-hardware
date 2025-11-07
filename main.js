@@ -1311,9 +1311,9 @@ ipcMain.handle('chatWithAI', async (event, messages, model) => {
   console.log('💬 消息数量:', messages.length);
   console.log('⏱️ 开始时间:', new Date(startTime).toLocaleTimeString());
 
-  // 设置60秒超时
+  // 设置120秒超时（VLM处理多图需要更长时间）
   const timeoutPromise = new Promise((_, reject) => {
-    setTimeout(() => reject(new Error('API请求超时 (60秒)')), 60000);
+    setTimeout(() => reject(new Error('API请求超时 (120秒)')), 180000);
   });
 
   try {

@@ -83,25 +83,35 @@ class FloatingPanel {
         }
     }
 
-    expandPanel() {
+    async expandPanel() {
         this.isCollapsed = false;
         this.panel.classList.remove('collapsed');
 
         // 更新按钮图标
         const toggleIcon = this.toggleBtn.querySelector('.toggle-icon');
-        if (toggleIcon) {
-            toggleIcon.textContent = '◀';
+        if (toggleIcon && toggleIcon.tagName === 'IMG') {
+            // 更新为chevron-left图标
+            toggleIcon.dataset.icon = 'chevron-left';
+            toggleIcon.alt = '收起';
+            // 更新图标路径
+            const assetsPath = await window.electronAPI.getAssetsPath();
+            toggleIcon.src = `file://${assetsPath}/icon-chevron-left.svg`;
         }
     }
 
-    collapsePanel() {
+    async collapsePanel() {
         this.isCollapsed = true;
         this.panel.classList.add('collapsed');
 
         // 更新按钮图标
         const toggleIcon = this.toggleBtn.querySelector('.toggle-icon');
-        if (toggleIcon) {
-            toggleIcon.textContent = '▶';
+        if (toggleIcon && toggleIcon.tagName === 'IMG') {
+            // 更新为chevron-right图标
+            toggleIcon.dataset.icon = 'chevron-right';
+            toggleIcon.alt = '展开';
+            // 更新图标路径
+            const assetsPath = await window.electronAPI.getAssetsPath();
+            toggleIcon.src = `file://${assetsPath}/icon-chevron-right.svg`;
         }
     }
 
