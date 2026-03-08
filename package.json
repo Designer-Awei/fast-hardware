@@ -1,6 +1,6 @@
 {
   "name": "fast-hardware",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "description": "一个基于纯Electron的智能硬件开发辅助桌面应用程序",
   "main": "main.js",
   "scripts": {
@@ -71,6 +71,7 @@
       }
     ],
     "win": {
+      "artifactName": "Fast-Hardware-Setup-${version}.${ext}",
       "target": [
         {
           "target": "nsis",
@@ -155,11 +156,12 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "your-github-username",
+      "owner": "Designer-Awei",
       "repo": "fast-hardware"
     }
   },
   "dependencies": {
+    "electron-updater": "^6.8.3",
     "marked": "^16.3.0",
     "pathfinding": "^0.4.18"
   }

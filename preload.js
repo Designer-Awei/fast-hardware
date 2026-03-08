@@ -10,6 +10,16 @@ const { contextBridge, ipcRenderer } = require('electron');
  */
 contextBridge.exposeInMainWorld('electronAPI', {
   /**
+   * 是否启用启动调试日志
+   * @returns {boolean} 是否启用启动调试
+   */
+  isStartupDebugEnabled: () => {
+    return process.argv.includes('--enable-startup-debug') ||
+      process.argv.includes('--enable-logging') ||
+      process.env.STARTUP_DEBUG === '1';
+  },
+
+  /**
    * 获取应用程序版本
    */
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
@@ -155,5 +165,42 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /**
    * 加载模型配置文件
    */
-  loadModelConfig: () => ipcRenderer.invoke('loadModelConfig')
+  loadModelConfig: () => ipcRenderer.invoke('loadModelConfig'),
+
+  /**
+   * 获取当前应用更新状态
+   */
+  getUpdateState: () => ipcRenderer.invoke('get-update-state'),
+
+  /**
+   * 检查应用更新
+   * @param {boolean} [isManual=false] - 是否为手动检查
+   */
+  checkForUpdates: (isManual = false) => ipcRenderer.invoke('check-for-updates', isManual),
+
+  /**
+   * 下载更新包
+   */
+  downloadUpdate: () => ipcRenderer.invoke('download-update'),
+
+  /**
+   * 安装已下载的更新
+   */
+  installUpdate: () => ipcRenderer.invoke('install-update'),
+
+  /**
+   * 监听自动更新状态变化
+   * @param {(payload: any) => void} callback - 更新状态回调
+   */
+  onUpdateStatus: (callback) => {
+    ipcRenderer.on('update-status', (_, payload) => callback(payload));
+  },
+
+  /**
+   * 移除自动更新状态监听
+   * @param {(payload: any) => void} callback - 原始回调
+   */
+  removeUpdateStatusListener: (callback) => {
+    ipcRenderer.removeAllListeners('update-status');
+  }
 });

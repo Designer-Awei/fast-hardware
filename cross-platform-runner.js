@@ -18,19 +18,19 @@ const platformCommands = {
   win32: {
     dev: ['cmd', ['/c', 'chcp 65001 >nul && node dev-runner.js']],
     'dev-simple': ['cmd', ['/c', 'chcp 65001 >nul && electron .']],
-    'dev-debug': ['cmd', ['/c', 'chcp 65001 >nul && electron . --enable-logging']],
+    'dev-debug': ['cmd', ['/c', 'chcp 65001 >nul && electron . --enable-logging --enable-startup-debug']],
     'dev-no-reload': ['cmd', ['/c', 'chcp 65001 >nul && node dev-runner-no-reload.js']]
   },
   darwin: {
     dev: ['node', ['dev-runner.js']],
     'dev-simple': ['electron', ['.']],
-    'dev-debug': ['electron', ['.', '--enable-logging']],
+    'dev-debug': ['electron', ['.', '--enable-logging', '--enable-startup-debug']],
     'dev-no-reload': ['node', ['dev-runner-no-reload.js']]
   },
   linux: {
     dev: ['node', ['dev-runner.js']],
     'dev-simple': ['electron', ['.']],
-    'dev-debug': ['electron', ['.', '--enable-logging']],
+    'dev-debug': ['electron', ['.', '--enable-logging', '--enable-startup-debug']],
     'dev-no-reload': ['node', ['dev-runner-no-reload.js']]
   }
 };

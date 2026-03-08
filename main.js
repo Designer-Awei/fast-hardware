@@ -3,10 +3,30 @@
  * 纯Electron实现，无React框架
  */
 
-const { app, BrowserWindow, Menu, ipcMain, screen, shell, dialog } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, screen, shell, dialog, nativeTheme } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs').promises;
 const https = require('https');
+
+const APP_START_TIME = Date.now();
+const STARTUP_DEBUG_ENABLED = process.argv.includes('--enable-startup-debug') ||
+  process.argv.includes('--enable-logging') ||
+  process.env.STARTUP_DEBUG === '1';
+const UPDATE_STATUS_CHANNEL = 'update-status';
+
+/**
+ * 记录启动阶段日志，便于排查首屏闪烁问题
+ * @param {string} stage - 启动阶段
+ * @param {Record<string, unknown>} [extra={}] - 附加信息
+ */
+function logStartupStage(stage, extra = {}) {
+  if (!STARTUP_DEBUG_ENABLED) {
+    return;
+  }
+  const elapsedMs = Date.now() - APP_START_TIME;
+  console.log(`[startup][main][+${elapsedMs}ms] ${stage}`, extra);
+}
 
 // 设置控制台编码为UTF-8
 if (process.platform === 'win32') {
@@ -20,10 +40,248 @@ if (process.platform === 'win32') {
 // Fast Hardware主进程启动
 console.log('Fast Hardware主进程启动...');
 
+// Windows 上 GPU 进程崩溃会导致首屏黑白闪烁，直接禁用硬件加速规避。
+if (process.platform === 'win32') {
+  app.disableHardwareAcceleration();
+  logStartupStage('app:disableHardwareAcceleration', { platform: process.platform });
+}
+
 /**
  * 主窗口对象
  */
 let mainWindow = null;
+let splashWindow = null;
+let splashShownAt = 0;
+let splashReadyPromise = Promise.resolve();
+let autoUpdaterInitialized = false;
+let updateState = {
+  status: 'idle',
+  currentVersion: app.getVersion(),
+  latestVersion: null,
+  autoCheckEnabled: true,
+  downloadedFile: null,
+  message: ''
+};
+
+/**
+ * 获取 env.local 路径
+ * @returns {string} env.local 文件路径
+ */
+function getEnvPath() {
+  return app.isPackaged
+    ? path.join(app.getPath('userData'), 'env.local')
+    : path.join(__dirname, 'env.local');
+}
+
+/**
+ * 获取设置键到 env 变量的映射
+ * @returns {Record<string, string>} 设置映射表
+ */
+function getSettingsKeyMap() {
+  return {
+    storagePath: 'PROJECT_STORAGE_PATH=',
+    componentLibPath: 'COMPONENT_LIB_PATH=',
+    apiKey: 'SILICONFLOW_API_KEY=',
+    autoCheckUpdates: 'AUTO_CHECK_UPDATES='
+  };
+}
+
+/**
+ * 读取设置值
+ * @param {string} key - 设置键
+ * @returns {Promise<string|undefined>} 设置值
+ */
+async function readSettingValue(key) {
+  try {
+    const envContent = await fs.readFile(getEnvPath(), 'utf8');
+    const lines = envContent.split('\n');
+    const envKey = getSettingsKeyMap()[key];
+    if (!envKey) {
+      return undefined;
+    }
+
+    for (const line of lines) {
+      if (line.startsWith(envKey)) {
+        const value = line.substring(envKey.length).trim();
+        return value || undefined;
+      }
+    }
+
+    return undefined;
+  } catch (error) {
+    return undefined;
+  }
+}
+
+/**
+ * 向渲染进程广播更新状态
+ * @param {Partial<typeof updateState>} [patch={}] - 状态补丁
+ */
+function broadcastUpdateStatus(patch = {}) {
+  updateState = {
+    ...updateState,
+    ...patch,
+    currentVersion: app.getVersion()
+  };
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(UPDATE_STATUS_CHANNEL, updateState);
+  }
+}
+
+/**
+ * 自动更新是否可用
+ * @returns {boolean} 是否支持自动更新
+ */
+function isAutoUpdateAvailable() {
+  return app.isPackaged && (process.platform === 'win32' || process.platform === 'darwin');
+}
+
+/**
+ * 初始化自动更新器
+ */
+function setupAutoUpdater() {
+  if (autoUpdaterInitialized) {
+    return;
+  }
+
+  autoUpdaterInitialized = true;
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
+
+  if (!isAutoUpdateAvailable()) {
+    broadcastUpdateStatus({
+      status: 'idle',
+      message: '',
+      latestVersion: null
+    });
+    return;
+  }
+
+  autoUpdater.on('checking-for-update', () => {
+    broadcastUpdateStatus({
+      status: 'checking',
+      message: '正在检查更新...'
+    });
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    broadcastUpdateStatus({
+      status: 'available',
+      latestVersion: info.version,
+      downloadedFile: null,
+      message: `发现新版本 v${info.version}`
+    });
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    broadcastUpdateStatus({
+      status: 'up-to-date',
+      latestVersion: app.getVersion(),
+      downloadedFile: null,
+      message: '当前已是最新版本'
+    });
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    broadcastUpdateStatus({
+      status: 'downloading',
+      message: `正在下载更新 ${Math.round(progress.percent || 0)}%`,
+      downloadProgress: progress
+    });
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    broadcastUpdateStatus({
+      status: 'downloaded',
+      latestVersion: info.version,
+      message: `新版本 v${info.version} 已下载完成`
+    });
+  });
+
+  autoUpdater.on('error', (error) => {
+    broadcastUpdateStatus({
+      status: 'error',
+      message: `更新失败：${error.message}`
+    });
+  });
+}
+
+/**
+ * 等待指定时长
+ * @param {number} ms - 毫秒
+ * @returns {Promise<void>} 等待完成
+ */
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * 创建启动 Splash 窗口
+ */
+function createSplashWindow() {
+  splashReadyPromise = new Promise((resolve) => {
+    let resolved = false;
+    const resolveOnce = () => {
+      if (!resolved) {
+        resolved = true;
+        resolve();
+      }
+    };
+
+  splashWindow = new BrowserWindow({
+    width: 620,
+    height: 360,
+    frame: false,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    center: true,
+    show: false,
+    backgroundColor: '#061822',
+    icon: path.join(__dirname, 'assets/icon.png')
+  });
+
+    splashWindow.once('ready-to-show', () => {
+      splashShownAt = Date.now();
+      splashWindow.show();
+      splashWindow.focus();
+      logStartupStage('splash:ready-to-show');
+      resolveOnce();
+    });
+
+    splashWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+      console.error('Splash 页面加载失败:', errorCode, errorDescription);
+      resolveOnce();
+    });
+
+  splashWindow.loadFile('splash.html');
+  splashWindow.on('closed', () => {
+    splashWindow = null;
+  });
+
+    setTimeout(() => {
+      if (splashWindow && !splashWindow.isDestroyed() && !splashWindow.isVisible()) {
+        splashShownAt = Date.now();
+        splashWindow.show();
+      }
+      resolveOnce();
+    }, 1500);
+  });
+}
+
+/**
+ * 关闭启动 Splash 窗口
+ */
+function closeSplashWindow() {
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.close();
+  }
+}
 
 /**
  * 窗口配置存储路径
@@ -174,6 +432,9 @@ PROJECT_STORAGE_PATH=${defaultProjectsPath.replace(/\\/g, '/')}
 # 设置系统元件库的保存位置 / Set the system component library storage location
 ${defaultComponentLibPath ? `COMPONENT_LIB_PATH=${defaultComponentLibPath.replace(/\\/g, '/')}` : '# COMPONENT_LIB_PATH='}
 
+# Auto update check / 自动检查更新
+AUTO_CHECK_UPDATES=true
+
 # SiliconFlow API 密钥 / SiliconFlow API Key
 # 请通过应用程序设置页面配置 / Please configure through application settings page
 # SILICONFLOW_API_KEY=your_api_key_here
@@ -245,6 +506,10 @@ function validateWindowBounds(bounds) {
  */
 async function createWindow() {
   console.log('正在创建主窗口...');
+  logStartupStage('createWindow:start', {
+    isPackaged: app.isPackaged,
+    shouldUseDarkColors: nativeTheme.shouldUseDarkColors
+  });
 
   // 读取保存的窗口配置
   const savedConfig = await loadWindowConfig();
@@ -266,6 +531,8 @@ async function createWindow() {
     height: windowBounds ? windowBounds.height : savedConfig.height,
     minHeight: 400,
     minWidth: 800,
+    backgroundColor: '#f5f5f5',
+    title: `Fast Hardware v${app.getVersion()} —— 智能硬件开发助手`,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -294,14 +561,59 @@ async function createWindow() {
   }
 
   mainWindow = new BrowserWindow(windowOptions);
+  logStartupStage('BrowserWindow:created', {
+    bounds: {
+      width: windowOptions.width,
+      height: windowOptions.height,
+      x: windowOptions.x,
+      y: windowOptions.y
+    }
+  });
+
+  mainWindow.on('show', () => {
+    logStartupStage('window:show');
+  });
+
+  mainWindow.on('focus', () => {
+    logStartupStage('window:focus');
+  });
+
+  mainWindow.on('maximize', () => {
+    logStartupStage('window:maximize');
+  });
 
   // 加载主页面
   console.log('加载主页面: index.html');
+  logStartupStage('window:loadFile:index.html');
   mainWindow.loadFile('index.html');
 
+  mainWindow.webContents.on('did-start-loading', () => {
+    logStartupStage('webContents:did-start-loading');
+  });
+
+  mainWindow.webContents.on('dom-ready', () => {
+    logStartupStage('webContents:dom-ready');
+  });
+
+  mainWindow.once('ready-to-show', () => {
+    logStartupStage('window:ready-to-show');
+  });
+
   // 页面加载完成后显示窗口
-  mainWindow.webContents.on('did-finish-load', () => {
+  mainWindow.webContents.on('did-finish-load', async () => {
     console.log('页面加载完成');
+    logStartupStage('webContents:did-finish-load', {
+      url: mainWindow.webContents.getURL()
+    });
+
+    await splashReadyPromise;
+
+    const minSplashDuration = 2500;
+    const elapsedSinceSplashShown = splashShownAt ? Date.now() - splashShownAt : 0;
+    const remainingSplashTime = Math.max(0, minSplashDuration - elapsedSinceSplashShown);
+    if (remainingSplashTime > 0) {
+      await delay(remainingSplashTime);
+    }
 
     // 如果配置要求最大化，则最大化窗口
     if (savedConfig.isMaximized) {
@@ -313,12 +625,24 @@ async function createWindow() {
 
     // 聚焦窗口
     mainWindow.focus();
+
+    broadcastUpdateStatus();
+
+    setTimeout(() => {
+      closeSplashWindow();
+    }, 160);
   });
 
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
     console.error('页面加载失败:', errorCode, errorDescription, validatedURL);
+    logStartupStage('webContents:did-fail-load', {
+      errorCode,
+      errorDescription,
+      validatedURL
+    });
     // 即使加载失败也显示窗口
     mainWindow.show();
+    closeSplashWindow();
   });
 
   // 开发模式下打开开发者工具
@@ -359,10 +683,30 @@ async function createWindow() {
 app.whenReady().then(async () => {
   console.log('Electron应用程序已准备就绪');
 
+  createSplashWindow();
+
   // 初始化用户配置文件
   await initializeUserConfig();
 
+  setupAutoUpdater();
   createWindow();
+
+  const autoCheckUpdates = await readSettingValue('autoCheckUpdates');
+  const shouldAutoCheckUpdates = autoCheckUpdates !== 'false';
+  broadcastUpdateStatus({
+    autoCheckEnabled: shouldAutoCheckUpdates
+  });
+
+  if (shouldAutoCheckUpdates && isAutoUpdateAvailable()) {
+    setTimeout(() => {
+      autoUpdater.checkForUpdates().catch((error) => {
+        broadcastUpdateStatus({
+          status: 'error',
+          message: `自动检查更新失败：${error.message}`
+        });
+      });
+    }, 2500);
+  }
 }).catch((error) => {
   console.error('应用程序初始化失败:', error);
 });
@@ -379,6 +723,7 @@ app.on('window-all-closed', () => {
 app.on('activate', () => {
   console.log('应用程序被激活');
   if (BrowserWindow.getAllWindows().length === 0) {
+    createSplashWindow();
     createWindow();
   }
 });
@@ -390,6 +735,70 @@ ipcMain.handle('get-app-version', () => {
 
 ipcMain.handle('get-platform', () => {
   return process.platform;
+});
+
+ipcMain.handle('get-update-state', async () => {
+  const autoCheckUpdates = await readSettingValue('autoCheckUpdates');
+  return {
+    ...updateState,
+    currentVersion: app.getVersion(),
+    autoCheckEnabled: autoCheckUpdates !== 'false'
+  };
+});
+
+ipcMain.handle('check-for-updates', async (event, isManual = false) => {
+  const autoCheckUpdates = await readSettingValue('autoCheckUpdates');
+  broadcastUpdateStatus({
+    autoCheckEnabled: autoCheckUpdates !== 'false'
+  });
+
+  if (!isAutoUpdateAvailable()) {
+    return {
+      success: false,
+      message: app.isPackaged ? '当前平台暂不支持自动更新' : '开发环境无法检查线上更新'
+    };
+  }
+
+  try {
+    await autoUpdater.checkForUpdates();
+    return { success: true };
+  } catch (error) {
+    const message = `${isManual ? '手动' : '自动'}检查更新失败：${error.message}`;
+    broadcastUpdateStatus({
+      status: 'error',
+      message
+    });
+    return { success: false, message };
+  }
+});
+
+ipcMain.handle('download-update', async () => {
+  if (!isAutoUpdateAvailable()) {
+    return { success: false, message: '当前环境不支持下载更新' };
+  }
+
+  try {
+    await autoUpdater.downloadUpdate();
+    return { success: true };
+  } catch (error) {
+    const message = `下载更新失败：${error.message}`;
+    broadcastUpdateStatus({
+      status: 'error',
+      message
+    });
+    return { success: false, message };
+  }
+});
+
+ipcMain.handle('install-update', async () => {
+  if (updateState.status !== 'downloaded') {
+    return { success: false, message: '更新尚未下载完成' };
+  }
+
+  setImmediate(() => {
+    autoUpdater.quitAndInstall(false, true);
+  });
+  return { success: true };
 });
 
 ipcMain.handle('get-assets-path', () => {
@@ -964,36 +1373,7 @@ process.on('unhandledRejection', (reason, promise) => {
 // 获取设置值（从env.local文件）
 ipcMain.handle('get-settings', async (event, key) => {
   try {
-    // 根据运行环境选择不同的env文件路径
-    const envPath = app.isPackaged
-      ? path.join(app.getPath('userData'), 'env.local')  // 生产环境：用户数据目录
-      : path.join(__dirname, 'env.local');              // 开发环境：项目目录
-
-    // 读取文件内容
-    const envContent = await fs.readFile(envPath, 'utf8');
-    const lines = envContent.split('\n');
-
-    // 根据key查找对应的值
-    const keyMap = {
-      'storagePath': 'PROJECT_STORAGE_PATH=',
-      'componentLibPath': 'COMPONENT_LIB_PATH=',
-      'apiKey': 'SILICONFLOW_API_KEY='
-    };
-
-    const envKey = keyMap[key];
-    if (!envKey) {
-      return undefined;
-    }
-
-    for (const line of lines) {
-      if (line.startsWith(envKey)) {
-        const value = line.substring(envKey.length).trim();
-        return value || undefined;
-      }
-    }
-
-    // 如果没找到，返回undefined
-    return undefined;
+    return await readSettingValue(key);
   } catch (error) {
     console.log('读取设置失败:', error.message);
     return undefined;
@@ -1005,10 +1385,7 @@ ipcMain.handle('save-settings', async (event, key, value) => {
   console.log(`[main.js] 开始保存设置: key=${key}, value=${value}`);
 
   try {
-    // 根据运行环境选择不同的env文件路径
-    const envPath = app.isPackaged
-      ? path.join(app.getPath('userData'), 'env.local')  // 生产环境：用户数据目录
-      : path.join(__dirname, 'env.local');              // 开发环境：项目目录
+    const envPath = getEnvPath();
 
     let envContent = '';
 
@@ -1025,19 +1402,19 @@ ipcMain.handle('save-settings', async (event, key, value) => {
 SILICONFLOW_API_KEY=
 
 # Project Storage Path
-PROJECT_STORAGE_PATH=`;
+PROJECT_STORAGE_PATH=
+
+# Component Library Path
+COMPONENT_LIB_PATH=
+
+# Auto update check
+AUTO_CHECK_UPDATES=true`;
     }
 
     // 更新或添加设置
     const lines = envContent.split('\n');
 
-    const keyMap = {
-      'storagePath': 'PROJECT_STORAGE_PATH=',
-      'componentLibPath': 'COMPONENT_LIB_PATH=',
-      'apiKey': 'SILICONFLOW_API_KEY='
-    };
-
-    const envKey = keyMap[key];
+    const envKey = getSettingsKeyMap()[key];
     if (!envKey) {
       return { success: false, error: '不支持的设置键' };
     }
@@ -1062,6 +1439,11 @@ PROJECT_STORAGE_PATH=`;
     await fs.writeFile(envPath, newContent, 'utf8');
 
     console.log(`${key}已保存到env.local文件`);
+    if (key === 'autoCheckUpdates') {
+      broadcastUpdateStatus({
+        autoCheckEnabled: value !== 'false'
+      });
+    }
     return { success: true };
   } catch (error) {
     console.error('保存设置失败:', error);

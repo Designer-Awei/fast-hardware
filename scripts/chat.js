@@ -17,6 +17,7 @@ class ChatManager {
         this.isInterrupted = false; // 中断标志
         this.currentUserMessage = null; // 当前用户消息，用于中断恢复
         this.currentAbortController = null; // 用于中断API请求
+        this.workflowEngine = null; // 工作流引擎
         this.init();
     }
 
@@ -27,6 +28,13 @@ class ChatManager {
         this.bindEvents();
         await this.loadInitialMessages();
         await this.initializeModelDisplay();
+        // 初始化工作流引擎
+        if (window.CircuitWorkflowEngine) {
+            this.workflowEngine = new window.CircuitWorkflowEngine(this);
+            console.log('✅ 工作流引擎初始化完成');
+        } else {
+            console.warn('⚠️ 工作流引擎类未找到，请确保 workflow-circuit.js 已加载');
+        }
     }
 
     /**
@@ -108,7 +116,7 @@ class ChatManager {
             console.log('🎨 更新模型显示:', displayText);
             modelNameElement.textContent = displayText;
             modelNameElement.title = modelInfo.description;
-            
+
             // 同时更新下拉选项的选中状态
             if (updateSelection) {
                 this.updateModelSelection(modelInfo.name);
@@ -386,7 +394,26 @@ class ChatManager {
         // 滚动到底部
         this.scrollToBottom();
 
-        // 开始AI回复（传入模型信息和多图）
+        // 🔍 工作流判别：判断是直接回复还是走工作流
+        if (this.workflowEngine && (!userMessage.images || userMessage.images.length === 0)) {
+            // 只有纯文本消息才进行工作流判别（图片消息直接走普通回复）
+            try {
+                // 获取对话历史（排除当前消息）
+                const conversationHistory = this.messages.slice(0, -1);
+                const shouldRun = await this.workflowEngine.shouldRunWorkflow(messageContent, conversationHistory);
+                console.log('🔍 工作流判别结果:', shouldRun);
+                
+                if (shouldRun.shouldRunWorkflow) {
+                    // 走工作流
+                    await this.runWorkflow(messageContent, userMessage);
+                    return;
+                }
+            } catch (error) {
+                console.error('❌ 工作流判别失败，回退到普通回复:', error);
+            }
+        }
+
+        // 普通回复流程
         this.simulateAIResponse(messageContent, this.selectedModel, userMessage.images);
     }
 
@@ -599,10 +626,10 @@ class ChatManager {
                             console.log(`👤 历史用户消息 [ID:${msg.id}] (原含${msg.images.length}张图片，仅保留文本)`);
                         } else {
                             // 如果用户消息只有图片没有文字，添加一个占位文本
-                            messages.push({
-                                role: 'user',
+                        messages.push({
+                            role: 'user',
                                 content: '[用户发送了图片]'
-                            });
+                        });
                             console.log(`👤 历史用户消息 [ID:${msg.id}] (仅图片消息，使用占位文本)`);
                         }
                     } else {
@@ -810,6 +837,288 @@ class ChatManager {
                 timestamp: new Date().toISOString()
             });
             return '🤖 抱歉，发生了网络错误，请稍后重试。\n\n请检查控制台查看详细错误信息。';
+        }
+    }
+
+    /**
+     * 调用LLM API（供工作流引擎使用）
+     * @param {Object} params - API参数 {messages, model, temperature}
+     * @returns {Promise<Object>} LLM响应 {content: string}
+     */
+    async callLLMAPI(params) {
+        const { messages, model, temperature = 0.7 } = params;
+        
+        try {
+            const result = await window.electronAPI.chatWithAI(messages, model);
+            
+            if (result.success) {
+                return { content: result.content };
+            } else {
+                throw new Error(result.error || 'LLM API调用失败');
+            }
+        } catch (error) {
+            console.error('❌ LLM API调用失败:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * 运行工作流
+     * @param {string} userMessage - 用户消息
+     * @param {Object} userMessageObj - 用户消息对象
+     */
+    async runWorkflow(userMessage, userMessageObj) {
+        if (!this.workflowEngine) {
+            console.error('❌ 工作流引擎未初始化');
+            return;
+        }
+
+        this.isTyping = true;
+        this.showTypingIndicator();
+
+        try {
+            // 第一步：方案设计（简明分析 + 元件预估参数）
+            const schemeDesignResult = await this.workflowEngine.runSchemeDesign(userMessage);
+
+            if (this.isInterrupted) {
+                return;
+            }
+
+            this.hideTypingIndicator();
+
+            const formattedContent = this.workflowEngine.formatSchemeDesignForDisplay(schemeDesignResult);
+
+            const aiMessage = {
+                id: Date.now(),
+                type: 'assistant',
+                content: formattedContent,
+                isWorkflow: true,
+                workflowState: this.workflowEngine.currentWorkflowState,
+                timestamp: new Date()
+            };
+
+            this.messages.push(aiMessage);
+            await this.renderMessages();
+            this.scrollToBottom();
+
+            this.bindSchemeDesignButtons(userMessage);
+
+        } catch (error) {
+            console.error('❌ 工作流执行失败:', error);
+            this.hideTypingIndicator();
+
+            const errorMessage = {
+                id: Date.now(),
+                type: 'assistant',
+                content: `❌ 工作流执行失败：${error.message}`,
+                timestamp: new Date()
+            };
+
+            this.messages.push(errorMessage);
+            await this.renderMessages();
+            this.scrollToBottom();
+        } finally {
+            this.isTyping = false;
+        }
+    }
+
+    /**
+     * 绑定方案设计阶段的「开始匹配」「暂不匹配」按钮
+     * @param {string} userMessage - 用户需求原文
+     */
+    bindSchemeDesignButtons(userMessage) {
+        setTimeout(() => {
+            const startMatchBtn = document.getElementById('workflow-start-match');
+            const skipMatchBtn = document.getElementById('workflow-skip-match');
+
+            if (startMatchBtn) {
+                startMatchBtn.addEventListener('click', async () => {
+                    await this.runMatchingStage(userMessage);
+                });
+            }
+
+            if (skipMatchBtn) {
+                skipMatchBtn.addEventListener('click', () => {
+                    this.handleSkipMatch();
+                });
+            }
+        }, 100);
+    }
+
+    /**
+     * 用户点击「开始匹配」后执行：带方案设计参考的需求分析与元件匹配
+     * @param {string} userMessage - 用户需求原文
+     */
+    async runMatchingStage(userMessage) {
+        const state = this.workflowEngine.currentWorkflowState;
+        const schemeDesignResult = state && state.schemeDesignResult ? state.schemeDesignResult : null;
+
+        this.isTyping = true;
+        this.showTypingIndicator();
+
+        try {
+            const analysisResult = await this.workflowEngine.runRequirementAnalysis(userMessage, schemeDesignResult);
+
+            if (this.isInterrupted) {
+                return;
+            }
+
+            this.hideTypingIndicator();
+
+            const formattedContent = this.workflowEngine.formatAnalysisResultForDisplay(analysisResult);
+
+            const aiMessage = {
+                id: Date.now(),
+                type: 'assistant',
+                content: formattedContent,
+                isWorkflow: true,
+                workflowState: this.workflowEngine.currentWorkflowState,
+                timestamp: new Date()
+            };
+
+            this.messages.push(aiMessage);
+            await this.renderMessages();
+            this.scrollToBottom();
+
+            this.bindWorkflowButtons(analysisResult);
+        } catch (error) {
+            console.error('❌ 匹配阶段失败:', error);
+            this.hideTypingIndicator();
+            const errorMessage = {
+                id: Date.now(),
+                type: 'assistant',
+                content: `❌ 元件匹配失败：${error.message}`,
+                timestamp: new Date()
+            };
+            this.messages.push(errorMessage);
+            await this.renderMessages();
+            this.scrollToBottom();
+        } finally {
+            this.isTyping = false;
+        }
+    }
+
+    /**
+     * 用户点击「暂不匹配」：不执行匹配，后续可凭「检查缺什么元件」等再次发起匹配
+     */
+    handleSkipMatch() {
+        const msg = '已暂不匹配。如需匹配元件库，可说「开始匹配」或「检查缺什么元件」';
+        if (typeof this.showNotification === 'function') {
+            this.showNotification(msg);
+        } else if (typeof window.showNotification === 'function') {
+            window.showNotification(msg, 'info');
+        }
+    }
+
+    /**
+     * 绑定工作流按钮事件
+     * @param {Object} analysisResult - 分析结果
+     */
+    bindWorkflowButtons(analysisResult) {
+        // 延迟绑定，确保DOM已渲染
+        setTimeout(() => {
+            const autoCompleteBtn = document.getElementById('workflow-auto-complete');
+            const manualCompleteBtn = document.getElementById('workflow-manual-complete');
+
+            if (autoCompleteBtn) {
+                autoCompleteBtn.addEventListener('click', async () => {
+                    await this.handleAutoComplete(analysisResult);
+                });
+            }
+
+            if (manualCompleteBtn) {
+                manualCompleteBtn.addEventListener('click', () => {
+                    this.handleManualComplete();
+                });
+            }
+        }, 100);
+    }
+
+    /**
+     * 处理自动补全
+     * @param {Object} analysisResult - 分析结果
+     */
+    async handleAutoComplete(analysisResult) {
+        const missingComponents = analysisResult.components.filter(c => c.exists === 0);
+        
+        if (missingComponents.length === 0) {
+            return;
+        }
+
+        this.isTyping = true;
+        this.showTypingIndicator();
+
+        try {
+            // 调用工作流引擎的自动补全方法
+            const createdComponents = await this.workflowEngine.autoCompleteComponents(missingComponents);
+
+            // 更新工作流状态
+            if (this.workflowEngine.currentWorkflowState) {
+                // 更新匹配结果，将创建的元件标记为已存在
+                createdComponents.forEach(created => {
+                    const comp = this.workflowEngine.currentWorkflowState.analysisResult.components.find(
+                        c => c.name === created.name
+                    );
+                    if (comp) {
+                        comp.exists = 1;
+                        comp.matchedKey = created.componentKey;
+                    }
+                });
+            }
+
+            this.hideTypingIndicator();
+
+            // 显示成功消息
+            const successMessage = {
+                id: Date.now(),
+                type: 'assistant',
+                content: `✅ 已为 ${createdComponents.length} 个缺失元件自动创建占位元件，存放于系统元件库的 custom 目录。\n\n现在可以继续下一步：元件生成与整理。`,
+                timestamp: new Date()
+            };
+
+            this.messages.push(successMessage);
+            await this.renderMessages();
+            this.scrollToBottom();
+
+            // TODO: 进入下一阶段（元件生成与整理）
+
+        } catch (error) {
+            console.error('❌ 自动补全失败:', error);
+            this.hideTypingIndicator();
+
+            const errorMessage = {
+                id: Date.now(),
+                type: 'assistant',
+                content: `❌ 自动补全失败：${error.message}`,
+                timestamp: new Date()
+            };
+
+            this.messages.push(errorMessage);
+            await this.renderMessages();
+            this.scrollToBottom();
+        } finally {
+            this.isTyping = false;
+        }
+    }
+
+    /**
+     * 处理手动补全
+     */
+    handleManualComplete() {
+        const message = {
+            id: Date.now(),
+            type: 'assistant',
+            content: '✋ 已切换为手动补全模式。请在元件库中创建或导入缺失元件，然后重新发起电路设计需求。',
+            timestamp: new Date()
+        };
+
+        this.messages.push(message);
+        this.renderMessages();
+        this.scrollToBottom();
+
+        // 结束工作流
+        if (this.workflowEngine) {
+            this.workflowEngine.currentWorkflowState = null;
         }
     }
 
@@ -1041,7 +1350,15 @@ class ChatManager {
             second: '2-digit'
         });
 
-        let contentHtml = this.renderMarkdown(message.content);
+        // 对于工作流消息，如果内容已经是HTML，直接使用；否则进行markdown渲染
+        let contentHtml;
+        if (message.isWorkflow && message.content.trim().startsWith('<div')) {
+            // 工作流消息，内容已经是HTML格式，直接使用
+            contentHtml = message.content;
+        } else {
+            // 普通消息，进行markdown渲染
+            contentHtml = this.renderMarkdown(message.content);
+        }
 
         // 如果有多图，添加图片显示
         if (message.images && message.images.length > 0) {
@@ -1338,7 +1655,27 @@ class ChatManager {
         await this.renderMessages();
         this.scrollToBottom();
 
-        // 开始AI回复
+        // 🔍 工作流判别：判断是直接回复还是走工作流（与sendMessage保持一致）
+        if (this.workflowEngine && (!userMessage.images || userMessage.images.length === 0)) {
+            // 只有纯文本消息才进行工作流判别（图片消息直接走普通回复）
+            try {
+                // 获取对话历史（排除当前消息）
+                const conversationHistory = this.messages.slice(0, -1);
+                const shouldRun = await this.workflowEngine.shouldRunWorkflow(message.content, conversationHistory);
+                console.log('🔍 重新发送 - 工作流判别结果:', shouldRun);
+                
+                if (shouldRun.shouldRunWorkflow) {
+                    // 走工作流
+                    await this.runWorkflow(message.content, userMessage);
+                    console.log(`🔄 重新发送消息 ID: ${messageId}`);
+                    return;
+                }
+            } catch (error) {
+                console.error('❌ 重新发送 - 工作流判别失败，回退到普通回复:', error);
+            }
+        }
+
+        // 普通回复流程
         this.simulateAIResponse(message.content, this.selectedModel, message.images || []);
 
         console.log(`🔄 重新发送消息 ID: ${messageId}`);
@@ -1383,15 +1720,15 @@ class ChatManager {
                 // updateModelDisplay 会自动调用 updateModelSelection
                 this.updateModelDisplay(modelInfo);
             } else {
-                const modelNameElement = document.getElementById('current-model');
-                if (modelNameElement) {
-                    modelNameElement.textContent = model;
+        const modelNameElement = document.getElementById('current-model');
+        if (modelNameElement) {
+            modelNameElement.textContent = model;
                     modelNameElement.title = typeOrDesc || model;
-                }
+        }
                 // 手动更新选中状态
                 this.updateModelSelection(model);
             }
-        } else {
+            } else {
             const modelNameElement = document.getElementById('current-model');
             if (modelNameElement) {
                 modelNameElement.textContent = model;

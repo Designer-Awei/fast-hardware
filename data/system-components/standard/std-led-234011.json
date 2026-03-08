@@ -1,0 +1,27 @@
+{
+  "name": "LED",
+  "id": "std-led-234011",
+  "description": "发光LED模块",
+  "category": "auxiliary",
+  "pins": {
+    "side1": [],
+    "side2": [],
+    "side3": [
+      {
+        "pinName": "V+",
+        "type": "power",
+        "order": 1
+      },
+      {
+        "pinName": "V-",
+        "type": "ground",
+        "order": 2
+      }
+    ],
+    "side4": []
+  },
+  "dimensions": {
+    "width": 80,
+    "height": 40
+  }
+}

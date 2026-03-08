@@ -2580,3 +2580,215 @@
     }
 }
 
+/* ========================================
+   工作流相关样式
+   ======================================== */
+
+/* 工作流分析结果容器 */
+
+.workflow-analysis-result h4 {
+    margin: 0 0 10px 0;
+    color: #333;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.workflow-analysis-result p {
+    margin: 8px 0;
+    color: #666;
+    line-height: 1.6;
+}
+
+/* 元件匹配结果表格 */
+.component-match-table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    margin: 15px 0;
+    background: white;
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.component-match-table thead {
+    background: #f5f5f5;
+}
+
+.component-match-table th {
+    padding: 12px 15px;
+    text-align: left;
+    font-weight: 600;
+    color: #333;
+    font-size: 14px;
+    border-bottom: 2px solid #e0e0e0;
+}
+
+/* 匹配状态、匹配结果两列等宽 */
+.component-match-table th:nth-child(2),
+.component-match-table th:nth-child(3),
+.component-match-table td:nth-child(2),
+.component-match-table td:nth-child(3) {
+    width: 22%;
+    min-width: 100px;
+}
+
+.component-match-table td {
+    padding: 10px 15px;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 14px;
+}
+
+.component-match-table tbody tr:hover {
+    background: #f9f9f9;
+}
+
+.component-match-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.component-match-table code {
+    background: #f5f5f5;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+    color: #d63384;
+    font-family: 'Courier New', monospace;
+}
+
+.component-match-table .match-result-cell {
+    color: #333;
+    font-size: 14px;
+}
+
+/* 方案设计阶段 */
+.workflow-scheme-design {
+    margin: 0;
+}
+
+.workflow-scheme-design .scheme-summary {
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 10px;
+}
+
+.workflow-scheme-design .scheme-narrative {
+    color: #555;
+    font-size: 14px;
+    line-height: 1.6;
+    margin-bottom: 14px;
+}
+
+.workflow-scheme-design h5 {
+    font-size: 13px;
+    color: #666;
+    margin: 0 0 8px 0;
+}
+
+.workflow-scheme-design .scheme-params {
+    margin: 0 0 16px 0;
+    padding-left: 20px;
+    font-size: 14px;
+    color: #444;
+    line-height: 1.7;
+}
+
+.workflow-scheme-design .scheme-params strong {
+    color: #333;
+}
+
+.workflow-actions--scheme {
+    background: #e7f3ff;
+    border-left-color: #2196f3;
+}
+
+.workflow-actions--scheme p {
+    color: #1565c0;
+}
+
+.workflow-actions--scheme strong {
+    color: #0d47a1;
+}
+
+/* 工作流操作区域 */
+.workflow-actions {
+    margin-top: 20px;
+    padding: 15px;
+    background: #fff3cd;
+    border-radius: 6px;
+    border-left: 4px solid #ffc107;
+}
+
+.workflow-actions p {
+    margin: 0 0 12px 0;
+    color: #856404;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.workflow-actions strong {
+    color: #d63384;
+}
+
+/* 工作流按钮容器 */
+.workflow-buttons {
+    display: flex;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.workflow-buttons .btn {
+    padding: 8px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.workflow-buttons .btn-primary {
+    background: #2196f3;
+    color: white;
+}
+
+.workflow-buttons .btn-primary:hover {
+    background: #1976d2;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(33, 150, 243, 0.3);
+}
+
+.workflow-buttons .btn-secondary {
+    background: #6c757d;
+    color: white;
+}
+
+.workflow-buttons .btn-secondary:hover {
+    background: #5a6268;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(108, 117, 125, 0.3);
+}
+
+.workflow-buttons .btn:active {
+    transform: translateY(0);
+}
+
+/* 工作流操作区域 - 全部匹配（连线选项） */
+.workflow-actions--complete {
+    background: #d4edda;
+    border-left-color: #28a745;
+}
+
+.workflow-actions--complete p {
+    color: #155724;
+}
+
+.workflow-actions--complete strong {
+    color: #28a745;
+}
+
+/* 工作流相关样式结束 */

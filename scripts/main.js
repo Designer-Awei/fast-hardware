@@ -3,6 +3,46 @@
  * 处理应用初始化、标签页切换等核心功能
  */
 
+const STARTUP_DEBUG_ENABLED = Boolean(
+    window.electronAPI &&
+    typeof window.electronAPI.isStartupDebugEnabled === 'function' &&
+    window.electronAPI.isStartupDebugEnabled()
+);
+
+const RENDER_START_TIME = performance.now();
+
+/**
+ * 记录渲染进程启动阶段日志，便于排查首屏闪烁问题
+ * @param {string} stage - 启动阶段
+ * @param {Record<string, unknown>} [extra={}] - 附加信息
+ */
+function logRenderStartup(stage, extra = {}) {
+    if (!STARTUP_DEBUG_ENABLED) {
+        return;
+    }
+    const elapsedMs = Math.round(performance.now() - RENDER_START_TIME);
+    console.log(`[startup][renderer][+${elapsedMs}ms] ${stage}`, extra);
+}
+
+/**
+ * 获取当前页面主题与首屏背景信息
+ * @returns {Record<string, unknown>} 页面视觉状态
+ */
+function getRenderVisualState() {
+    const body = document.body;
+    const html = document.documentElement;
+    const bodyStyle = body ? window.getComputedStyle(body) : null;
+    return {
+        readyState: document.readyState,
+        prefersDark: window.matchMedia('(prefers-color-scheme: dark)').matches,
+        bodyBackgroundColor: bodyStyle ? bodyStyle.backgroundColor : null,
+        bodyColor: bodyStyle ? bodyStyle.color : null,
+        bodyClassName: body ? body.className : '',
+        htmlClassName: html ? html.className : '',
+        visibilityState: document.visibilityState
+    };
+}
+
 // 应用状态管理
 class FastHardwareApp {
     constructor() {
@@ -15,6 +55,8 @@ class FastHardwareApp {
 
         // 项目标签管理器
         this.projectTabsManager = null;
+        this.updateBannerState = null;
+        this.updateBannerDismissed = false;
 
         this.init();
     }
@@ -23,12 +65,33 @@ class FastHardwareApp {
      * 初始化应用
      */
     async init() {
+        logRenderStartup('FastHardwareApp.init:start', getRenderVisualState());
         this.bindEvents();
         this.initializeUI();
+        this.initializeWindowTitle();
+        this.bindUpdateBannerEvents();
+        this.bindUpdateStatusEvents();
         await this.initializeIconPaths();
         
         // 初始化项目标签管理器
         this.projectTabsManager = new ProjectTabsManager(this);
+        this.refreshUpdateBannerState();
+        logRenderStartup('FastHardwareApp.init:end', getRenderVisualState());
+    }
+
+    /**
+     * 初始化窗口标题版本号
+     */
+    initializeWindowTitle() {
+        if (window.electronAPI && window.electronAPI.getAppVersion) {
+            window.electronAPI.getAppVersion()
+                .then((version) => {
+                    document.title = `Fast Hardware v${version} —— 智能硬件开发助手`;
+                })
+                .catch((error) => {
+                    console.error('初始化窗口标题失败:', error);
+                });
+        }
     }
 
     /**
@@ -249,6 +312,106 @@ class FastHardwareApp {
         const notificationContainer = document.createElement('div');
         notificationContainer.id = 'notification-container';
         document.body.appendChild(notificationContainer);
+    }
+
+    /**
+     * 绑定顶部更新通知栏事件
+     */
+    bindUpdateBannerEvents() {
+        const actionBtn = document.getElementById('update-banner-action');
+        const closeBtn = document.getElementById('update-banner-close');
+
+        actionBtn?.addEventListener('click', async () => {
+            if (!this.updateBannerState || !window.electronAPI) {
+                return;
+            }
+
+            if (this.updateBannerState.status === 'available') {
+                await window.electronAPI.downloadUpdate();
+            } else if (this.updateBannerState.status === 'downloaded') {
+                await window.electronAPI.installUpdate();
+            } else if (this.updateBannerState.status === 'error') {
+                await window.electronAPI.checkForUpdates(true);
+            }
+        });
+
+        closeBtn?.addEventListener('click', () => {
+            this.updateBannerDismissed = true;
+            this.renderUpdateBanner();
+        });
+    }
+
+    /**
+     * 绑定自动更新状态事件
+     */
+    bindUpdateStatusEvents() {
+        if (window.electronAPI && window.electronAPI.onUpdateStatus) {
+            window.electronAPI.onUpdateStatus((payload) => {
+                this.updateBannerState = payload;
+                this.updateBannerDismissed = false;
+                this.renderUpdateBanner();
+            });
+        }
+    }
+
+    /**
+     * 刷新当前更新状态
+     */
+    refreshUpdateBannerState() {
+        if (window.electronAPI && window.electronAPI.getUpdateState) {
+            window.electronAPI.getUpdateState()
+                .then((state) => {
+                    this.updateBannerState = state;
+                    this.renderUpdateBanner();
+                })
+                .catch((error) => {
+                    console.error('获取更新状态失败:', error);
+                });
+        }
+    }
+
+    /**
+     * 渲染顶部更新通知栏
+     */
+    renderUpdateBanner() {
+        const banner = document.getElementById('update-banner');
+        const text = document.getElementById('update-banner-text');
+        const actionBtn = document.getElementById('update-banner-action');
+        if (!banner || !text || !actionBtn || !this.updateBannerState) {
+            return;
+        }
+
+        if (this.updateBannerDismissed) {
+            banner.classList.add('hidden');
+            return;
+        }
+
+        const { status, latestVersion, message } = this.updateBannerState;
+        const actionableStatuses = ['available', 'downloading', 'downloaded', 'error'];
+        if (!actionableStatuses.includes(status)) {
+            banner.classList.add('hidden');
+            return;
+        }
+
+        banner.classList.remove('hidden');
+
+        if (status === 'available') {
+            text.textContent = `发现新版本 v${latestVersion}，可立即下载更新`;
+            actionBtn.textContent = '下载更新';
+            actionBtn.disabled = false;
+        } else if (status === 'downloading') {
+            text.textContent = message || '正在下载更新...';
+            actionBtn.textContent = '下载中';
+            actionBtn.disabled = true;
+        } else if (status === 'downloaded') {
+            text.textContent = `新版本 v${latestVersion} 已下载完成，点击安装并重启`;
+            actionBtn.textContent = '立即安装';
+            actionBtn.disabled = false;
+        } else if (status === 'error') {
+            text.textContent = message || '检查更新失败，可重试';
+            actionBtn.textContent = '重试';
+            actionBtn.disabled = false;
+        }
     }
 
     /**
@@ -1087,11 +1250,66 @@ void loop() {
 // 全局应用实例
 let app;
 
+if (STARTUP_DEBUG_ENABLED) {
+    document.addEventListener('readystatechange', () => {
+        logRenderStartup(`document.readystatechange:${document.readyState}`, getRenderVisualState());
+    });
+
+    window.addEventListener('load', () => {
+        logRenderStartup('window.load', getRenderVisualState());
+    });
+
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (event) => {
+        logRenderStartup('prefers-color-scheme:change', {
+            matches: event.matches
+        });
+    });
+}
+
 // DOM加载完成后初始化应用
 document.addEventListener('DOMContentLoaded', () => {
+    logRenderStartup('DOMContentLoaded:before-app-init', getRenderVisualState());
     app = new FastHardwareApp();
     window.app = app; // 设置全局引用供其他脚本使用
     window.mainApp = app; // 向后兼容
+
+    if (STARTUP_DEBUG_ENABLED) {
+        let frameCount = 0;
+        const logAnimationFrame = () => {
+            frameCount += 1;
+            logRenderStartup(`requestAnimationFrame:${frameCount}`, getRenderVisualState());
+            if (frameCount < 3) {
+                requestAnimationFrame(logAnimationFrame);
+            }
+        };
+        requestAnimationFrame(logAnimationFrame);
+
+        const observer = new MutationObserver((mutations) => {
+            const interestingMutation = mutations.some((mutation) => {
+                return mutation.type === 'attributes' &&
+                    (mutation.attributeName === 'class' || mutation.attributeName === 'style');
+            });
+            if (interestingMutation) {
+                logRenderStartup('MutationObserver:class-or-style-changed', getRenderVisualState());
+            }
+        });
+
+        if (document.documentElement) {
+            observer.observe(document.documentElement, {
+                attributes: true,
+                subtree: true,
+                attributeFilter: ['class', 'style']
+            });
+        }
+
+        // 仅保留启动早期的 DOM 变更日志，避免正常交互阶段持续刷屏。
+        setTimeout(() => {
+            observer.disconnect();
+            logRenderStartup('MutationObserver:stopped');
+        }, 4000);
+    }
+
+    logRenderStartup('DOMContentLoaded:after-app-init', getRenderVisualState());
 });
 
 // 导出全局函数供其他脚本使用

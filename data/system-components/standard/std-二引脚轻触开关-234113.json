@@ -1,0 +1,27 @@
+{
+  "name": "二引脚轻触开关",
+  "id": "std-二引脚轻触开关-234113",
+  "description": "按下导通，弹起断开",
+  "category": "auxiliary",
+  "pins": {
+    "side1": [],
+    "side2": [],
+    "side3": [
+      {
+        "pinName": "V+",
+        "type": "power",
+        "order": 1
+      },
+      {
+        "pinName": "V-",
+        "type": "ground",
+        "order": 2
+      }
+    ],
+    "side4": []
+  },
+  "dimensions": {
+    "width": 120,
+    "height": 40
+  }
+}

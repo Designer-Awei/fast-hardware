@@ -45,17 +45,26 @@
             <div id="circuit-design-tab" class="tab-content active">
                 <!-- 项目标签栏 -->
                 <div class="project-tabs-bar">
+                    <div class="update-banner hidden" id="update-banner">
+                        <span class="update-banner-text" id="update-banner-text"></span>
+                        <div class="update-banner-actions">
+                            <button class="update-banner-btn primary" id="update-banner-action">更新</button>
+                            <button class="update-banner-btn close" id="update-banner-close" title="关闭通知" aria-label="关闭通知">
+                                <img src="" alt="关闭通知" width="12" height="12" data-icon="close">
+                            </button>
+                        </div>
+                    </div>
                     <div class="project-tabs-container" id="project-tabs-container">
                         <!-- 项目标签页将动态添加到这里 -->
                     </div>
                 </div>
                 <div class="workspace">
                     <!-- 左侧悬浮元件库面板 -->
-                    <aside class="floating-panel" id="component-floating-panel">
+                    <aside class="floating-panel collapsed no-transition" id="component-floating-panel">
                         <div class="floating-panel-header">
                             <h3>元件库</h3>
-                            <button class="panel-toggle-btn" id="panel-toggle-btn" title="收起面板">
-                                <img class="toggle-icon" src="" alt="收起" width="20" height="20" data-icon="chevron-left">
+                            <button class="panel-toggle-btn" id="panel-toggle-btn" title="展开面板">
+                                <img class="toggle-icon" src="" alt="展开" width="20" height="20" data-icon="chevron-right">
                             </button>
                         </div>
                         <div class="floating-panel-content">
@@ -113,8 +122,14 @@
                         <div class="chat-header">
                             <h3>AI硬件助手</h3>
                             <div class="chat-tools">
-                                <button class="chat-tool-btn" id="clear-chat">清空</button>
-                                <button class="chat-tool-btn" id="export-chat">导出</button>
+                                <button class="chat-tool-btn" id="clear-chat">
+                                    <span class="btn-icon"><img src="" alt="清空对话" width="16" height="16" data-icon="trash-2"></span>
+                                    清空
+                                </button>
+                                <button class="chat-tool-btn" id="export-chat">
+                                    <span class="btn-icon"><img src="" alt="导出对话" width="16" height="16" data-icon="download"></span>
+                                    导出
+                                </button>
                             </div>
                         </div>
                         <div class="chat-messages" id="chat-messages">
@@ -139,7 +154,9 @@
                                     <div class="image-preview" id="image-preview" style="display: none;">
                                         <div class="preview-header">
                                             <span class="preview-title">已上传图片</span>
-                                            <button class="preview-close" id="preview-close">✕</button>
+                                            <button class="preview-close" id="preview-close" aria-label="关闭图片预览" title="关闭图片预览">
+                                                <img src="" alt="关闭图片预览" width="12" height="12" data-icon="close">
+                                            </button>
                                         </div>
                                         <div class="preview-content">
                                             <img id="preview-image" src="" alt="预览图片">
@@ -365,10 +382,10 @@
                     <!-- 设置卡片网格 -->
                     <div class="settings-grid">
                         <!-- 存储设置卡片 -->
-                        <div class="setting-card">
+                        <div class="setting-card shortcuts-card equal-height-card">
                             <div class="card-header">
                                 <div class="card-icon">
-                                    <span class="icon">📁</span>
+                                    <span class="icon"><img src="" alt="存储位置" width="22" height="22" data-icon="folder-open"></span>
                                 </div>
                                 <div class="card-info">
                                     <h3>存储位置</h3>
@@ -380,7 +397,7 @@
                                 <div class="storage-path-row">
                                     <input type="text" class="path-input" id="storage-path-display" placeholder="请选择项目文件夹" readonly />
                                     <button class="btn btn-primary btn-fixed-width" id="change-storage-path">
-                                        <span class="btn-icon">📁</span>
+                                        <span class="btn-icon"><img src="" alt="项目文件夹" width="20" height="20" data-icon="folder-open"></span>
                                         项目文件夹
                                     </button>
                                 </div>
@@ -389,7 +406,7 @@
                                 <div class="storage-path-row">
                                     <input type="text" class="path-input" id="component-lib-path-display" placeholder="请选择元件库文件夹" readonly />
                                     <button class="btn btn-primary btn-fixed-width" id="change-component-lib-path">
-                                        <span class="btn-icon">🔧</span>
+                                        <span class="btn-icon"><img src="" alt="系统元件库" width="20" height="20" data-icon="package"></span>
                                         系统元件库
                                     </button>
                                 </div>
@@ -400,7 +417,7 @@
                         <div class="setting-card">
                             <div class="card-header">
                                 <div class="card-icon">
-                                    <span class="icon">🔑</span>
+                                    <span class="icon"><img src="" alt="AI API" width="22" height="22" data-icon="bolt"></span>
                                 </div>
                                 <div class="card-info">
                                     <h3>AI API</h3>
@@ -417,18 +434,18 @@
                                 </div>
                             </div>
                             <div class="card-actions">
-                                <button class="btn btn-secondary" id="configure-api-key">
-                                    <span class="btn-icon">⚙️</span>
+                                <button class="btn btn-secondary surface-action-btn" id="configure-api-key">
+                                    <span class="btn-icon"><img src="" alt="配置密钥" width="16" height="16" data-icon="bolt"></span>
                                     配置密钥
                                 </button>
                             </div>
                         </div>
 
                         <!-- 快捷键卡片 -->
-                        <div class="setting-card">
+                        <div class="setting-card shortcuts-card equal-height-card">
                             <div class="card-header">
                                 <div class="card-icon">
-                                    <span class="icon">⌨️</span>
+                                    <span class="icon"><img src="" alt="快捷键" width="22" height="22" data-icon="keyboard"></span>
                                 </div>
                                 <div class="card-info">
                                     <h3>快捷键</h3>
@@ -498,25 +515,30 @@
 
 
                         <!-- 联系作者卡片 -->
-                        <div class="setting-card contact-card">
+                        <div class="setting-card contact-card equal-height-card">
                             <div class="card-header">
                                 <div class="card-icon">
-                                    <span class="icon"><img src="" alt="用户" width="20" height="20" data-icon="user"></span>
+                                    <span class="icon"><img src="" alt="用户" width="22" height="22" data-icon="user"></span>
                                 </div>
                                 <div class="card-info">
-                                    <h3>联系我们</h3>
-                                    <p>获取帮助和反馈</p>
+                                    <h3>联系作者</h3>
+                                    <p>获取项目支持与反馈渠道</p>
                                 </div>
                             </div>
                             <div class="card-content">
                                 <p class="contact-description">
-                                    访问我们的网站了解更多信息，或在GitHub上提交问题和建议。
+                                    你可以通过以下方式联系作者，获取项目动态、问题反馈与合作沟通。
                                 </p>
                             </div>
-                            <div class="card-actions">
-                                <button class="btn btn-primary" id="contact-author">
-                                    <span class="btn-icon">🌐</span>
-                                    访问网站
+                            <div class="card-actions contact-actions">
+                                <button class="btn btn-secondary surface-action-btn contact-link-btn" id="contact-github">
+                                    GitHub
+                                </button>
+                                <button class="btn btn-secondary surface-action-btn contact-link-btn" id="contact-xiaohongshu">
+                                    小红书
+                                </button>
+                                <button class="btn btn-secondary surface-action-btn contact-link-btn" id="contact-email">
+                                    Email
                                 </button>
                             </div>
                         </div>
@@ -525,17 +547,64 @@
                         <div class="setting-card about-card">
                             <div class="card-header">
                                 <div class="card-icon">
-                                    <span class="icon">ℹ️</span>
+                                    <span class="icon"><img src="" alt="关于" width="22" height="22" data-icon="info"></span>
                                 </div>
                                 <div class="card-info">
                                     <h3>关于</h3>
-                                    <p>Fast Hardware v0.1.5</p>
+                                    <p id="about-version-text">Fast Hardware v0.2.2</p>
                                 </div>
                             </div>
                             <div class="card-content">
                                 <p class="about-description">
                                     一个智能化的硬件开发辅助工具，帮助新手快速完成电路设计和代码生成。
                                 </p>
+                                <p class="about-description">
+                                    当前版本聚焦于工作流智能分析、启动体验优化与自动更新能力接入，持续提升桌面端可用性。
+                                </p>
+                                <p class="about-description">
+                                    项目采用 Electron + 原生前端架构，集成 AI 对话、元件库管理、电路画布与固件辅助生成等能力。
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- 更新卡片 -->
+                        <div class="setting-card update-card">
+                            <div class="card-header">
+                                <div class="card-icon">
+                                    <span class="icon"><img src="" alt="应用更新" width="22" height="22" data-icon="refresh"></span>
+                                </div>
+                                <div class="card-info">
+                                    <h3>应用更新</h3>
+                                    <p>自动检测并安装新版本</p>
+                                </div>
+                            </div>
+                            <div class="card-content">
+                                <div class="update-version-row">
+                                    <span class="update-label">当前版本</span>
+                                    <span class="update-value" id="update-current-version">-</span>
+                                </div>
+                                <div class="update-version-row">
+                                    <span class="update-label">最新版本</span>
+                                    <span class="update-value" id="update-latest-version">未检查</span>
+                                </div>
+                                <div class="update-toggle-row">
+                                    <span class="update-label">启动时自动检测</span>
+                                    <label class="switch-toggle">
+                                        <input type="checkbox" id="auto-check-updates-toggle" checked>
+                                        <span class="switch-slider"></span>
+                                    </label>
+                                </div>
+                                <p class="status-text" id="update-status-text">启动后将根据开关设置自动检查更新</p>
+                            </div>
+                            <div class="card-actions">
+                                <button class="btn btn-primary" id="download-update-btn" style="display: none;">
+                                    <span class="btn-icon"><img src="" alt="下载更新" width="16" height="16" data-icon="download"></span>
+                                    下载更新
+                                </button>
+                                <button class="btn btn-primary" id="install-update-btn" style="display: none;">
+                                    <span class="btn-icon">⚡</span>
+                                    安装更新
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -571,6 +640,7 @@
     <script src="scripts/floating-panel.js"></script>
     <script src="scripts/tabs.js"></script>
     <script src="scripts/canvas.js"></script>
+    <script src="scripts/workflow-circuit.js"></script>
     <script src="scripts/chat.js"></script>
     <script src="scripts/components.js"></script>
     <script src="scripts/component-designer.js"></script>

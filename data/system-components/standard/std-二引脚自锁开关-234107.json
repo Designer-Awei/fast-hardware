@@ -1,10 +1,12 @@
 {
-  "name": "DC电源开关模块",
-  "id": "ctm-dc电源开关模块-131810",
-  "description": "拨动开关，控制系统电源开关",
-  "category": "other",
+  "name": "二引脚自锁开关",
+  "id": "std-二引脚自锁开关-234107",
+  "description": "按下自锁并导通，再按弹起并断开",
+  "category": "auxiliary",
   "pins": {
-    "side1": [
+    "side1": [],
+    "side2": [],
+    "side3": [
       {
         "pinName": "V+",
         "type": "power",
@@ -16,12 +18,10 @@
         "order": 2
       }
     ],
-    "side2": [],
-    "side3": [],
     "side4": []
   },
   "dimensions": {
-    "width": 140,
+    "width": 120,
     "height": 40
   }
 }

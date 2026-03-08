@@ -5,6 +5,7 @@
 
 class SettingsManager {
     constructor() {
+        this.updateState = null;
         this.init();
     }
 
@@ -14,6 +15,7 @@ class SettingsManager {
     init() {
         this.bindEvents();
         this.loadSettings();
+        this.bindUpdateEvents();
     }
 
     /**
@@ -21,13 +23,20 @@ class SettingsManager {
      */
     bindEvents() {
 
-        // 联系作者按钮
-        const contactAuthorBtn = document.getElementById('contact-author');
-        if (contactAuthorBtn) {
-            contactAuthorBtn.addEventListener('click', () => {
-                this.openAuthorWebsite();
-            });
-        }
+        const contactGithubBtn = document.getElementById('contact-github');
+        contactGithubBtn?.addEventListener('click', () => {
+            this.openContactLink('https://github.com/Designer-Awei', '正在打开 GitHub...');
+        });
+
+        const contactXiaohongshuBtn = document.getElementById('contact-xiaohongshu');
+        contactXiaohongshuBtn?.addEventListener('click', () => {
+            this.openContactLink('https://xhslink.com/m/4moYxbDWzju', '正在打开小红书...');
+        });
+
+        const contactEmailBtn = document.getElementById('contact-email');
+        contactEmailBtn?.addEventListener('click', () => {
+            this.openContactLink('mailto:1974379701@qq.com', '正在打开默认邮件客户端...');
+        });
 
         // 更改存储路径按钮
         const changeStorageBtn = document.getElementById('change-storage-path');
@@ -52,6 +61,27 @@ class SettingsManager {
                 this.configureApiKey();
             });
         }
+
+        const downloadUpdateBtn = document.getElementById('download-update-btn');
+        if (downloadUpdateBtn) {
+            downloadUpdateBtn.addEventListener('click', () => {
+                this.downloadUpdate();
+            });
+        }
+
+        const installUpdateBtn = document.getElementById('install-update-btn');
+        if (installUpdateBtn) {
+            installUpdateBtn.addEventListener('click', () => {
+                this.installUpdate();
+            });
+        }
+
+        const autoCheckToggle = document.getElementById('auto-check-updates-toggle');
+        if (autoCheckToggle) {
+            autoCheckToggle.addEventListener('change', (event) => {
+                this.saveAutoCheckUpdates(event.target.checked);
+            });
+        }
     }
 
     /**
@@ -66,23 +96,41 @@ class SettingsManager {
 
         // 加载API密钥状态
         this.loadApiKeyStatus();
+
+        // 加载版本与更新状态
+        this.loadVersionInfo();
+        this.loadAutoCheckUpdates();
+        this.refreshUpdateState();
+    }
+
+    /**
+     * 绑定自动更新状态事件
+     */
+    bindUpdateEvents() {
+        if (window.electronAPI && window.electronAPI.onUpdateStatus) {
+            window.electronAPI.onUpdateStatus((payload) => {
+                this.applyUpdateState(payload);
+            });
+        }
     }
 
 
     /**
-     * 打开作者网站（在外部浏览器中）
+     * 打开联系链接
+     * @param {string} url - 外部链接
+     * @param {string} message - 提示文案
      */
-    openAuthorWebsite() {
+    openContactLink(url, message) {
         // 使用Electron的shell模块在外部浏览器中打开
         if (window.electronAPI && window.electronAPI.openExternal) {
-            window.electronAPI.openExternal('https://www.design2002.xyz');
+            window.electronAPI.openExternal(url);
         } else {
             // 降级方案：使用window.open
-            window.open('https://www.design2002.xyz', '_blank');
+            window.open(url, '_blank');
         }
 
         // 显示成功提示
-        this.showNotification('正在打开作者网站...', 'info');
+        this.showNotification(message, 'info');
     }
 
     /**
@@ -142,14 +190,24 @@ class SettingsManager {
                     <div class="form-group">
                         <label for="api-key-input">API 密钥</label>
                         <div class="input-with-icon">
-                            <input type="text" id="api-key-input" placeholder="请输入您的 SiliconFlow API 密钥" />
-                            <button type="button" class="visibility-toggle" id="visibility-toggle">
-                                <span class="eye-icon">👁️</span>
+                            <input type="password" id="api-key-input" placeholder="请输入您的 SiliconFlow API 密钥" />
+                            <button type="button" class="visibility-toggle" id="visibility-toggle" title="显示API密钥" aria-label="显示API密钥">
+                                <span class="eye-icon"><img src="" alt="显示或隐藏密钥" width="20" height="20" data-icon="eye"></span>
                             </button>
                         </div>
                         <small class="form-hint">
                             您的API密钥将安全地存储在本地，不会上传到任何服务器。
                             <a href="#" id="get-api-key-link">获取API密钥</a>
+                            <br />
+                            <span class="invite-code-line">
+                                注册 SiliconFlow 时可使用作者邀请码
+                                <span class="invite-code-inline">
+                                    <strong id="invite-code-text">2RuIa96A</strong>
+                                    <button type="button" class="inline-icon-button" id="copy-invite-code" title="复制邀请码" aria-label="复制邀请码">
+                                        <img src="" alt="复制邀请码" width="14" height="14" data-icon="copy">
+                                    </button>
+                                </span>
+                            </span>
                         </small>
                     </div>
                 </div>
@@ -166,9 +224,11 @@ class SettingsManager {
         const saveBtn = modal.querySelector('#api-key-modal-save');
         const backdrop = modal.querySelector('.settings-modal-backdrop');
         const getApiKeyLink = modal.querySelector('#get-api-key-link');
+        const copyInviteCodeBtn = modal.querySelector('#copy-invite-code');
         const visibilityToggle = modal.querySelector('#visibility-toggle');
         const apiKeyInput = modal.querySelector('#api-key-input');
-        const eyeIcon = modal.querySelector('.eye-icon');
+
+        this.initializeScopedIconPaths(modal);
 
         const closeModal = () => {
             modal.classList.remove('show');
@@ -190,12 +250,17 @@ class SettingsManager {
             }
         });
 
+        copyInviteCodeBtn?.addEventListener('click', async () => {
+            await this.copyInviteCode('2RuIa96A');
+        });
+
         // 可见性切换功能
         visibilityToggle.addEventListener('click', () => {
             const isVisible = apiKeyInput.type === 'text';
             apiKeyInput.type = isVisible ? 'password' : 'text';
-            eyeIcon.textContent = isVisible ? '🙈' : '👁️';
-            visibilityToggle.setAttribute('aria-label', isVisible ? '隐藏API密钥' : '显示API密钥');
+            this.updateVisibilityToggleIcon(visibilityToggle, isVisible ? 'eye-off' : 'eye');
+            visibilityToggle.setAttribute('aria-label', isVisible ? '显示API密钥' : '隐藏API密钥');
+            visibilityToggle.setAttribute('title', isVisible ? '显示API密钥' : '隐藏API密钥');
         });
 
         saveBtn.addEventListener('click', () => {
@@ -224,6 +289,69 @@ class SettingsManager {
         });
 
         return modal;
+    }
+
+    /**
+     * 初始化指定容器内的图标路径
+     * @param {HTMLElement} container - 需要初始化图标的容器
+     */
+    async initializeScopedIconPaths(container) {
+        if (!container || !window.electronAPI || !window.electronAPI.getAssetsPath) {
+            return;
+        }
+
+        try {
+            const assetsPath = await window.electronAPI.getAssetsPath();
+            const iconImages = container.querySelectorAll('img[data-icon]');
+            iconImages.forEach((img) => {
+                const iconName = `icon-${img.dataset.icon}.svg`;
+                img.src = `file://${assetsPath}/${iconName}`;
+            });
+        } catch (error) {
+            console.error('初始化局部图标路径失败:', error);
+        }
+    }
+
+    /**
+     * 复制邀请码到剪贴板
+     * @param {string} inviteCode - 邀请码
+     * @returns {Promise<void>}
+     */
+    async copyInviteCode(inviteCode) {
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(inviteCode);
+            } else {
+                this.copyTextWithFallback(inviteCode);
+            }
+            this.showNotification('邀请码已复制', 'success');
+        } catch (error) {
+            console.error('复制邀请码失败:', error);
+            try {
+                this.copyTextWithFallback(inviteCode);
+                this.showNotification('邀请码已复制', 'success');
+            } catch (fallbackError) {
+                console.error('降级复制邀请码失败:', fallbackError);
+                this.showNotification('复制失败，请手动复制邀请码', 'error');
+            }
+        }
+    }
+
+    /**
+     * 使用兼容方案复制文本
+     * @param {string} text - 待复制文本
+     */
+    copyTextWithFallback(text) {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.setAttribute('readonly', 'readonly');
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        textarea.style.pointerEvents = 'none';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
     }
 
     /**
@@ -356,14 +484,156 @@ class SettingsManager {
     }
 
     /**
+     * 加载版本信息
+     */
+    loadVersionInfo() {
+        if (window.electronAPI && window.electronAPI.getAppVersion) {
+            window.electronAPI.getAppVersion()
+                .then((version) => {
+                    const currentVersionEl = document.getElementById('update-current-version');
+                    const aboutVersionEl = document.getElementById('about-version-text');
+                    if (currentVersionEl) {
+                        currentVersionEl.textContent = `v${version}`;
+                    }
+                    if (aboutVersionEl) {
+                        aboutVersionEl.textContent = `Fast Hardware v${version}`;
+                    }
+                })
+                .catch((error) => {
+                    console.error('加载版本信息失败:', error);
+                });
+        }
+    }
+
+    /**
+     * 加载自动检查更新开关状态
+     */
+    loadAutoCheckUpdates() {
+        const autoCheckToggle = document.getElementById('auto-check-updates-toggle');
+        if (!autoCheckToggle || !window.electronAPI || !window.electronAPI.getSettings) return;
+
+        window.electronAPI.getSettings('autoCheckUpdates')
+            .then((value) => {
+                autoCheckToggle.checked = value !== 'false';
+            })
+            .catch((error) => {
+                console.error('加载自动检查更新设置失败:', error);
+                autoCheckToggle.checked = true;
+            });
+    }
+
+    /**
+     * 保存自动检查更新设置
+     * @param {boolean} enabled - 是否启用
+     */
+    saveAutoCheckUpdates(enabled) {
+        if (!window.electronAPI || !window.electronAPI.saveSettings) return;
+
+        window.electronAPI.saveSettings('autoCheckUpdates', enabled ? 'true' : 'false')
+            .then(() => {
+                const message = enabled ? '已开启启动自动检查更新' : '已关闭启动自动检查更新';
+                this.showNotification(message, 'success');
+            })
+            .catch((error) => {
+                console.error('保存自动检查更新设置失败:', error);
+                this.showNotification('保存自动更新设置失败', 'error');
+            });
+    }
+
+    /**
+     * 刷新自动更新状态
+     */
+    refreshUpdateState() {
+        if (!window.electronAPI || !window.electronAPI.getUpdateState) return;
+
+        window.electronAPI.getUpdateState()
+            .then((state) => {
+                this.applyUpdateState(state);
+            })
+            .catch((error) => {
+                console.error('获取更新状态失败:', error);
+            });
+    }
+
+    /**
+     * 下载更新
+     */
+    downloadUpdate() {
+        if (!window.electronAPI || !window.electronAPI.downloadUpdate) return;
+
+        this.showNotification('开始下载更新...', 'info');
+        window.electronAPI.downloadUpdate()
+            .then((result) => {
+                if (!result.success && result.message) {
+                    this.showNotification(result.message, 'error');
+                }
+            })
+            .catch((error) => {
+                console.error('下载更新失败:', error);
+                this.showNotification('下载更新失败', 'error');
+            });
+    }
+
+    /**
+     * 安装更新
+     */
+    installUpdate() {
+        if (!window.electronAPI || !window.electronAPI.installUpdate) return;
+
+        window.electronAPI.installUpdate()
+            .then((result) => {
+                if (!result.success && result.message) {
+                    this.showNotification(result.message, 'warning');
+                }
+            })
+            .catch((error) => {
+                console.error('安装更新失败:', error);
+                this.showNotification('安装更新失败', 'error');
+            });
+    }
+
+    /**
+     * 应用更新状态到设置页
+     * @param {Object} state - 更新状态
+     */
+    applyUpdateState(state) {
+        this.updateState = state || {};
+
+        const latestVersionEl = document.getElementById('update-latest-version');
+        const statusTextEl = document.getElementById('update-status-text');
+        const downloadBtn = document.getElementById('download-update-btn');
+        const installBtn = document.getElementById('install-update-btn');
+        const autoToggle = document.getElementById('auto-check-updates-toggle');
+
+        if (latestVersionEl) {
+            latestVersionEl.textContent = state.latestVersion ? `v${state.latestVersion}` : '未检查';
+        }
+
+        if (statusTextEl) {
+            statusTextEl.textContent = state.message || '启动后将根据开关设置自动检查更新';
+        }
+
+        if (autoToggle && typeof state.autoCheckEnabled === 'boolean') {
+            autoToggle.checked = state.autoCheckEnabled;
+        }
+
+        if (downloadBtn) {
+            downloadBtn.style.display = state.status === 'available' ? 'inline-flex' : 'none';
+            downloadBtn.disabled = state.status === 'downloading';
+        }
+
+        if (installBtn) {
+            installBtn.style.display = state.status === 'downloaded' ? 'inline-flex' : 'none';
+        }
+    }
+
+    /**
      * 为模态框加载当前存储的API密钥
      */
     loadCurrentApiKeyForModal(modal) {
         if (window.electronAPI && window.electronAPI.loadApiKey) {
             const apiKeyInput = modal.querySelector('#api-key-input');
             const visibilityToggle = modal.querySelector('#visibility-toggle');
-            const eyeIcon = modal.querySelector('.eye-icon');
-
             if (!apiKeyInput) return;
 
             window.electronAPI.loadApiKey()
@@ -372,26 +642,23 @@ class SettingsManager {
                         // 填充当前存储的API密钥到输入框
                         apiKeyInput.value = result.apiKey;
 
-                        // 确保输入框处于可见状态（type="text"）
-                        apiKeyInput.type = 'text';
+                        // 默认保持密钥隐藏
+                        apiKeyInput.type = 'password';
 
-                        // 更新可见性按钮的图标和状态
-                        if (eyeIcon) {
-                            eyeIcon.textContent = '👁️';
-                        }
                         if (visibilityToggle) {
-                            visibilityToggle.setAttribute('aria-label', '隐藏API密钥');
+                            this.updateVisibilityToggleIcon(visibilityToggle, 'eye-off');
+                            visibilityToggle.setAttribute('aria-label', '显示API密钥');
+                            visibilityToggle.setAttribute('title', '显示API密钥');
                         }
                     } else {
                         // 没有存储的密钥，保持输入框为空
                         apiKeyInput.value = '';
-                        apiKeyInput.type = 'text'; // 默认可见
+                        apiKeyInput.type = 'password';
 
-                        if (eyeIcon) {
-                            eyeIcon.textContent = '👁️';
-                        }
                         if (visibilityToggle) {
+                            this.updateVisibilityToggleIcon(visibilityToggle, 'eye-off');
                             visibilityToggle.setAttribute('aria-label', '显示API密钥');
+                            visibilityToggle.setAttribute('title', '显示API密钥');
                         }
                     }
                 })
@@ -399,15 +666,43 @@ class SettingsManager {
                     console.error('为模态框加载API密钥失败:', error);
                     // 出错时保持输入框为空
                     apiKeyInput.value = '';
-                    apiKeyInput.type = 'text';
+                    apiKeyInput.type = 'password';
 
-                    if (eyeIcon) {
-                        eyeIcon.textContent = '👁️';
-                    }
                     if (visibilityToggle) {
+                        this.updateVisibilityToggleIcon(visibilityToggle, 'eye-off');
                         visibilityToggle.setAttribute('aria-label', '显示API密钥');
+                        visibilityToggle.setAttribute('title', '显示API密钥');
                     }
                 });
+        }
+    }
+
+    /**
+     * 更新密钥显隐按钮图标
+     * @param {HTMLElement} toggleButton - 显隐按钮
+     * @param {string} iconName - 图标名称
+     */
+    async updateVisibilityToggleIcon(toggleButton, iconName) {
+        if (!toggleButton) {
+            return;
+        }
+
+        const iconImage = toggleButton.querySelector('img[data-icon]');
+        if (!iconImage) {
+            return;
+        }
+
+        iconImage.dataset.icon = iconName;
+
+        if (!window.electronAPI || !window.electronAPI.getAssetsPath) {
+            return;
+        }
+
+        try {
+            const assetsPath = await window.electronAPI.getAssetsPath();
+            iconImage.src = `file://${assetsPath}/icon-${iconName}.svg`;
+        } catch (error) {
+            console.error('更新显隐按钮图标失败:', error);
         }
     }
 

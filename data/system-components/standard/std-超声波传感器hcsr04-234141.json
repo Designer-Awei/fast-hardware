@@ -1,6 +1,6 @@
 {
   "name": "超声波传感器HC-SR04",
-  "id": "ctm-超声波传感器hcsr04-120000",
+  "id": "std-超声波传感器hcsr04-234141",
   "description": "超声波测距传感器。工作电压5V，工作电流15mA，测量范围2cm-400cm，测量精度3mm，探测角度15°。",
   "category": "sensor",
   "pins": {

@@ -57,6 +57,11 @@ class TabManager {
             button: document.querySelector('[data-sub-tab="custom"]')
         });
 
+        this.subTabs.set('temp', {
+            element: document.getElementById('temp-sub-tab'),
+            button: document.querySelector('[data-sub-tab="temp"]')
+        });
+
         this.subTabs.set('designer', {
             element: document.getElementById('designer-sub-tab'),
             button: document.querySelector('[data-sub-tab="designer"]')

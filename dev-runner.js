@@ -11,6 +11,7 @@ const path = require('path');
  * 当前electron进程
  */
 let electronProcess = null;
+let isRestarting = false;
 
 /**
  * 需要监控的文件扩展名
@@ -47,10 +48,17 @@ function startElectron() {
   });
 
   console.log(`📋 Electron进程ID: ${electronProcess.pid}`);
+  isRestarting = false;
 
   electronProcess.on('close', (code) => {
     console.log(`🔚 Electron进程关闭，代码: ${code}`);
     electronProcess = null;
+
+    // 用户主动关闭窗口时，开发服务器也一并退出，避免继续监控并重新拉起窗口。
+    if (!isRestarting) {
+      console.log('🛑 检测到 Electron 正常退出，关闭开发服务器...');
+      process.exit(code || 0);
+    }
   });
 
   electronProcess.on('error', (error) => {
@@ -67,6 +75,7 @@ function restartElectron() {
 
   if (electronProcess) {
     console.log('⏹️  关闭旧进程...');
+    isRestarting = true;
     
     // Windows下需要强制终止整个进程树
     if (process.platform === 'win32') {

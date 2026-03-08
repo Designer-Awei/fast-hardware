@@ -1,74 +1,89 @@
-# 资源文件说明
+# Assets 说明
 
-这个目录包含应用程序需要的各种资源文件。
+这个目录包含应用桌面图标、界面内 SVG 图标以及其他静态资源。
 
-## 图标文件
+## 应用主图标
 
-✅ **图标文件已生成完成** - 基于 `Fast Hardware.png` 源文件自动生成
+以下文件用于 Electron 打包与窗口图标：
 
-应用程序所需的图标文件已全部生成并放置在此目录中：
+- `icon.png` - Linux 主图标
+- `icon.ico` - Windows 主图标
+- `icon.icns` - macOS 主图标
+- `icon_16x16.png` ~ `icon_1024x1024.png` - 多尺寸 PNG 变体
+- `Fast Hardware.png` - 主视觉源图
 
-### 已生成的图标文件
+## UI SVG 图标规范
 
-#### 主图标文件
-- **`icon.png`** - Linux平台主图标 (512x512 PNG)
-- **`icon.ico`** - Windows平台图标 (256x256 ICO)
-- **`icon.icns`** - macOS平台图标 (512x512 ICNS)
+项目内按钮和状态图标统一放在 `assets` 根目录，命名规则如下：
 
-#### 多尺寸PNG变体 (适用于所有平台)
-- `icon_16x16.png` - 16x16像素
-- `icon_32x32.png` - 32x32像素
-- `icon_48x48.png` - 48x48像素
-- `icon_64x64.png` - 64x64像素
-- `icon_128x128.png` - 128x128像素
-- `icon_256x256.png` - 256x256像素
-- `icon_512x512.png` - 512x512像素
-- `icon_1024x1024.png` - 1024x1024像素 (macOS专用)
+- 文件名格式：`icon-<name>.svg`
+- 推荐风格：`Feather` 风格线性图标
+- 推荐来源：`feathericons.com`
+- 引用方式：在 HTML 中使用 `data-icon="<name>"`，由 `scripts/main.js` 自动解析为 `assets/icon-<name>.svg`
 
-## 图标生成信息
+示例：
 
-- **源文件**: `Fast Hardware.png` (1067x1067像素，带透明通道)
-- **生成工具**: Node.js + Sharp图像处理库
-- **生成时间**: 自动生成于项目构建过程
-- **兼容性**: 完全兼容 Electron 构建配置
-
-## 图标制作建议
-
-1. **设计风格**: 简洁、现代、符合各平台设计规范
-2. **颜色方案**: 避免过于复杂的颜色，确保在不同背景下清晰可见
-3. **图标主题**: 与应用程序功能相关的图标设计
-4. **文件大小**: 尽量控制文件大小，避免过大影响应用启动速度
-
-## 图标更新流程
-
-如需更新图标，请遵循以下步骤：
-
-1. **替换源文件**: 将新的 `Fast Hardware.png` 放在此目录中
-2. **重新生成**: 运行 `node generate-icons.js` 脚本
-3. **验证文件**: 确保所有图标文件正确生成
-4. **测试构建**: 重新构建应用程序验证图标显示
-
-## package.json 配置
-
-图标文件路径已在 `package.json` 中正确配置：
-
-```json
-{
-  "build": {
-    "win": { "icon": "assets/icon.ico" },
-    "mac": { "icon": "assets/icon.icns" },
-    "linux": { "icon": "assets/icon.png" }
-  }
-}
+```html
+<img src="" alt="复制" width="14" height="14" data-icon="copy">
 ```
 
-## 其他资源文件
+上面的写法会自动映射到：
 
-您也可以在此目录中添加其他资源文件，如：
+```text
+assets/icon-copy.svg
+```
 
-- 启动画面图片
-- 应用程序内使用的图片
-- 字体文件
-- 配置文件模板
+## 当前已使用的 UI SVG 图标
 
-记得在使用这些资源时更新相应的文件路径引用。
+- `icon-bot.svg`
+- `icon-bolt.svg`
+- `icon-chevron-left.svg`
+- `icon-chevron-right.svg`
+- `icon-chevron-up.svg`
+- `icon-close.svg`
+- `icon-copy.svg`
+- `icon-download.svg`
+- `icon-edit.svg`
+- `icon-eye.svg`
+- `icon-eye-off.svg`
+- `icon-folder-open.svg`
+- `icon-info.svg`
+- `icon-image.svg`
+- `icon-keyboard.svg`
+- `icon-key-round.svg`
+- `icon-package.svg`
+- `icon-refresh.svg`
+- `icon-save.svg`
+- `icon-send.svg`
+- `icon-trash-2.svg`
+- `icon-user.svg`
+
+## 新增 SVG 图标步骤
+
+1. 到 `Feather Icons` 图标库找到目标图标。
+2. 下载或复制对应 SVG。
+3. 保存到 `assets` 目录，名称改为 `icon-<name>.svg`。
+4. 保持以下 SVG 属性风格一致：
+
+```svg
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+```
+
+5. 在页面中用 `data-icon="<name>"` 引用，不要写死绝对路径。
+6. 如果图标出现在运行时动态插入的 DOM 中，需要在对应脚本里额外调用一次局部图标初始化逻辑。
+
+## 资源维护建议
+
+- 不要混用 emoji 和业务按钮图标，优先使用 SVG。
+- 优先使用 `Feather` 风格，个别品牌或角色图标可按视觉效果单独保留。
+- 如果新增资源引用方式，记得同步更新这里，方便下次继续扩展。

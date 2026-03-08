@@ -20,12 +20,13 @@ class FloatingPanel {
 
     init() {
         this.bindElements();
+        this.isCollapsed = this.panel ? this.panel.classList.contains('collapsed') : false;
         this.attachEventListeners();
-        this.loadComponentLibrary().then(() => {
-            // 延迟执行，确保DOM完全更新后再收起
-            setTimeout(() => {
-                this.collapsePanel();
-            }, 100);
+        this.syncInitialPanelState();
+        this.loadComponentLibrary().finally(() => {
+            requestAnimationFrame(() => {
+                this.panel?.classList.remove('no-transition');
+            });
         });
     }
 
@@ -86,17 +87,10 @@ class FloatingPanel {
     async expandPanel() {
         this.isCollapsed = false;
         this.panel.classList.remove('collapsed');
+        this.panel.classList.remove('no-transition');
 
         // 更新按钮图标
-        const toggleIcon = this.toggleBtn.querySelector('.toggle-icon');
-        if (toggleIcon && toggleIcon.tagName === 'IMG') {
-            // 更新为chevron-left图标
-            toggleIcon.dataset.icon = 'chevron-left';
-            toggleIcon.alt = '收起';
-            // 更新图标路径
-            const assetsPath = await window.electronAPI.getAssetsPath();
-            toggleIcon.src = `file://${assetsPath}/icon-chevron-left.svg`;
-        }
+        await this.updateToggleIcon(false);
     }
 
     async collapsePanel() {
@@ -104,14 +98,34 @@ class FloatingPanel {
         this.panel.classList.add('collapsed');
 
         // 更新按钮图标
+        await this.updateToggleIcon(true);
+    }
+
+    async syncInitialPanelState() {
+        if (!this.panel) return;
+
+        if (this.isCollapsed) {
+            this.panel.classList.add('collapsed');
+        } else {
+            this.panel.classList.remove('collapsed');
+        }
+
+        await this.updateToggleIcon(this.isCollapsed);
+    }
+
+    async updateToggleIcon(isCollapsed) {
+        if (!this.toggleBtn) return;
+
+        this.toggleBtn.title = isCollapsed ? '展开面板' : '收起面板';
+
         const toggleIcon = this.toggleBtn.querySelector('.toggle-icon');
         if (toggleIcon && toggleIcon.tagName === 'IMG') {
-            // 更新为chevron-right图标
-            toggleIcon.dataset.icon = 'chevron-right';
-            toggleIcon.alt = '展开';
-            // 更新图标路径
+            const iconName = isCollapsed ? 'chevron-right' : 'chevron-left';
+            toggleIcon.dataset.icon = iconName;
+            toggleIcon.alt = isCollapsed ? '展开' : '收起';
+
             const assetsPath = await window.electronAPI.getAssetsPath();
-            toggleIcon.src = `file://${assetsPath}/icon-chevron-right.svg`;
+            toggleIcon.src = `file://${assetsPath}/icon-${iconName}.svg`;
         }
     }
 
