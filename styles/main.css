@@ -68,6 +68,10 @@ body {
     gap: 6px;
 }
 
+.update-banner-actions:empty {
+    display: none;
+}
+
 .update-banner-btn {
     border: none;
     border-radius: 999px;

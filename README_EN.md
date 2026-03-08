@@ -294,7 +294,7 @@ This project supports **seamless development** on Windows, macOS, and Linux syst
 Build products are saved in the `dist/` directory:
 
 **Windows** 🎯
-- `Fast Hardware Setup 0.1.1.exe` - NSIS installation program
+- `Fast-Hardware-Setup-0.2.2.exe` - NSIS installation program
 - `win-unpacked/` - Unpacked version
 - `win-x64.zip` - ZIP compressed package
 

@@ -57,6 +57,7 @@ class FastHardwareApp {
         this.projectTabsManager = null;
         this.updateBannerState = null;
         this.updateBannerDismissed = false;
+        this.updateBannerHideTimer = null;
 
         this.init();
     }
@@ -377,8 +378,14 @@ class FastHardwareApp {
         const banner = document.getElementById('update-banner');
         const text = document.getElementById('update-banner-text');
         const actionBtn = document.getElementById('update-banner-action');
-        if (!banner || !text || !actionBtn || !this.updateBannerState) {
+        const closeBtn = document.getElementById('update-banner-close');
+        if (!banner || !text || !actionBtn || !closeBtn || !this.updateBannerState) {
             return;
+        }
+
+        if (this.updateBannerHideTimer) {
+            clearTimeout(this.updateBannerHideTimer);
+            this.updateBannerHideTimer = null;
         }
 
         if (this.updateBannerDismissed) {
@@ -387,8 +394,11 @@ class FastHardwareApp {
         }
 
         const { status, latestVersion, message } = this.updateBannerState;
-        const actionableStatuses = ['available', 'downloading', 'downloaded', 'error'];
-        if (!actionableStatuses.includes(status)) {
+        const persistentStatuses = ['available', 'downloading', 'downloaded'];
+        const transientStatuses = ['up-to-date', 'idle', 'error'];
+        const shouldShow = persistentStatuses.includes(status) || transientStatuses.includes(status);
+
+        if (!shouldShow) {
             banner.classList.add('hidden');
             return;
         }
@@ -399,19 +409,46 @@ class FastHardwareApp {
             text.textContent = `发现新版本 v${latestVersion}，可立即下载更新`;
             actionBtn.textContent = '下载更新';
             actionBtn.disabled = false;
+            actionBtn.style.display = 'inline-flex';
+            closeBtn.style.display = 'inline-flex';
         } else if (status === 'downloading') {
             text.textContent = message || '正在下载更新...';
             actionBtn.textContent = '下载中';
             actionBtn.disabled = true;
+            actionBtn.style.display = 'inline-flex';
+            closeBtn.style.display = 'inline-flex';
         } else if (status === 'downloaded') {
             text.textContent = `新版本 v${latestVersion} 已下载完成，点击安装并重启`;
             actionBtn.textContent = '立即安装';
             actionBtn.disabled = false;
+            actionBtn.style.display = 'inline-flex';
+            closeBtn.style.display = 'inline-flex';
+        } else if (status === 'up-to-date') {
+            text.textContent = message || '当前无需更新，已是最新版本';
+            actionBtn.style.display = 'none';
+            closeBtn.style.display = 'none';
+            this.scheduleUpdateBannerAutoHide();
+        } else if (status === 'idle') {
+            text.textContent = message || '本次未执行更新操作';
+            actionBtn.style.display = 'none';
+            closeBtn.style.display = 'none';
+            this.scheduleUpdateBannerAutoHide();
         } else if (status === 'error') {
-            text.textContent = message || '检查更新失败，可重试';
-            actionBtn.textContent = '重试';
-            actionBtn.disabled = false;
+            text.textContent = message || '更新检查失败，请稍后重试';
+            actionBtn.style.display = 'none';
+            closeBtn.style.display = 'none';
+            this.scheduleUpdateBannerAutoHide();
         }
+    }
+
+    /**
+     * 为顶部更新通知栏安排自动隐藏
+     */
+    scheduleUpdateBannerAutoHide() {
+        this.updateBannerHideTimer = setTimeout(() => {
+            this.updateBannerDismissed = true;
+            this.renderUpdateBanner();
+        }, 10000);
     }
 
     /**

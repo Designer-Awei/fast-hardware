@@ -201,7 +201,7 @@ fast-hardware/
 ├── 📁 scripts/                   # 前端脚本
 ├── 📁 styles/                    # 样式文件
 ├── 📁 dist/                      # 构建输出目录 (打包后生成)
-│   ├── Fast Hardware Setup 0.1.9.exe    # Windows安装程序
+│   ├── Fast-Hardware-Setup-0.2.2.exe    # Windows安装程序
 │   ├── Fast Hardware-0.1.9-win.zip      # Windows绿色版
 │   └── win-unpacked/                    # 未打包版本
 ├── 📄 main.js                    # Electron主进程
@@ -289,7 +289,7 @@ npm run dist
 ### 分发文件说明
 
 #### 🎯 **Windows (64位专用)**
-- **`Fast Hardware Setup 0.1.7.exe`** (约76MB) - **专业安装程序**
+- **`Fast-Hardware-Setup-0.2.2.exe`** (约76MB) - **专业安装程序**
   - ✅ 自定义安装路径选择
   - ✅ 自动创建桌面快捷方式
   - ✅ 自动创建开始菜单快捷方式
@@ -309,7 +309,7 @@ npm run dist
 - **存储空间**: 200MB 可用空间
 
 ### 🚀 安装指南
-1. 下载 `Fast Hardware Setup 0.1.9.exe`
+1. 下载 `Fast-Hardware-Setup-0.2.2.exe`
 2. 双击运行安装程序
 3. 选择安装位置（可自定义）
 4. 按照提示完成安装

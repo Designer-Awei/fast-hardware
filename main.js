@@ -4,10 +4,17 @@
  */
 
 const { app, BrowserWindow, Menu, ipcMain, screen, shell, dialog, nativeTheme } = require('electron');
-const { autoUpdater } = require('electron-updater');
 const path = require('path');
+const { pathToFileURL } = require('url');
 const fs = require('fs').promises;
 const https = require('https');
+
+let autoUpdater = null;
+try {
+  ({ autoUpdater } = require('electron-updater'));
+} catch (error) {
+  console.warn('自动更新模块加载失败:', error.message);
+}
 
 const APP_START_TIME = Date.now();
 const STARTUP_DEBUG_ENABLED = process.argv.includes('--enable-startup-debug') ||
@@ -134,7 +141,104 @@ function broadcastUpdateStatus(patch = {}) {
  * @returns {boolean} 是否支持自动更新
  */
 function isAutoUpdateAvailable() {
-  return app.isPackaged && (process.platform === 'win32' || process.platform === 'darwin');
+  return Boolean(autoUpdater) && app.isPackaged && (process.platform === 'win32' || process.platform === 'darwin');
+}
+
+/**
+ * 获取自动更新不可用的原因
+ * @returns {'missing-module'|'development'|'unsupported-platform'|'available'} 不可用原因
+ */
+function getAutoUpdateUnavailableReason() {
+  if (!autoUpdater) {
+    return 'missing-module';
+  }
+
+  if (!app.isPackaged) {
+    return 'development';
+  }
+
+  if (process.platform !== 'win32' && process.platform !== 'darwin') {
+    return 'unsupported-platform';
+  }
+
+  return 'available';
+}
+
+/**
+ * 获取自动更新不可用时的提示文案
+ * @returns {string} 提示文案
+ */
+function getAutoUpdateUnavailableMessage() {
+  const reason = getAutoUpdateUnavailableReason();
+
+  if (reason === 'missing-module') {
+    return '自动更新模块未正确打包，请重新构建应用';
+  }
+
+  if (reason === 'development') {
+    return '开发环境无法检查线上更新';
+  }
+
+  if (reason === 'unsupported-platform') {
+    return '当前平台暂不支持自动更新';
+  }
+
+  return '';
+}
+
+/**
+ * 获取运行时 assets 目录
+ * @returns {string} assets 目录绝对路径
+ */
+function getAssetsPath() {
+  if (!app.isPackaged) {
+    return path.join(__dirname, 'assets');
+  }
+
+  return path.join(path.dirname(app.getPath('exe')), 'assets');
+}
+
+/**
+ * 将更新错误转换为更友好的状态
+ * @param {Error} error - 原始错误
+ * @returns {{status: string, message: string}} 规范化后的状态
+ */
+function normalizeUpdateError(error) {
+  const rawMessage = error?.message || String(error || '');
+  const lowerMessage = rawMessage.toLowerCase();
+
+  if (lowerMessage.includes('latest.yml') && lowerMessage.includes('404')) {
+    return {
+      status: 'idle',
+      message: '更新源尚未准备完成，已跳过本次自动检查'
+    };
+  }
+
+  const isNetworkIssue =
+    lowerMessage.includes('net::') ||
+    lowerMessage.includes('timeout') ||
+    lowerMessage.includes('timed out') ||
+    lowerMessage.includes('socket hang up') ||
+    lowerMessage.includes('econnreset') ||
+    lowerMessage.includes('enotfound') ||
+    lowerMessage.includes('eai_again') ||
+    lowerMessage.includes('failed to fetch') ||
+    lowerMessage.includes('unable to verify') ||
+    lowerMessage.includes('certificate') ||
+    lowerMessage.includes('github.com') ||
+    lowerMessage.includes('releases/download');
+
+  if (isNetworkIssue) {
+    return {
+      status: 'error',
+      message: '更新检查失败，请挂上梯子后重新打开软件，或稍后在网络可用时再试'
+    };
+  }
+
+  return {
+    status: 'error',
+    message: `更新检查失败：${rawMessage}`
+  };
 }
 
 /**
@@ -146,6 +250,16 @@ function setupAutoUpdater() {
   }
 
   autoUpdaterInitialized = true;
+
+  if (!autoUpdater) {
+    broadcastUpdateStatus({
+      status: app.isPackaged ? 'error' : 'idle',
+      message: app.isPackaged ? getAutoUpdateUnavailableMessage() : '',
+      latestVersion: null
+    });
+    return;
+  }
+
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
 
@@ -179,7 +293,7 @@ function setupAutoUpdater() {
       status: 'up-to-date',
       latestVersion: app.getVersion(),
       downloadedFile: null,
-      message: '当前已是最新版本'
+      message: '当前无需更新，已是最新版本'
     });
   });
 
@@ -200,10 +314,7 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on('error', (error) => {
-    broadcastUpdateStatus({
-      status: 'error',
-      message: `更新失败：${error.message}`
-    });
+    broadcastUpdateStatus(normalizeUpdateError(error));
   });
 }
 
@@ -259,7 +370,12 @@ function createSplashWindow() {
       resolveOnce();
     });
 
-  splashWindow.loadFile('splash.html');
+  const splashLogoPath = pathToFileURL(path.join(getAssetsPath(), 'Fast Hardware.png')).toString();
+  splashWindow.loadFile('splash.html', {
+    query: {
+      logoPath: splashLogoPath
+    }
+  });
   splashWindow.on('closed', () => {
     splashWindow = null;
   });
@@ -700,10 +816,7 @@ app.whenReady().then(async () => {
   if (shouldAutoCheckUpdates && isAutoUpdateAvailable()) {
     setTimeout(() => {
       autoUpdater.checkForUpdates().catch((error) => {
-        broadcastUpdateStatus({
-          status: 'error',
-          message: `自动检查更新失败：${error.message}`
-        });
+        broadcastUpdateStatus(normalizeUpdateError(error));
       });
     }, 2500);
   }
@@ -755,7 +868,7 @@ ipcMain.handle('check-for-updates', async (event, isManual = false) => {
   if (!isAutoUpdateAvailable()) {
     return {
       success: false,
-      message: app.isPackaged ? '当前平台暂不支持自动更新' : '开发环境无法检查线上更新'
+      message: getAutoUpdateUnavailableMessage()
     };
   }
 
@@ -763,18 +876,18 @@ ipcMain.handle('check-for-updates', async (event, isManual = false) => {
     await autoUpdater.checkForUpdates();
     return { success: true };
   } catch (error) {
-    const message = `${isManual ? '手动' : '自动'}检查更新失败：${error.message}`;
-    broadcastUpdateStatus({
-      status: 'error',
-      message
-    });
+    const normalizedState = normalizeUpdateError(error);
+    const message = normalizedState.status === 'error'
+      ? `${isManual ? '手动' : '自动'}检查更新失败：${error.message}`
+      : normalizedState.message;
+    broadcastUpdateStatus(normalizedState);
     return { success: false, message };
   }
 });
 
 ipcMain.handle('download-update', async () => {
   if (!isAutoUpdateAvailable()) {
-    return { success: false, message: '当前环境不支持下载更新' };
+    return { success: false, message: getAutoUpdateUnavailableMessage() };
   }
 
   try {
@@ -802,14 +915,7 @@ ipcMain.handle('install-update', async () => {
 });
 
 ipcMain.handle('get-assets-path', () => {
-  // 在生产环境下，assets在程序根目录
-  // 在开发环境下，assets在项目目录
-  const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
-  if (isDev) {
-    return path.join(__dirname, 'assets');
-  } else {
-    return path.join(path.dirname(app.getPath('exe')), 'assets');
-  }
+  return getAssetsPath();
 });
 
 /**

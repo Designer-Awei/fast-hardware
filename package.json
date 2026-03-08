@@ -45,7 +45,6 @@
     "files": [
       "**/*",
       "!data",
-      "!node_modules",
       "!dist",
       "!*.md",
       "!package-lock.json",

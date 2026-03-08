@@ -173,7 +173,7 @@
     <div class="splash-shell">
         <div class="splash-card">
             <div class="logo-wrap">
-                <img src="./assets/Fast%20Hardware.png" alt="Fast Hardware Logo">
+                <img id="splash-logo" src="" alt="Fast Hardware Logo">
             </div>
             <div class="brand">
                 <h1>Fast Hardware</h1>
@@ -183,5 +183,12 @@
             <div class="status">Initializing modules...</div>
         </div>
     </div>
+    <script>
+        const splashLogo = document.getElementById('splash-logo');
+        const logoPath = new URLSearchParams(window.location.search).get('logoPath');
+        if (splashLogo && logoPath) {
+            splashLogo.src = logoPath;
+        }
+    </script>
 </body>
 </html>
