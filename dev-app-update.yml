@@ -1,0 +1,4 @@
+provider: github
+owner: Designer-Awei
+repo: fast-hardware
+updaterCacheDirName: fast-hardware-updater

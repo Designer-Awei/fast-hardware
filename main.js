@@ -141,20 +141,16 @@ function broadcastUpdateStatus(patch = {}) {
  * @returns {boolean} 是否支持自动更新
  */
 function isAutoUpdateAvailable() {
-  return Boolean(autoUpdater) && app.isPackaged && (process.platform === 'win32' || process.platform === 'darwin');
+  return Boolean(autoUpdater) && (process.platform === 'win32' || process.platform === 'darwin');
 }
 
 /**
  * 获取自动更新不可用的原因
- * @returns {'missing-module'|'development'|'unsupported-platform'|'available'} 不可用原因
+ * @returns {'missing-module'|'unsupported-platform'|'available'} 不可用原因
  */
 function getAutoUpdateUnavailableReason() {
   if (!autoUpdater) {
     return 'missing-module';
-  }
-
-  if (!app.isPackaged) {
-    return 'development';
   }
 
   if (process.platform !== 'win32' && process.platform !== 'darwin') {
@@ -162,6 +158,36 @@ function getAutoUpdateUnavailableReason() {
   }
 
   return 'available';
+}
+
+/**
+ * 比较两个版本号大小
+ * @param {string} currentVersion - 当前版本
+ * @param {string} targetVersion - 目标版本
+ * @returns {number} 1 表示当前版本更高，-1 表示目标版本更高，0 表示相同
+ */
+function compareVersions(currentVersion, targetVersion) {
+  const normalizeVersion = (version) => String(version || '')
+    .split('-')[0]
+    .split('.')
+    .map((segment) => Number.parseInt(segment, 10) || 0);
+
+  const currentSegments = normalizeVersion(currentVersion);
+  const targetSegments = normalizeVersion(targetVersion);
+  const maxLength = Math.max(currentSegments.length, targetSegments.length);
+
+  for (let index = 0; index < maxLength; index += 1) {
+    const currentValue = currentSegments[index] || 0;
+    const targetValue = targetSegments[index] || 0;
+    if (currentValue > targetValue) {
+      return 1;
+    }
+    if (currentValue < targetValue) {
+      return -1;
+    }
+  }
+
+  return 0;
 }
 
 /**
@@ -173,10 +199,6 @@ function getAutoUpdateUnavailableMessage() {
 
   if (reason === 'missing-module') {
     return '自动更新模块未正确打包，请重新构建应用';
-  }
-
-  if (reason === 'development') {
-    return '开发环境无法检查线上更新';
   }
 
   if (reason === 'unsupported-platform') {
@@ -262,6 +284,7 @@ function setupAutoUpdater() {
 
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
+  autoUpdater.forceDevUpdateConfig = !app.isPackaged;
 
   if (!isAutoUpdateAvailable()) {
     broadcastUpdateStatus({
@@ -288,10 +311,24 @@ function setupAutoUpdater() {
     });
   });
 
-  autoUpdater.on('update-not-available', () => {
+  autoUpdater.on('update-not-available', (info) => {
+    const currentVersion = app.getVersion();
+    const latestVersion = info?.version || currentVersion;
+    const versionCompareResult = compareVersions(currentVersion, latestVersion);
+
+    if (versionCompareResult > 0) {
+      broadcastUpdateStatus({
+        status: 'up-to-date',
+        latestVersion,
+        downloadedFile: null,
+        message: '当前为开发版本'
+      });
+      return;
+    }
+
     broadcastUpdateStatus({
       status: 'up-to-date',
-      latestVersion: app.getVersion(),
+      latestVersion,
       downloadedFile: null,
       message: '当前无需更新，已是最新版本'
     });
@@ -328,7 +365,57 @@ function delay(ms) {
 }
 
 /**
+ * 等待 Splash 页面完成首帧渲染
+ * @returns {Promise<void>} 首帧渲染完成
+ */
+async function waitForSplashVisualReady() {
+  if (!splashWindow || splashWindow.isDestroyed()) {
+    return;
+  }
+
+  try {
+    await splashWindow.webContents.executeJavaScript(`
+      new Promise((resolve) => {
+        const completeRender = () => {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => resolve());
+          });
+        };
+
+        const logo = document.getElementById('splash-logo');
+        if (!logo || !logo.getAttribute('src')) {
+          completeRender();
+          return;
+        }
+
+        if (logo.complete) {
+          completeRender();
+          return;
+        }
+
+        const fallbackTimer = setTimeout(() => {
+          completeRender();
+        }, 400);
+
+        const handleComplete = () => {
+          clearTimeout(fallbackTimer);
+          completeRender();
+        };
+
+        logo.addEventListener('load', handleComplete, { once: true });
+        logo.addEventListener('error', handleComplete, { once: true });
+      });
+    `, true);
+  } catch (error) {
+    logStartupStage('splash:visual-wait-failed', {
+      message: error instanceof Error ? error.message : String(error)
+    });
+  }
+}
+
+/**
  * 创建启动 Splash 窗口
+ * @returns {Promise<void>} Splash 窗口进入可继续启动主窗口的状态
  */
 function createSplashWindow() {
   splashReadyPromise = new Promise((resolve) => {
@@ -353,15 +440,22 @@ function createSplashWindow() {
     skipTaskbar: true,
     center: true,
     show: false,
+    paintWhenInitiallyHidden: true,
     backgroundColor: '#061822',
     icon: path.join(__dirname, 'assets/icon.png')
   });
 
-    splashWindow.once('ready-to-show', () => {
+    splashWindow.webContents.once('did-finish-load', async () => {
+      await waitForSplashVisualReady();
+      if (!splashWindow || splashWindow.isDestroyed() || splashWindow.isVisible()) {
+        resolveOnce();
+        return;
+      }
+
       splashShownAt = Date.now();
       splashWindow.show();
       splashWindow.focus();
-      logStartupStage('splash:ready-to-show');
+      logStartupStage('splash:did-finish-load-and-show');
       resolveOnce();
     });
 
@@ -382,12 +476,13 @@ function createSplashWindow() {
 
     setTimeout(() => {
       if (splashWindow && !splashWindow.isDestroyed() && !splashWindow.isVisible()) {
-        splashShownAt = Date.now();
-        splashWindow.show();
+        logStartupStage('splash:show-timeout');
       }
       resolveOnce();
     }, 1500);
   });
+
+  return splashReadyPromise;
 }
 
 /**
@@ -799,7 +894,7 @@ async function createWindow() {
 app.whenReady().then(async () => {
   console.log('Electron应用程序已准备就绪');
 
-  createSplashWindow();
+  await createSplashWindow();
 
   // 初始化用户配置文件
   await initializeUserConfig();
@@ -833,10 +928,10 @@ app.on('window-all-closed', () => {
 });
 
 // 当应用程序被激活时
-app.on('activate', () => {
+app.on('activate', async () => {
   console.log('应用程序被激活');
   if (BrowserWindow.getAllWindows().length === 0) {
-    createSplashWindow();
+    await createSplashWindow();
     createWindow();
   }
 });

@@ -1,6 +1,6 @@
 {
   "name": "fast-hardware",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "一个基于纯Electron的智能硬件开发辅助桌面应用程序",
   "main": "main.js",
   "scripts": {
@@ -10,7 +10,8 @@
     "dev-debug": "node cross-platform-runner.js dev-debug",
     "dev-no-reload": "node cross-platform-runner.js dev-no-reload",
     "build": "electron-builder",
-    "dist": "electron-builder --publish=never",
+    "clean:dist": "node scripts/build-dist.js --clean-only",
+    "dist": "node scripts/build-dist.js",
     "check-platform": "node platform-check.js",
     "error-help": "node error-handler.js"
   },

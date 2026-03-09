@@ -6,6 +6,7 @@
 class SettingsManager {
     constructor() {
         this.updateState = null;
+        this.releaseNotes = [];
         this.init();
     }
 
@@ -73,6 +74,13 @@ class SettingsManager {
         if (installUpdateBtn) {
             installUpdateBtn.addEventListener('click', () => {
                 this.installUpdate();
+            });
+        }
+
+        const viewUpdateLogBtn = document.getElementById('view-update-log-btn');
+        if (viewUpdateLogBtn) {
+            viewUpdateLogBtn.addEventListener('click', () => {
+                this.openUpdateLog();
             });
         }
 
@@ -171,6 +179,131 @@ class SettingsManager {
 
         // 加载当前存储的API密钥并填充到输入框
         this.loadCurrentApiKeyForModal(modal);
+    }
+
+    /**
+     * 加载应用更新日志数据
+     * @returns {Promise<Array<{version: string, date: string, sections: Array<{title: string, items?: string[], summary?: string}>}>>} 更新日志列表
+     */
+    async loadReleaseNotes() {
+        if (this.releaseNotes.length > 0) {
+            return this.releaseNotes;
+        }
+
+        if (!window.electronAPI || !window.electronAPI.getAssetsPath || !window.electronAPI.loadFile) {
+            throw new Error('更新日志读取能力不可用');
+        }
+
+        const assetsPath = await window.electronAPI.getAssetsPath();
+        const releaseNotesPath = `${assetsPath}/update.txt`;
+        const content = await window.electronAPI.loadFile(releaseNotesPath);
+        const parsedNotes = JSON.parse(content);
+        if (!Array.isArray(parsedNotes)) {
+            throw new Error('更新日志格式错误');
+        }
+
+        this.releaseNotes = parsedNotes;
+        return this.releaseNotes;
+    }
+
+    /**
+     * 打开更新日志弹窗
+     */
+    async openUpdateLog() {
+        const existingModal = document.querySelector('.update-log-modal');
+        if (existingModal) {
+            existingModal.classList.add('show');
+            return;
+        }
+
+        try {
+            await this.loadReleaseNotes();
+            const modal = this.createUpdateLogModal();
+            document.body.appendChild(modal);
+            setTimeout(() => {
+                modal.classList.add('show');
+            }, 10);
+        } catch (error) {
+            console.error('加载更新日志失败:', error);
+            this.showNotification('加载更新日志失败，请检查 update.txt', 'error');
+        }
+    }
+
+    /**
+     * 创建更新日志弹窗
+     * @returns {HTMLElement} 更新日志弹窗
+     */
+    createUpdateLogModal() {
+        const modal = document.createElement('div');
+        modal.className = 'settings-modal update-log-modal';
+        modal.innerHTML = `
+            <div class="settings-modal-backdrop"></div>
+            <div class="settings-modal-content">
+                <div class="settings-modal-header">
+                    <h3>更新日志</h3>
+                    <button class="settings-modal-close" id="update-log-modal-close">&times;</button>
+                </div>
+                <div class="settings-modal-body">
+                    <div class="update-log-list">
+                        ${this.renderUpdateLogHtml()}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const closeBtn = modal.querySelector('#update-log-modal-close');
+        const backdrop = modal.querySelector('.settings-modal-backdrop');
+        const closeModal = () => {
+            modal.classList.remove('show');
+            setTimeout(() => {
+                if (modal.parentNode) {
+                    document.body.removeChild(modal);
+                }
+            }, 300);
+        };
+
+        closeBtn?.addEventListener('click', closeModal);
+        backdrop?.addEventListener('click', closeModal);
+        return modal;
+    }
+
+    /**
+     * 渲染更新日志 HTML
+     * @returns {string} 更新日志 HTML 字符串
+     */
+    renderUpdateLogHtml() {
+        if (!Array.isArray(this.releaseNotes) || this.releaseNotes.length === 0) {
+            return `
+                <article class="update-log-version">
+                    <p class="update-log-summary">当前暂无可展示的更新日志。</p>
+                </article>
+            `;
+        }
+
+        return this.releaseNotes.map((entry) => {
+            const sectionsHtml = entry.sections.map((section) => {
+                const contentHtml = Array.isArray(section.items)
+                    ? `<ul class="update-log-items">${section.items.map((item) => `<li>${item}</li>`).join('')}</ul>`
+                    : `<p class="update-log-summary">${section.summary || ''}</p>`;
+
+                return `
+                    <section class="update-log-section">
+                        <h4 class="update-log-section-title">${section.title}</h4>
+                        ${contentHtml}
+                    </section>
+                `;
+            }).join('');
+
+            return `
+                <article class="update-log-version">
+                    <div class="update-log-version-header">
+                        <h4 class="update-log-version-title">v${entry.version}</h4>
+                        <span class="update-log-version-date">${entry.date}</span>
+                    </div>
+                    ${sectionsHtml}
+                </article>
+            `;
+        }).join('');
     }
 
     /**

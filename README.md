@@ -10,7 +10,7 @@
 
 [🇨🇳 中文](README.md) | [🇺🇸 English](README_EN.md)
 
-[![Version](https://img.shields.io/badge/version-0.2.2-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
+[![Version](https://img.shields.io/badge/version-0.2.3-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
 [![Electron](https://img.shields.io/badge/Electron-27.0.0-47848F.svg)](https://electronjs.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-16+-339933.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -62,40 +62,26 @@
 ### 🚧 LLM智能助手 (规划中)
 自然语言交互，智能推荐硬件方案，自动生成电路设计。
 
-## ✨ 最新特性 (v0.2.2)
+## ✨ 最新特性 (v0.2.3)
 
-### 🤖 智能模型自动切换系统
-- **双向智能切换**: 图片输入自动切换到视觉模型，纯文本自动切回对话模型
-- **默认模型配置**: Chat/GLM-4-9B (对话)，Visual/Qwen2.5-VL-32B (视觉)
-- **实时UI更新**: 切换时自动更新模型选择器显示并通知用户
-- **保留用户选择**: 手动选择 Chat/Thinking 模型时不会被强制切换
+### 🎨 设置页与工作流展示优化
+- **匹配结果列宽优化**: 元件匹配结果表格调整为 `30% / 35% / 35%`，长状态与结果文本显示更清晰
+- **设置卡片布局优化**: 存储位置、AI API、关于、应用更新卡片高度重新校准，整体信息密度更均衡
+- **快捷键卡片滚动修复**: 去掉内部 `shortcuts-grid` 滚动，仅保留外层 `card-content` 滚动，消除双滚动条
+- **更新日志入口补充**: 应用更新卡片头部新增“更新日志”按钮，可直接查看版本记录
 
-### 📊 模型配置管理系统
-- **配置文件化**: 创建 `model_config.json` 统一管理所有AI模型
-- **动态加载**: 应用启动时自动读取配置文件，支持热更新
-- **统一显示格式**: `Type/DisplayName` (如 Chat/GLM-4-9B)
-- **新增模型**: Qwen3-VL-30B 视觉长文本模型
-- **简化配置**: 移除不必要的 autoDispatch 字段
+### 🚀 启动体验优化
+- **Splash前黑窗修复**: 调整启动窗口创建顺序，避免 Splash 出现前先短暂暴露深色空窗口
+- **Splash首帧渲染优化**: Splash 改为在页面完成加载、Logo 就绪并完成首帧渲染后再显示，减少黑屏闪现
 
-### 💬 对话历史智能管理
-- **固定轮数策略**: 有图片时保留2轮对话，纯文本时保留4轮对话
-- **图片去重优化**: 历史消息中的图片不再重复发送（AI回复已包含描述）
-- **智能截断**: 带图请求时AI历史截断到1500字符，纯文本时3000字符
-- **Token优化**: 显著降低API调用的Token消耗和请求体积
+### 🔄 更新机制优化
+- **更新日志外置维护**: 应用内更新记录改为读取 `assets/update.txt`，后续维护版本说明更集中
+- **开发环境更新检查**: 开发环境也支持检查 GitHub 远程版本，便于验证自动更新流程
+- **开发版本状态提示**: 当本地版本高于远程版本时，更新区会显示“当前为开发版本”
 
-### 🎨 UI/UX 体验提升
-- **模型显示初始化**: 修复启动时显示完整模型名称的问题
-- **选中状态同步**: 模型初始化后自动高亮选中状态
-- **画布初始渲染**: 修复画布首次加载空白需要点击才显示的问题
-- **性能优化**: 移除所有 `backdrop-filter: blur` 效果，消除视觉卡顿
-- **历史消息编辑**: 支持编辑和重新发送历史消息，带悬停交互动画
-
-### 🐛 Bug修复与优化
-- **API Key路径**: 修复开发/生产环境API Key保存路径问题
-- **VLM 500错误**: 修复图片重复提交导致的API错误
-- **模型名称传递**: 修复模型切换后API使用错误模型名的问题
-- **请求超时**: 将API超时时间从60秒延长到180秒
-- **详细错误日志**: 增强VLM API错误诊断信息，便于问题排查
+### 📚 文档与版本同步
+- **版本升级**: 项目当前版本升级为 `0.2.3`
+- **更新日志链接修正**: README 中的更新日志入口同步指向现有的 `0-Change-Log.md`
 
 ---
 
@@ -201,7 +187,7 @@ fast-hardware/
 ├── 📁 scripts/                   # 前端脚本
 ├── 📁 styles/                    # 样式文件
 ├── 📁 dist/                      # 构建输出目录 (打包后生成)
-│   ├── Fast-Hardware-Setup-0.2.2.exe    # Windows安装程序
+│   ├── Fast-Hardware-Setup-0.2.3.exe    # Windows安装程序
 │   ├── Fast Hardware-0.1.9-win.zip      # Windows绿色版
 │   └── win-unpacked/                    # 未打包版本
 ├── 📄 main.js                    # Electron主进程
@@ -284,12 +270,17 @@ npm run build
 
 # 生成分发包
 npm run dist
+
+# 仅清理构建输出目录
+npm run clean:dist
 ```
+
+> 说明：`npm run dist` 现在会在打包前自动清空 `dist/` 目录，避免旧版本安装包与新版本产物混在一起。
 
 ### 分发文件说明
 
 #### 🎯 **Windows (64位专用)**
-- **`Fast-Hardware-Setup-0.2.2.exe`** (约76MB) - **专业安装程序**
+- **`Fast-Hardware-Setup-0.2.3.exe`** (约76MB) - **专业安装程序**
   - ✅ 自定义安装路径选择
   - ✅ 自动创建桌面快捷方式
   - ✅ 自动创建开始菜单快捷方式
@@ -309,7 +300,7 @@ npm run dist
 - **存储空间**: 200MB 可用空间
 
 ### 🚀 安装指南
-1. 下载 `Fast-Hardware-Setup-0.2.2.exe`
+1. 下载 `Fast-Hardware-Setup-0.2.3.exe`
 2. 双击运行安装程序
 3. 选择安装位置（可自定义）
 4. 按照提示完成安装
@@ -317,7 +308,7 @@ npm run dist
 
 ## 📚 相关文档
 
-- **[CHANGELOG.md](CHANGELOG.md)** - 完整更新日志和开发记录
+- **[0-Change-Log.md](0-Change-Log.md)** - 完整更新日志和开发记录
 - **[PRD.md](PRD.md)** - 产品需求文档和技术架构
 - **[3-llm_prd.md](3-llm_prd.md)** - LLM集成功能详细需求文档
 - **[data/README.md](data/README.md)** - 数据结构和元件库说明

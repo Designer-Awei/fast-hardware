@@ -382,7 +382,7 @@
                     <!-- 设置卡片网格 -->
                     <div class="settings-grid">
                         <!-- 存储设置卡片 -->
-                        <div class="setting-card shortcuts-card equal-height-card">
+                        <div class="setting-card storage-card compact-setting-card">
                             <div class="card-header">
                                 <div class="card-icon">
                                     <span class="icon"><img src="" alt="存储位置" width="22" height="22" data-icon="folder-open"></span>
@@ -414,13 +414,13 @@
                         </div>
 
                         <!-- API设置卡片 -->
-                        <div class="setting-card">
+                        <div class="setting-card api-card compact-setting-card">
                             <div class="card-header">
                                 <div class="card-icon">
-                                    <span class="icon"><img src="" alt="AI API" width="22" height="22" data-icon="bolt"></span>
+                                    <span class="icon"><img src="" alt="SiliconFlow API" width="22" height="22" data-icon="bolt"></span>
                                 </div>
                                 <div class="card-info">
-                                    <h3>AI API</h3>
+                                    <h3>SiliconFlow API</h3>
                                     <p>配置 SiliconFlow API 密钥</p>
                                 </div>
                             </div>
@@ -544,14 +544,14 @@
                         </div>
 
                         <!-- 关于卡片 -->
-                        <div class="setting-card about-card">
+                        <div class="setting-card about-card fixed-info-card">
                             <div class="card-header">
                                 <div class="card-icon">
                                     <span class="icon"><img src="" alt="关于" width="22" height="22" data-icon="info"></span>
                                 </div>
                                 <div class="card-info">
                                     <h3>关于</h3>
-                                    <p id="about-version-text">Fast Hardware v0.2.2</p>
+                                    <p id="about-version-text">Fast Hardware v0.2.3</p>
                                 </div>
                             </div>
                             <div class="card-content">
@@ -568,7 +568,7 @@
                         </div>
 
                         <!-- 更新卡片 -->
-                        <div class="setting-card update-card">
+                        <div class="setting-card update-card fixed-info-card">
                             <div class="card-header">
                                 <div class="card-icon">
                                     <span class="icon"><img src="" alt="应用更新" width="22" height="22" data-icon="refresh"></span>
@@ -576,6 +576,11 @@
                                 <div class="card-info">
                                     <h3>应用更新</h3>
                                     <p>自动检测并安装新版本</p>
+                                </div>
+                                <div class="card-header-actions update-card-header-actions">
+                                    <button class="btn btn-secondary surface-action-btn update-log-btn" id="view-update-log-btn">
+                                        更新日志
+                                    </button>
                                 </div>
                             </div>
                             <div class="card-content">
@@ -596,7 +601,7 @@
                                 </div>
                                 <p class="status-text" id="update-status-text">启动后将根据开关设置自动检查更新</p>
                             </div>
-                            <div class="card-actions">
+                            <div class="card-actions update-card-actions">
                                 <button class="btn btn-primary" id="download-update-btn" style="display: none;">
                                     <span class="btn-icon"><img src="" alt="下载更新" width="16" height="16" data-icon="download"></span>
                                     下载更新

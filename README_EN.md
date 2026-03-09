@@ -10,7 +10,7 @@
 
 [🇨🇳 中文](README.md) | [🇺🇸 English](README_EN.md)
 
-[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
+[![Version](https://img.shields.io/badge/version-0.2.3-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
 [![Electron](https://img.shields.io/badge/Electron-27.0.0-47848F.svg)](https://electronjs.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-16+-339933.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -73,28 +73,26 @@
 - **🎨 Automatic Generation**: Automatically generate circuit diagrams based on dialogue
 - **⚡ API Integration**: Support for multiple LLM service providers
 
-## ✨ Latest Features (v0.2.0)
+## ✨ Latest Features (v0.2.3)
 
-### 🚀 Multi-Project Tab Management System (Core Feature)
-- **📑 Multiple Project Tabs**: New project tab bar supporting multiple simultaneous open projects with quick switching
-- **➕ New Project Button**: Quickly create blank projects with consistent default canvas positions
-- **🔄 Independent Canvas States**: Each project has completely independent canvas data and view states
-- **🔴 Modified State Indicator**: Red dot appears when project is modified, disappears after saving
-- **💾 Smart State Management**: Automatic save and restore of canvas states when switching projects
+### 🎨 Settings And Workflow UI Improvements
+- **Component match table layout**: The match result table now uses `30% / 35% / 35%` column widths for clearer status and result text
+- **Settings card layout**: Storage, AI API, About, and Update cards were rebalanced with more consistent heights
+- **Shortcut card scrolling fix**: Removed the inner `shortcuts-grid` scrollbar and kept a single outer `card-content` scrollbar
+- **Release notes entry**: The Update card now includes a `Release Notes` button for viewing version history in-app
 
-### ✨ UI/UX Optimizations
-- **📍 Notification Position**: Moved to the right side of project tab bar, 40px height, no longer blocking buttons
-- **🎨 Project Tab Bar**: Fixed 40px height with horizontal scrolling support
-- **📐 Canvas Origin**: New projects automatically positioned at bottom-left, consistent with opened projects
+### 🚀 Startup Experience Improvements
+- **Pre-splash dark window fix**: Adjusted startup window sequencing to avoid exposing a dark empty window before the splash screen
+- **Splash first-frame rendering optimization**: The splash screen is now shown only after the page, logo, and first rendered frame are ready
 
-### 🐛 Critical Bug Fixes
-- **🖼️ VLM Multi-image Upload**: Fixed duplicate image sending causing 500 errors
-- **🔧 Component Save Prefix**: Fixed custom component prefix incorrectly using 'std' instead of 'ctm'
-- **🎯 Canvas State Isolation**: Fixed content confusion or loss when switching projects
+### 🔄 Update Flow Improvements
+- **External release notes source**: In-app release notes are now loaded from `assets/update.txt` instead of being embedded in settings code
+- **Development update checks**: Development builds can now check the remote GitHub release feed for update-flow verification
+- **Development version hint**: When the local version is higher than the remote release, the UI shows `当前为开发版本`
 
-### 🛠️ Developer Experience
-- **📊 Detailed Error Logs**: Complete diagnostic information for VLM API 500 errors
-- **🔥 Hot Reload Optimization**: Dev mode ignores data folder changes to prevent reload on project save
+### 📚 Documentation And Release Sync
+- **Version bump**: The project version is now `0.2.3`
+- **Changelog link fix**: README links now point to the existing `0-Change-Log.md`
 
 ---
 
@@ -294,32 +292,34 @@ This project supports **seamless development** on Windows, macOS, and Linux syst
 Build products are saved in the `dist/` directory:
 
 **Windows** 🎯
-- `Fast-Hardware-Setup-0.2.2.exe` - NSIS installation program
+- `Fast-Hardware-Setup-0.2.3.exe` - NSIS installation program
 - `win-unpacked/` - Unpacked version
 - `win-x64.zip` - ZIP compressed package
 
 **macOS** 🍎
-- `Fast Hardware-0.1.1.dmg` - DMG disk image
+- `Fast Hardware-0.2.3.dmg` - DMG disk image
 - `mac/` - Application package
 - `mac-x64.zip` - ZIP compressed package
 
 **Linux** 🐧
-- `Fast Hardware-0.1.1.AppImage` - AppImage executable file
-- `fast-hardware_0.1.1_amd64.deb` - Debian package
-- `fast-hardware-0.1.1.x86_64.rpm` - RPM package
+- `Fast Hardware-0.2.3.AppImage` - AppImage executable file
+- `fast-hardware_0.2.3_amd64.deb` - Debian package
+- `fast-hardware-0.2.3.x86_64.rpm` - RPM package
 
 ### 🏗️ Build Process
 
 ```bash
-# 1. Clean old builds
-npm run clean  # If defined
-
-# 2. Build application
+# 1. Build application
 npm run build
 
-# 3. Generate distribution packages
+# 2. Generate distribution packages
 npm run dist
+
+# 3. Clean the dist directory only
+npm run clean:dist
 ```
+
+> Note: `npm run dist` now clears the `dist/` directory before packaging, preventing old and new release artifacts from being mixed together.
 
 ### ⚙️ Advanced Build Configuration
 
@@ -530,6 +530,7 @@ touch styles/custom-theme.css
 
 | Document | Description | Importance |
 |----------|-------------|------------|
+| **[0-Change-Log.md](0-Change-Log.md)** | Release changelog and development progress records | 🔴 Core |
 | **[PRD.md](PRD.md)** | Product Requirements Document - Detailed functional planning and technical architecture | 🔴 Core |
 | **[edit_prd.md](edit_prd.md)** | Development Record - Complete technical implementation and fix records | 🟡 Important |
 | **[data/README.md](data/README.md)** | Data Structure Description - JSON format specifications and usage guidelines | 🟡 Important |

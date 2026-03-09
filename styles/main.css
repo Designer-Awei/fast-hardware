@@ -1543,7 +1543,27 @@ body {
     flex-direction: column;
 }
 
+.compact-setting-card {
+    height: 240px;
+    max-height: 240px;
+    display: flex;
+    flex-direction: column;
+}
+
+.fixed-info-card {
+    height: 260px;
+    max-height: 260px;
+    display: flex;
+    flex-direction: column;
+}
+
 .equal-height-card .card-content {
+    flex: 1;
+    overflow: auto;
+}
+
+.compact-setting-card .card-content,
+.fixed-info-card .card-content {
     flex: 1;
     overflow: auto;
 }
@@ -1572,6 +1592,14 @@ body {
     align-items: center;
     padding: 24px 24px 16px 24px;
     gap: 16px;
+}
+
+.card-header-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-shrink: 0;
 }
 
 .card-icon {
@@ -1612,6 +1640,10 @@ body {
 .card-content {
     padding: 0 24px;
     margin-bottom: 20px;
+}
+
+.storage-card .card-content {
+    margin-bottom: 0;
 }
 
 /* 存储路径行样式 */
@@ -1816,6 +1848,10 @@ body {
     padding: 0 24px 24px 24px;
 }
 
+.update-card-actions {
+    padding-bottom: 0;
+}
+
 .btn {
     display: inline-flex;
     align-items: center;
@@ -1878,6 +1914,99 @@ body {
     box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
 }
 
+.update-log-btn {
+    min-width: 88px;
+    height: 38px;
+    padding: 0 16px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.update-log-modal .settings-modal-content {
+    max-width: 600px;
+}
+
+.update-log-modal .settings-modal-header {
+    padding-bottom: 18px;
+    border-bottom: 1px solid #edf2f7;
+}
+
+.update-log-modal .settings-modal-body {
+    padding: 20px 24px 0 24px;
+}
+
+.update-log-list {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding-bottom: 12px;
+}
+
+.update-log-version {
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    background: #f8fafc;
+    padding: 18px 18px 16px 18px;
+}
+
+.update-log-version-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.update-log-version-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: #2d3748;
+}
+
+.update-log-version-date {
+    font-size: 13px;
+    color: #718096;
+    white-space: nowrap;
+}
+
+.update-log-section {
+    margin-bottom: 14px;
+}
+
+.update-log-section:last-child {
+    margin-bottom: 0;
+}
+
+.update-log-section-title {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #4a5568;
+}
+
+.update-log-items {
+    margin: 0;
+    padding-left: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.update-log-items li {
+    font-size: 14px;
+    line-height: 1.6;
+    color: #4a5568;
+}
+
+.update-log-summary {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.7;
+    color: #4a5568;
+}
+
 
 
 .shortcuts-grid {
@@ -1885,27 +2014,6 @@ body {
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: 24px;
     padding: 0px;
-    max-height: 240px;
-    overflow-y: auto;
-}
-
-/* 快捷键网格滚动条样式 */
-.shortcuts-grid::-webkit-scrollbar {
-    width: 6px;
-}
-
-.shortcuts-grid::-webkit-scrollbar-track {
-    background: #f1f3f4;
-    border-radius: 3px;
-}
-
-.shortcuts-grid::-webkit-scrollbar-thumb {
-    background: #c1c1c1;
-    border-radius: 3px;
-}
-
-.shortcuts-grid::-webkit-scrollbar-thumb:hover {
-    background: #a8a8a8;
 }
 
 .shortcut-group h5 {
@@ -2029,6 +2137,15 @@ body {
         font-size: 13px;
     }
 
+    .card-header-actions {
+        margin-left: 0;
+    }
+
+    .update-card-header-actions {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
     .card-content {
         padding: 0 20px;
         margin-bottom: 16px;
@@ -2052,11 +2169,14 @@ body {
         padding: 0 20px 20px 20px;
     }
 
+    .update-card-actions {
+        padding-bottom: 0;
+    }
+
     .shortcuts-grid {
         grid-template-columns: 1fr;
         padding: 0px;
         gap: 20px;
-        max-height: 210px;
     }
 
     .shortcuts-panel {
@@ -2081,6 +2201,16 @@ body {
     .btn {
         padding: 8px 16px;
         font-size: 13px;
+    }
+
+    .update-log-modal .settings-modal-content {
+        width: calc(100% - 24px);
+        max-height: 88vh;
+    }
+
+    .update-log-version-header {
+        flex-direction: column;
+        align-items: flex-start;
     }
 }
 
@@ -2149,9 +2279,18 @@ body {
         padding: 0 16px 16px 16px;
     }
 
+    .update-card-actions {
+        padding-bottom: 0;
+    }
+
+    .update-log-btn {
+        min-width: 82px;
+        height: 36px;
+        padding: 0 14px;
+    }
+
     .shortcuts-grid {
         padding: 16px;
-        max-height: 180px;
     }
 
     .shortcuts-panel .panel-header {
@@ -2210,8 +2349,8 @@ kbd.key {
     border-radius: 12px;
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
     max-width: 500px;
-    width: 90%;
-    max-height: 90vh;
+    width: 70%;
+    max-height: 70vh;
     overflow: hidden;
     display: flex;
     flex-direction: column;
