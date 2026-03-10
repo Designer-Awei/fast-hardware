@@ -8,8 +8,9 @@ class ChatManager {
         this.messages = [];
         this.isTyping = false;
         this.selectedModel = 'THUDM/GLM-4-9B-0414';
-        this.defaultChatModel = 'THUDM/GLM-4-9B-0414'; // 默认对话模型
-        this.defaultVisualModel = 'Qwen/Qwen2.5-VL-32B-Instruct'; // 默认视觉模型
+        this.defaultChatModel = 'THUDM/GLM-4-9B-0414';
+        this.defaultThinkingModel = 'Qwen/Qwen3-8B';
+        this.defaultVisualModel = 'Qwen/Qwen2.5-VL-32B-Instruct';
         this.uploadedImages = []; // 支持多图上传
         this.currentImageIndex = 0; // 当前显示的图片索引
         this.hidePreviewTimeout = null; // 延迟隐藏定时器
@@ -26,6 +27,7 @@ class ChatManager {
      */
     async init() {
         this.bindEvents();
+        this.bindModelConfigEvents();
         await this.loadInitialMessages();
         await this.initializeModelDisplay();
         // 初始化工作流引擎
@@ -35,6 +37,63 @@ class ChatManager {
         } else {
             console.warn('⚠️ 工作流引擎类未找到，请确保 workflow-circuit.js 已加载');
         }
+    }
+
+    /**
+     * 绑定模型配置事件
+     */
+    bindModelConfigEvents() {
+        document.addEventListener('model-config-updated', (event) => {
+            this.handleModelConfigUpdated(event.detail);
+        });
+    }
+
+    /**
+     * 处理模型配置更新
+     * @param {Object} detail - 模型配置更新详情
+     */
+    handleModelConfigUpdated(detail) {
+        if (!window.modelConfigManager) {
+            return;
+        }
+
+        const defaultChatModel = window.modelConfigManager.getDefaultModel('chat');
+        const defaultThinkingModel = window.modelConfigManager.getDefaultModel('thinking');
+        const defaultVisualModel = window.modelConfigManager.getDefaultModel('visual');
+
+        const getPreferred = (type, fallbackName) => {
+            try {
+                const key = `fastHardwarePreferredModel_${type}`;
+                const stored = window.localStorage?.getItem(key);
+                if (stored && window.modelConfigManager.getModelByName(stored)) {
+                    return stored;
+                }
+            } catch (error) {
+                console.warn('⚠️ 读取聊天层模型偏好失败:', error.message);
+            }
+            return fallbackName;
+        };
+
+        this.defaultChatModel = getPreferred('chat', defaultChatModel?.name || this.defaultChatModel);
+        this.defaultThinkingModel = getPreferred('thinking', defaultThinkingModel?.name || this.defaultThinkingModel);
+        this.defaultVisualModel = getPreferred('visual', defaultVisualModel?.name || this.defaultVisualModel);
+
+        if (!this.selectedModel || !window.modelConfigManager.getModelByName(this.selectedModel)) {
+            this.selectedModel = this.defaultChatModel;
+        }
+
+        const currentModelInfo = window.modelConfigManager.getModelByName(this.selectedModel);
+        if (currentModelInfo) {
+            this.updateModelDisplay(currentModelInfo);
+        }
+
+        console.log('✅ 模型配置已同步到聊天管理器:', {
+            defaultChatModel: this.defaultChatModel,
+            defaultThinkingModel: this.defaultThinkingModel,
+            defaultVisualModel: this.defaultVisualModel,
+            selectedModel: this.selectedModel,
+            source: detail?.syncStatus?.source || 'unknown'
+        });
     }
 
     /**
@@ -51,6 +110,9 @@ class ChatManager {
 
         // 设置默认显示的模型
         if (window.modelConfigManager && window.modelConfigManager.models.length > 0) {
+            this.handleModelConfigUpdated({
+                syncStatus: window.modelConfigManager.syncStatus
+            });
             console.log('🔍 尝试获取模型信息:', this.selectedModel);
             const modelInfo = window.modelConfigManager.getModelByName(this.selectedModel);
             console.log('📦 获取到的模型信息:', modelInfo);
@@ -111,8 +173,7 @@ class ChatManager {
     updateModelDisplay(modelInfo, updateSelection = true) {
         const modelNameElement = document.getElementById('current-model');
         if (modelNameElement && modelInfo) {
-            const typeCapitalized = modelInfo.type.charAt(0).toUpperCase() + modelInfo.type.slice(1);
-            const displayText = `${typeCapitalized}/${modelInfo.displayName}`;
+            const displayText = modelInfo.displayName;
             console.log('🎨 更新模型显示:', displayText);
             modelNameElement.textContent = displayText;
             modelNameElement.title = modelInfo.description;
@@ -499,7 +560,7 @@ class ChatManager {
                 
                 if (images && images.length > 0) {
                     // 场景1: 有图片输入 - 切换到视觉模型
-                    if (modelInfo && modelInfo.type !== 'visual') {
+                    if (modelInfo && (modelInfo.appType || modelInfo.type) !== 'visual') {
                         currentModel = this.defaultVisualModel;
                         console.log(`🔄 检测到图片输入，自动从 ${modelInfo.displayName} 切换到视觉模型`);
                         
@@ -514,7 +575,8 @@ class ChatManager {
                     }
                 } else {
                     // 场景2: 纯文本输入 - 切换回对话模型
-                    if (modelInfo && modelInfo.type !== 'chat' && modelInfo.type !== 'thinking') {
+                    const currentAppType = modelInfo ? (modelInfo.appType || modelInfo.type) : '';
+                    if (modelInfo && currentAppType !== 'chat' && currentAppType !== 'thinking') {
                         currentModel = this.defaultChatModel;
                         console.log(`🔄 检测到纯文本输入，自动从 ${modelInfo.displayName} 切换到对话模型`);
                         
@@ -1712,6 +1774,18 @@ class ChatManager {
         
         this.selectedModel = model;
         console.log('✅ 已设置 this.selectedModel =', this.selectedModel);
+
+        if (window.modelConfigManager) {
+            const info = window.modelConfigManager.getModelByName(model);
+            const appType = info?.appType || info?.type || typeOrDesc || 'chat';
+            try {
+                const key = `fastHardwarePreferredModel_${appType}`;
+                window.localStorage?.setItem(key, model);
+                console.log('💾 已保存模型偏好:', key, model);
+            } catch (error) {
+                console.warn('⚠️ 保存模型偏好失败:', error.message);
+            }
+        }
 
         // 更新UI显示和选中状态
         if (window.modelConfigManager) {

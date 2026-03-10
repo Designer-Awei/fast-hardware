@@ -25,6 +25,12 @@ const watchExtensions = ['.js', '.html', '.css', '.json', '.mjs', '.txt'];
 const ignoreDirs = ['node_modules', 'dist', '.git', 'data'];
 
 /**
+ * 需要忽略的运行时文件
+ * 避免缓存或本地配置写入时触发 Electron 热重载
+ */
+const ignoreFiles = ['remoteModelsCache.json', 'env.local', 'window-config.json'];
+
+/**
  * 启动Electron应用
  */
 function startElectron() {
@@ -126,6 +132,13 @@ function shouldWatch(filePath) {
       console.log(`🚫 忽略文件: ${relativePath} (在忽略目录 ${ignoreDir} 中)`);
       return false;
     }
+  }
+
+  const normalizedRelativePath = relativePath.replace(/\\/g, '/');
+  const fileName = path.basename(filePath);
+  if (ignoreFiles.includes(fileName) || ignoreFiles.includes(normalizedRelativePath)) {
+    console.log(`🚫 忽略文件: ${relativePath} (运行时文件)`);
+    return false;
   }
 
   console.log(`👀 监控文件: ${relativePath}`);

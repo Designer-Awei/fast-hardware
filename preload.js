@@ -168,6 +168,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loadModelConfig: () => ipcRenderer.invoke('loadModelConfig'),
 
   /**
+   * 加载解析后的模型配置
+   */
+  loadResolvedModelConfig: () => ipcRenderer.invoke('load-resolved-model-config'),
+
+  /**
+   * 刷新在线模型列表
+   */
+  refreshModelList: () => ipcRenderer.invoke('refresh-model-list'),
+
+  /**
+   * 获取模型同步状态
+   */
+  getModelSyncStatus: () => ipcRenderer.invoke('get-model-sync-status'),
+
+  /**
    * 获取当前应用更新状态
    */
   getUpdateState: () => ipcRenderer.invoke('get-update-state'),

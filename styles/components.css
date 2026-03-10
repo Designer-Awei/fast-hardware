@@ -2626,14 +2626,18 @@
 
 .component-match-table th:nth-child(1),
 .component-match-table td:nth-child(1) {
-    width: 30%;
+    width: 25%;
 }
 
 .component-match-table th:nth-child(2),
-.component-match-table th:nth-child(3),
 .component-match-table td:nth-child(2),
 .component-match-table td:nth-child(3) {
-    width: 35%;
+    width: 30%;
+}
+
+.component-match-table th:nth-child(3),
+.component-match-table td:nth-child(3) {
+    width: 45%;
 }
 
 .component-match-table td {

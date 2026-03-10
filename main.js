@@ -21,6 +21,7 @@ const STARTUP_DEBUG_ENABLED = process.argv.includes('--enable-startup-debug') ||
   process.argv.includes('--enable-logging') ||
   process.env.STARTUP_DEBUG === '1';
 const UPDATE_STATUS_CHANNEL = 'update-status';
+const MODEL_SYNC_TIMEOUT_MS = 5000;
 
 /**
  * 记录启动阶段日志，便于排查首屏闪烁问题
@@ -68,6 +69,13 @@ let updateState = {
   autoCheckEnabled: true,
   downloadedFile: null,
   message: ''
+};
+let modelSyncState = {
+  source: 'builtin',
+  fetchedAt: null,
+  lastAttemptAt: null,
+  error: null,
+  modelCount: 0
 };
 
 /**
@@ -118,6 +126,965 @@ async function readSettingValue(key) {
   } catch (error) {
     return undefined;
   }
+}
+
+/**
+ * 获取模型增强配置文件候选路径
+ * @returns {string[]} 模型增强配置文件路径列表
+ */
+function getModelConfigCandidatePaths() {
+  const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+  return isDev
+    ? [path.join(__dirname, 'model_config.json')]
+    : Array.from(new Set([
+        path.join(path.dirname(app.getPath('exe')), 'model_config.json'),
+        path.join(process.resourcesPath, 'model_config.json'),
+        path.join(__dirname, 'model_config.json')
+      ]));
+}
+
+/**
+ * 获取模型缓存文件路径
+ * @returns {string} 模型缓存文件路径
+ */
+function getModelCachePath() {
+  if (app.isPackaged) {
+    return path.join(app.getPath('userData'), 'remoteModelsCache.json');
+  }
+
+  return path.join(app.getPath('temp'), 'fast-hardware-dev', 'remoteModelsCache.json');
+}
+
+/**
+ * 获取内置模型增强配置
+ * @returns {object} 内置模型增强配置
+ */
+function getDefaultModelEnhancementConfig() {
+  return {
+    version: '2.0.0',
+    defaults: {
+      chat: 'THUDM/GLM-4-9B-0414',
+      thinking: 'Qwen/Qwen3-8B',
+      visual: 'Qwen/Qwen2.5-VL-32B-Instruct'
+    },
+    filters: {
+      allowedTypes: ['chat', 'thinking', 'visual'],
+      allowedProviders: ['Kimi', 'Hunyuan', 'DeepSeek', 'GLM', 'Qwen', 'MiniMax'],
+      excludeIds: [],
+      excludeNamePatterns: [
+        'embedding',
+        'reranker',
+        'text-to-image',
+        'image-to-image',
+        'speech-to-text',
+        'text-to-video',
+        'tts',
+        'asr'
+      ],
+      preferFree: false,
+      maxCostLevel: 'high'
+    },
+    overrides: {
+      'THUDM/GLM-4-9B-0414': {
+        displayName: 'GLM-4-9B',
+        appType: 'chat',
+        capabilities: ['text', 'code'],
+        description: '默认对话模型',
+        priority: 100,
+        costLevel: 'low',
+        pricing: {
+          inputPerMillion: null,
+          outputPerMillion: null,
+          currency: 'CNY'
+        }
+      },
+      'Qwen/Qwen3-8B': {
+        displayName: 'Qwen3-8B',
+        appType: 'thinking',
+        capabilities: ['text', 'code', 'thinking'],
+        description: '默认思考模型',
+        priority: 96,
+        costLevel: 'low',
+        pricing: {
+          inputPerMillion: null,
+          outputPerMillion: null,
+          currency: 'CNY'
+        }
+      },
+      'THUDM/GLM-4.1V-9B-Thinking': {
+        displayName: 'GLM-4.1V',
+        appType: 'visual',
+        capabilities: ['text', 'image', 'code', 'thinking'],
+        description: '视觉思考模型',
+        priority: 92,
+        costLevel: 'medium',
+        pricing: {
+          inputPerMillion: null,
+          outputPerMillion: null,
+          currency: 'CNY'
+        }
+      },
+      'Qwen/Qwen2.5-VL-32B-Instruct': {
+        displayName: 'Qwen2.5-VL-32B',
+        appType: 'visual',
+        capabilities: ['text', 'image', 'long_context'],
+        description: '默认视觉模型',
+        priority: 90,
+        costLevel: 'high',
+        pricing: {
+          inputPerMillion: null,
+          outputPerMillion: null,
+          currency: 'CNY'
+        }
+      },
+      'Qwen/Qwen3-VL-30B-A3B-Instruct': {
+        displayName: 'Qwen3-VL-30B',
+        appType: 'visual',
+        capabilities: ['text', 'image', 'long_context'],
+        description: 'Qwen3 视觉长文本模型',
+        priority: 84,
+        costLevel: 'high',
+        pricing: {
+          inputPerMillion: null,
+          outputPerMillion: null,
+          currency: 'CNY'
+        }
+      }
+    }
+  };
+}
+
+/**
+ * 将旧版静态模型配置转换为增强配置结构
+ * @param {object} legacyConfig - 旧版模型配置
+ * @returns {object} 转换后的增强配置
+ */
+function convertLegacyModelConfig(legacyConfig) {
+  const baseConfig = getDefaultModelEnhancementConfig();
+  if (!Array.isArray(legacyConfig?.models)) {
+    return baseConfig;
+  }
+
+  const overrides = { ...baseConfig.overrides };
+  const defaults = { ...baseConfig.defaults };
+
+  legacyConfig.models.forEach((model) => {
+    if (!model?.name) {
+      return;
+    }
+
+    const appType = model.appType || model.type || 'chat';
+    overrides[model.name] = {
+      displayName: model.displayName,
+      appType,
+      capabilities: Array.isArray(model.capabilities) ? model.capabilities : undefined,
+      description: model.description,
+      priority: model.priority,
+      costLevel: model.costLevel,
+      pricing: model.pricing,
+      enabled: model.enabled !== false
+    };
+
+    if (!defaults[appType]) {
+      defaults[appType] = model.name;
+    }
+  });
+
+  return {
+    version: legacyConfig.version || baseConfig.version,
+    defaults,
+    filters: { ...baseConfig.filters },
+    overrides
+  };
+}
+
+/**
+ * 规范化模型增强配置
+ * @param {object} rawConfig - 原始模型增强配置
+ * @returns {object} 规范化后的模型增强配置
+ */
+function normalizeModelEnhancementConfig(rawConfig) {
+  if (Array.isArray(rawConfig?.models)) {
+    return convertLegacyModelConfig(rawConfig);
+  }
+
+  const defaultConfig = getDefaultModelEnhancementConfig();
+  return {
+    version: rawConfig?.version || defaultConfig.version,
+    defaults: {
+      ...defaultConfig.defaults,
+      ...(rawConfig?.defaults || {})
+    },
+    filters: {
+      ...defaultConfig.filters,
+      ...(rawConfig?.filters || {})
+    },
+    overrides: {
+      ...defaultConfig.overrides,
+      ...(rawConfig?.overrides || {})
+    }
+  };
+}
+
+/**
+ * 加载本地模型增强配置
+ * @returns {Promise<object>} 模型增强配置
+ */
+async function loadModelEnhancementConfig() {
+  const candidatePaths = getModelConfigCandidatePaths();
+  let lastError = null;
+
+  for (const configPath of candidatePaths) {
+    try {
+      const configContent = await fs.readFile(configPath, 'utf8');
+      const config = JSON.parse(configContent);
+      console.log('✅ 模型增强配置加载成功:', configPath);
+      return normalizeModelEnhancementConfig(config);
+    } catch (error) {
+      lastError = error;
+      console.warn('⚠️ 模型增强配置读取失败，继续尝试下一个路径:', {
+        configPath,
+        message: error.message
+      });
+    }
+  }
+
+  if (lastError) {
+    console.error('❌ 加载模型增强配置失败，使用内置默认配置:', lastError.message);
+  }
+  return getDefaultModelEnhancementConfig();
+}
+
+/**
+ * 读取 SiliconFlow API Key
+ * @returns {Promise<string|null>} API Key
+ */
+async function readSiliconFlowApiKey() {
+  const apiKey = await readSettingValue('apiKey');
+  return apiKey || null;
+}
+
+/**
+ * 发起 SiliconFlow JSON 请求
+ * @param {object} options - 请求配置
+ * @param {string} options.method - HTTP 方法
+ * @param {string} options.path - 请求路径
+ * @param {string|null} options.apiKey - API Key
+ * @param {object|null} [options.body=null] - 请求体
+ * @returns {Promise<any>} 解析后的响应 JSON
+ */
+async function requestSiliconFlowJson({ method, path: requestPath, apiKey, body = null }) {
+  return new Promise((resolve, reject) => {
+    const payload = body ? JSON.stringify(body) : null;
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+
+    if (apiKey) {
+      headers.Authorization = `Bearer ${apiKey}`;
+    }
+
+    if (payload) {
+      headers['Content-Length'] = Buffer.byteLength(payload);
+    }
+
+    const req = https.request({
+      hostname: 'api.siliconflow.cn',
+      port: 443,
+      path: requestPath,
+      method,
+      headers
+    }, (res) => {
+      let responseBody = '';
+
+      res.on('data', (chunk) => {
+        responseBody += chunk;
+      });
+
+      res.on('end', () => {
+        try {
+          const parsed = responseBody ? JSON.parse(responseBody) : {};
+          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(parsed);
+            return;
+          }
+
+          reject(new Error(parsed?.error?.message || `请求失败: ${res.statusCode}`));
+        } catch (error) {
+          reject(new Error(`响应解析失败: ${error.message}`));
+        }
+      });
+    });
+
+    req.setTimeout(MODEL_SYNC_TIMEOUT_MS, () => {
+      req.destroy(new Error(`请求超时 (${MODEL_SYNC_TIMEOUT_MS}ms)`));
+    });
+
+    req.on('error', (error) => {
+      reject(error);
+    });
+
+    if (payload) {
+      req.write(payload);
+    }
+
+    req.end();
+  });
+}
+
+/**
+ * 获取 SiliconFlow 在线模型列表
+ * @param {string} apiKey - API Key
+ * @returns {Promise<Array<object>>} 在线模型列表
+ */
+async function fetchRemoteModelCatalog(apiKey) {
+  const response = await requestSiliconFlowJson({
+    method: 'GET',
+    path: '/v1/models',
+    apiKey
+  });
+
+  if (!Array.isArray(response?.data)) {
+    throw new Error('模型列表响应格式无效');
+  }
+
+  return response.data;
+}
+
+/**
+ * 获取公开页面文本内容
+ * @param {object} options - 请求配置
+ * @param {string} options.hostname - 域名
+ * @param {string} options.path - 路径
+ * @returns {Promise<string>} 页面文本
+ */
+async function fetchPublicPageText({ hostname, path: requestPath }) {
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname,
+      port: 443,
+      path: requestPath,
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Fast-Hardware/0.2.3'
+      }
+    }, (res) => {
+      let responseBody = '';
+
+      res.on('data', (chunk) => {
+        responseBody += chunk;
+      });
+
+      res.on('end', () => {
+        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+          resolve(responseBody);
+          return;
+        }
+
+        reject(new Error(`页面请求失败: ${res.statusCode}`));
+      });
+    });
+
+    req.setTimeout(MODEL_SYNC_TIMEOUT_MS, () => {
+      req.destroy(new Error(`页面请求超时 (${MODEL_SYNC_TIMEOUT_MS}ms)`));
+    });
+
+    req.on('error', (error) => {
+      reject(error);
+    });
+
+    req.end();
+  });
+}
+
+/**
+ * 转义正则字符串
+ * @param {string} value - 原始字符串
+ * @returns {string} 转义后的字符串
+ */
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * 解码常见 HTML 实体
+ * @param {string} html - HTML 文本
+ * @returns {string} 解码后的文本
+ */
+function decodeHtmlEntities(html) {
+  return html
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, '\'')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+/**
+ * 将 HTML 转换为便于解析的纯文本
+ * @param {string} html - 原始 HTML
+ * @returns {string} 纯文本
+ */
+function convertHtmlToPlainText(html) {
+  return decodeHtmlEntities(
+    html
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<\/(p|div|section|article|li|tr|h1|h2|h3|h4|h5|h6)>/gi, '\n')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+  )
+    .replace(/\r/g, ' ')
+    .replace(/\t/g, ' ')
+    .replace(/\u00a0/g, ' ')
+    .replace(/[ ]{2,}/g, ' ')
+    .replace(/\n{2,}/g, '\n')
+    .trim();
+}
+
+/**
+ * 获取模型名称的价格匹配候选
+ * @param {string} modelName - 模型名称
+ * @returns {string[]} 匹配候选
+ */
+function buildPricingNameCandidates(modelName) {
+  const withoutTierPrefix = modelName.replace(/^(Pro|LoRA)\//i, '');
+  const shortName = withoutTierPrefix.split('/').pop() || withoutTierPrefix;
+  return Array.from(new Set([
+    modelName,
+    withoutTierPrefix,
+    shortName
+  ].filter(Boolean)));
+}
+
+/**
+ * 从文本中提取指定模型的官方价格
+ * @param {string} plainText - 价格页纯文本
+ * @param {string} modelName - 模型名称
+ * @returns {{inputPerMillion: number, outputPerMillion: number, currency: string, source: string}|null} 官方价格
+ */
+function extractOfficialPricingForModel(plainText, modelName) {
+  const candidates = buildPricingNameCandidates(modelName);
+  for (const candidate of candidates) {
+    const pattern = new RegExp(
+      `${escapeRegExp(candidate)}\\s+[0-9]{1,4}K[\\s\\S]{0,120}?\\$\\s*([0-9.]+)\\s*[\\s\\S]{0,40}?\\$\\s*([0-9.]+)`,
+      'i'
+    );
+    const match = plainText.match(pattern);
+    if (match) {
+      return {
+        inputPerMillion: Number(match[1]),
+        outputPerMillion: Number(match[2]),
+        currency: 'USD',
+        source: 'official-pricing-page'
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 从官网价格页提取模型价格映射
+ * @param {Array<object>} rawModels - 原始模型列表
+ * @returns {Promise<Map<string, {inputPerMillion: number, outputPerMillion: number, currency: string, source: string}>>} 价格映射
+ */
+async function fetchOfficialPricingMap(rawModels) {
+  const pricingPageHtml = await fetchPublicPageText({
+    hostname: 'www.siliconflow.com',
+    path: '/pricing'
+  });
+  const pricingPageText = convertHtmlToPlainText(pricingPageHtml);
+  const pricingMap = new Map();
+
+  rawModels.forEach((rawModel) => {
+    const modelName = rawModel?.id;
+    if (!modelName || pricingMap.has(modelName)) {
+      return;
+    }
+
+    const officialPricing = extractOfficialPricingForModel(pricingPageText, modelName);
+    if (officialPricing) {
+      pricingMap.set(modelName, officialPricing);
+    }
+  });
+
+  return pricingMap;
+}
+
+/**
+ * 推断模型显示名称
+ * @param {string} modelName - 原始模型名称
+ * @returns {string} 显示名称
+ */
+function deriveDisplayName(modelName) {
+  const rawName = modelName.split('/').pop() || modelName;
+  return rawName
+    .replace(/-Instruct$/i, '')
+    .replace(/-Chat$/i, '')
+    .replace(/-\d{4,8}$/i, '')
+    .replace(/-A\d+B$/i, '');
+}
+
+/**
+ * 推断模型所属服务商分组
+ * @param {string} modelName - 模型名称
+ * @param {string} displayName - 显示名称
+ * @returns {string} 服务商分组名称
+ */
+function deriveProviderGroup(modelName, displayName) {
+  const sourceText = `${modelName} ${displayName}`.toLowerCase();
+  const providerAliases = [
+    ['GLM', /(glm|zai-org|thudm)/i],
+    ['Qwen', /qwen/i],
+    ['DeepSeek', /deepseek/i],
+    ['Kimi', /(kimi|moonshot)/i],
+    ['MiniMax', /minimax/i],
+    ['Hunyuan', /hunyuan/i],
+    ['ERNIE', /(ernie|baidu)/i],
+    ['GPT', /(gpt|openai)/i],
+    ['Ling', /ling-/i]
+  ];
+
+  for (const [providerName, pattern] of providerAliases) {
+    if (pattern.test(sourceText)) {
+      return providerName;
+    }
+  }
+
+  const normalizedName = modelName.replace(/^(Pro|LoRA)\//i, '');
+  const rawProvider = normalizedName.includes('/') ? normalizedName.split('/')[0] : normalizedName;
+  return rawProvider || 'Other';
+}
+
+/**
+ * 推断项目业务模型类型
+ * @param {string} modelName - 模型名称
+ * @param {object} override - 覆盖配置
+ * @returns {string} 项目业务模型类型
+ */
+function inferAppType(modelName, override = {}) {
+  if (override.appType || override.type) {
+    return override.appType || override.type;
+  }
+
+  const normalizedName = modelName.toLowerCase();
+  if (/(vl|vision|vlm|glm-4\.1v|qvq|image)/.test(normalizedName)) {
+    return 'visual';
+  }
+
+  if (/(thinking|reason|reasoning|deepseek-r1|qwq|o1|o3)/.test(normalizedName)) {
+    return 'thinking';
+  }
+
+  return 'chat';
+}
+
+/**
+ * 推断模型能力标签
+ * @param {string} appType - 项目业务模型类型
+ * @param {object} override - 覆盖配置
+ * @returns {string[]} 能力标签
+ */
+function inferCapabilities(appType, override = {}) {
+  if (Array.isArray(override.capabilities) && override.capabilities.length > 0) {
+    return override.capabilities;
+  }
+
+  if (appType === 'visual') {
+    return ['text', 'image'];
+  }
+
+  if (appType === 'thinking') {
+    return ['text', 'code', 'thinking'];
+  }
+
+  return ['text', 'code'];
+}
+
+/**
+ * 将成本等级转换为排序权重
+ * @param {string} costLevel - 成本等级
+ * @returns {number} 排序权重
+ */
+function getCostLevelWeight(costLevel) {
+  const weights = {
+    free: 0,
+    low: 1,
+    medium: 2,
+    high: 3,
+    unknown: 4
+  };
+  return weights[costLevel] ?? weights.unknown;
+}
+
+/**
+ * 判断模型成本是否超出允许范围
+ * @param {string} costLevel - 模型成本等级
+ * @param {string} maxCostLevel - 最大允许成本等级
+ * @returns {boolean} 是否超出范围
+ */
+function isCostLevelExcluded(costLevel, maxCostLevel) {
+  if (!maxCostLevel || maxCostLevel === 'unknown' || costLevel === 'unknown') {
+    return false;
+  }
+
+  return getCostLevelWeight(costLevel) > getCostLevelWeight(maxCostLevel);
+}
+
+/**
+ * 根据价格推导成本等级
+ * @param {{inputPerMillion?: number, outputPerMillion?: number}|null} pricing - 价格信息
+ * @returns {string} 成本等级
+ */
+function deriveCostLevelFromPricing(pricing) {
+  if (!pricing || !Number.isFinite(pricing.inputPerMillion) || !Number.isFinite(pricing.outputPerMillion)) {
+    return 'unknown';
+  }
+
+  const peakPrice = Math.max(pricing.inputPerMillion, pricing.outputPerMillion);
+  if (peakPrice === 0) {
+    return 'free';
+  }
+
+  if (peakPrice <= 0.2) {
+    return 'low';
+  }
+
+  if (peakPrice <= 1) {
+    return 'medium';
+  }
+
+  return 'high';
+}
+
+/**
+ * 获取模型排序用价格
+ * @param {{inputPerMillion?: number, outputPerMillion?: number}|null} pricing - 价格信息
+ * @returns {number} 排序价格
+ */
+function getPricingSortValue(pricing) {
+  if (!pricing || !Number.isFinite(pricing.inputPerMillion) || !Number.isFinite(pricing.outputPerMillion)) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  return pricing.inputPerMillion + pricing.outputPerMillion;
+}
+
+/**
+ * 判断模型名是否命中过滤规则
+ * @param {string} modelName - 模型名称
+ * @param {string[]} patterns - 过滤模式
+ * @returns {boolean} 是否命中
+ */
+function matchesExcludePatterns(modelName, patterns = []) {
+  const normalizedName = modelName.toLowerCase();
+  return patterns.some((pattern) => normalizedName.includes(String(pattern).toLowerCase()));
+}
+
+/**
+ * 从增强配置生成内置模型列表
+ * @param {object} enhancementConfig - 模型增强配置
+ * @returns {Array<object>} 内置模型列表
+ */
+function buildBuiltinRawModels(enhancementConfig) {
+  return Object.keys(enhancementConfig.overrides || {}).map((name) => ({
+    id: name,
+    object: 'model',
+    owned_by: name.split('/')[0] || '',
+    created: 0
+  }));
+}
+
+/**
+ * 生成推荐描述
+ * @param {string} appType - 业务模型类型
+ * @param {object} override - 覆盖配置
+ * @returns {string} 模型描述
+ */
+function getModelDescription(appType, override = {}) {
+  if (override.description) {
+    return override.description;
+  }
+
+  if (appType === 'visual') {
+    return '适合图片理解与多模态问答';
+  }
+
+  if (appType === 'thinking') {
+    return '适合复杂推理与方案分析';
+  }
+
+  return '适合日常对话与代码辅助';
+}
+
+/**
+ * 确保默认模型存在于当前候选列表中
+ * @param {string} preferredName - 首选模型名
+ * @param {Array<object>} models - 候选模型列表
+ * @param {string} appType - 业务模型类型
+ * @returns {string|null} 可用默认模型名
+ */
+function resolveDefaultModelName(preferredName, models, appType) {
+  if (preferredName && models.some((model) => model.name === preferredName)) {
+    return preferredName;
+  }
+
+  const fallbackModel = models.find((model) => model.appType === appType) || models[0];
+  return fallbackModel ? fallbackModel.name : null;
+}
+
+/**
+ * 将远程模型列表解析为前端可直接使用的模型配置
+ * @param {Array<object>} rawModels - 远程原始模型列表
+ * @param {object} enhancementConfig - 模型增强配置
+ * @param {string} source - 数据来源
+ * @param {string|null} fetchedAt - 拉取时间
+ * @param {Map<string, {inputPerMillion: number, outputPerMillion: number, currency: string, source: string}>} [officialPricingMap] - 官网价格映射
+ * @returns {object} 解析后的模型配置
+ */
+function buildResolvedModelConfig(rawModels, enhancementConfig, source, fetchedAt, officialPricingMap = new Map()) {
+  const filters = enhancementConfig.filters || {};
+  const allowedTypes = Array.isArray(filters.allowedTypes) ? filters.allowedTypes : ['chat', 'thinking', 'visual'];
+  const allowedProviders = Array.isArray(filters.allowedProviders) && filters.allowedProviders.length > 0
+    ? filters.allowedProviders
+    : ['Kimi', 'Hunyuan', 'DeepSeek', 'GLM', 'Qwen', 'MiniMax'];
+  const excludeIds = Array.isArray(filters.excludeIds) ? filters.excludeIds : [];
+  const excludeNamePatterns = Array.isArray(filters.excludeNamePatterns) ? filters.excludeNamePatterns : [];
+  const preferFree = filters.preferFree === true;
+  const maxCostLevel = filters.maxCostLevel || 'high';
+  const overrides = enhancementConfig.overrides || {};
+  const uniqueModels = new Map();
+
+  rawModels.forEach((rawModel) => {
+    const modelName = rawModel?.id;
+    if (!modelName || uniqueModels.has(modelName)) {
+      return;
+    }
+
+    const override = overrides[modelName] || {};
+    const appType = inferAppType(modelName, override);
+    if (!allowedTypes.includes(appType)) {
+      return;
+    }
+
+    if (excludeIds.includes(modelName) || matchesExcludePatterns(modelName, excludeNamePatterns)) {
+      return;
+    }
+
+    const officialPricing = officialPricingMap.get(modelName) || null;
+    const resolvedPricing = officialPricing || override.pricing || null;
+    const costLevel = override.costLevel || deriveCostLevelFromPricing(resolvedPricing);
+    if (isCostLevelExcluded(costLevel, maxCostLevel)) {
+      return;
+    }
+
+    const capabilityFit = appType === 'visual' ? 3 : appType === 'thinking' ? 2 : 1;
+    const priority = Number.isFinite(override.priority) ? override.priority : (appType === 'chat' ? 80 : appType === 'thinking' ? 78 : 76);
+    const costPenalty = getCostLevelWeight(costLevel);
+    const freeBonus = preferFree && costLevel === 'free' ? 40 : 0;
+    const score = capabilityFit * 50 + priority * 30 - costPenalty * 20 + freeBonus;
+    const displayName = override.displayName || deriveDisplayName(modelName);
+    const providerGroup = override.providerGroup || deriveProviderGroup(modelName, displayName);
+    if (!allowedProviders.includes(providerGroup)) {
+      return;
+    }
+    const model = {
+      id: override.id || modelName,
+      name: modelName,
+      displayName,
+      providerType: rawModel.type || 'text',
+      providerSubType: rawModel.sub_type || 'chat',
+      providerGroup,
+      appType,
+      type: appType,
+      capabilities: inferCapabilities(appType, override),
+      description: getModelDescription(appType, override),
+      enabled: override.enabled !== false,
+      costLevel,
+      priority,
+      pricing: resolvedPricing,
+      hasKnownPricing: Number.isFinite(resolvedPricing?.inputPerMillion) && Number.isFinite(resolvedPricing?.outputPerMillion),
+      pricingSortValue: getPricingSortValue(resolvedPricing),
+      status: 'available',
+      source,
+      score,
+      ownedBy: rawModel.owned_by || '',
+      created: rawModel.created || 0
+    };
+
+    uniqueModels.set(modelName, model);
+  });
+
+  const models = Array.from(uniqueModels.values())
+    .filter((model) => model.enabled)
+    .sort((a, b) => {
+      if (a.appType !== b.appType) {
+        return a.appType.localeCompare(b.appType);
+      }
+
+      if (a.providerGroup !== b.providerGroup) {
+        return a.providerGroup.localeCompare(b.providerGroup, 'en', { sensitivity: 'base' });
+      }
+
+      if (a.hasKnownPricing !== b.hasKnownPricing) {
+        return a.hasKnownPricing ? -1 : 1;
+      }
+
+      if (a.hasKnownPricing && a.pricingSortValue !== b.pricingSortValue) {
+        return a.pricingSortValue - b.pricingSortValue;
+      }
+
+      if (a.score !== b.score) {
+        return b.score - a.score;
+      }
+
+      return a.displayName.localeCompare(b.displayName, 'en', { sensitivity: 'base' });
+    });
+
+  const defaults = {
+    chat: resolveDefaultModelName(enhancementConfig.defaults?.chat, models, 'chat'),
+    thinking: resolveDefaultModelName(enhancementConfig.defaults?.thinking, models, 'thinking'),
+    visual: resolveDefaultModelName(enhancementConfig.defaults?.visual, models, 'visual')
+  };
+
+  return {
+    version: enhancementConfig.version || '2.0.0',
+    fetchedAt,
+    source,
+    defaults,
+    filters,
+    models
+  };
+}
+
+/**
+ * 写入远程模型缓存
+ * @param {Array<object>} rawModels - 原始模型列表
+ * @param {string} fetchedAt - 拉取时间
+ */
+async function writeRemoteModelCache(rawModels, fetchedAt) {
+  const cachePath = getModelCachePath();
+  await fs.mkdir(path.dirname(cachePath), { recursive: true });
+  await fs.writeFile(cachePath, JSON.stringify({
+    version: '1.0.0',
+    fetchedAt,
+    rawModels
+  }, null, 2), 'utf8');
+}
+
+/**
+ * 读取远程模型缓存
+ * @returns {Promise<{fetchedAt: string|null, rawModels: Array<object>}|null>} 缓存内容
+ */
+async function readRemoteModelCache() {
+  try {
+    const cacheContent = await fs.readFile(getModelCachePath(), 'utf8');
+    const cache = JSON.parse(cacheContent);
+    if (!Array.isArray(cache?.rawModels)) {
+      return null;
+    }
+
+    return {
+      fetchedAt: cache.fetchedAt || null,
+      rawModels: cache.rawModels
+    };
+  } catch (error) {
+    return null;
+  }
+}
+
+/**
+ * 更新模型同步状态
+ * @param {Partial<typeof modelSyncState>} patch - 状态补丁
+ */
+function updateModelSyncState(patch) {
+  modelSyncState = {
+    ...modelSyncState,
+    ...patch
+  };
+}
+
+/**
+ * 解析模型目录，优先在线拉取，失败时回退缓存和内置配置
+ * @param {object} [options={}] - 解析选项
+ * @param {boolean} [options.forceRefresh=false] - 是否强制刷新在线数据
+ * @returns {Promise<object>} 解析后的模型配置
+ */
+async function resolveModelCatalog(options = {}) {
+  const { forceRefresh = false } = options;
+  const enhancementConfig = await loadModelEnhancementConfig();
+  const attemptAt = new Date().toISOString();
+  updateModelSyncState({
+    lastAttemptAt: attemptAt,
+    error: null
+  });
+  let officialPricingMap = new Map();
+
+  const apiKey = await readSiliconFlowApiKey();
+  if (apiKey) {
+    try {
+      const remoteModels = await fetchRemoteModelCatalog(apiKey);
+      try {
+        officialPricingMap = await fetchOfficialPricingMap(remoteModels);
+      } catch (pricingError) {
+        console.warn('⚠️ 官网价格页解析失败，继续使用本地价格兜底:', pricingError.message);
+      }
+      const fetchedAt = new Date().toISOString();
+      await writeRemoteModelCache(remoteModels, fetchedAt);
+      const resolvedConfig = buildResolvedModelConfig(remoteModels, enhancementConfig, 'remote', fetchedAt, officialPricingMap);
+      updateModelSyncState({
+        source: 'remote',
+        fetchedAt,
+        error: null,
+        modelCount: resolvedConfig.models.length
+      });
+      return resolvedConfig;
+    } catch (error) {
+      console.warn('⚠️ 在线模型列表拉取失败，准备回退缓存:', error.message);
+      updateModelSyncState({
+        error: error.message
+      });
+      if (forceRefresh) {
+        console.warn('⚠️ 当前为手动刷新，在线失败后仍尝试使用缓存结果');
+      }
+    }
+  } else {
+    updateModelSyncState({
+      error: '未配置 SiliconFlow API Key'
+    });
+  }
+
+  const cachedCatalog = await readRemoteModelCache();
+  if (cachedCatalog) {
+    try {
+      officialPricingMap = await fetchOfficialPricingMap(cachedCatalog.rawModels);
+    } catch (pricingError) {
+      console.warn('⚠️ 缓存模型价格补全失败，继续使用本地价格兜底:', pricingError.message);
+    }
+    const resolvedConfig = buildResolvedModelConfig(cachedCatalog.rawModels, enhancementConfig, 'cache', cachedCatalog.fetchedAt, officialPricingMap);
+    updateModelSyncState({
+      source: 'cache',
+      fetchedAt: cachedCatalog.fetchedAt,
+      modelCount: resolvedConfig.models.length
+    });
+    return resolvedConfig;
+  }
+
+  const builtinModels = buildBuiltinRawModels(enhancementConfig);
+  try {
+    officialPricingMap = await fetchOfficialPricingMap(builtinModels);
+  } catch (pricingError) {
+    console.warn('⚠️ 内置模型价格补全失败，继续使用本地价格兜底:', pricingError.message);
+  }
+  const resolvedConfig = buildResolvedModelConfig(builtinModels, enhancementConfig, 'builtin', null, officialPricingMap);
+  updateModelSyncState({
+    source: 'builtin',
+    fetchedAt: null,
+    modelCount: resolvedConfig.models.length
+  });
+  return resolvedConfig;
 }
 
 /**
@@ -1017,54 +1984,28 @@ ipcMain.handle('get-assets-path', () => {
  * 加载模型配置文件
  */
 ipcMain.handle('loadModelConfig', async () => {
-  try {
-    const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
-    let configPath;
-    
-    if (isDev) {
-      // 开发环境：从项目根目录读取
-      configPath = path.join(__dirname, 'model_config.json');
-    } else {
-      // 生产环境：从程序根目录读取
-      configPath = path.join(path.dirname(app.getPath('exe')), 'model_config.json');
-    }
-    
-    console.log('📂 读取模型配置文件:', configPath);
-    const configContent = await fs.readFile(configPath, 'utf-8');
-    const config = JSON.parse(configContent);
-    console.log('✅ 模型配置加载成功:', config.models.length, '个模型');
-    return config;
-  } catch (error) {
-    console.error('❌ 加载模型配置失败:', error);
-    // 返回默认配置
-    return {
-      version: '1.0.0',
-      models: [
-        {
-          id: 'glm-4-9b',
-          name: 'THUDM/GLM-4-9B-0414',
-          displayName: 'GLM-4-9B',
-          type: 'chat',
-          capabilities: ['text', 'code'],
-          description: '默认对话模型',
-          enabled: true
-        },
-        {
-          id: 'glm-4v-thinking',
-          name: 'THUDM/GLM-4.1V-9B-Thinking',
-          displayName: 'GLM-4.1V',
-          type: 'visual',
-          capabilities: ['text', 'image', 'code', 'thinking'],
-          description: '视觉思考模型',
-          enabled: true
-        }
-      ],
-      autoDispatch: {
-        enabled: false,
-        fallback: 'glm-4-9b'
-      }
-    };
-  }
+  return resolveModelCatalog();
+});
+
+/**
+ * 加载解析后的在线模型配置
+ */
+ipcMain.handle('load-resolved-model-config', async () => {
+  return resolveModelCatalog();
+});
+
+/**
+ * 手动刷新在线模型列表
+ */
+ipcMain.handle('refresh-model-list', async () => {
+  return resolveModelCatalog({ forceRefresh: true });
+});
+
+/**
+ * 获取模型同步状态
+ */
+ipcMain.handle('get-model-sync-status', async () => {
+  return modelSyncState;
 });
 
 // 文件操作IPC

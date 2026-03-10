@@ -775,14 +775,125 @@ body {
     border: 1px solid #ddd;
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    max-height: 200px;
-    overflow-y: auto;
+    max-height: 300px;
+    overflow: hidden;
     z-index: 1000;
     display: none;
 }
 
 .model-dropdown.active {
-    display: block;
+    display: flex;
+    flex-direction: column;
+}
+
+.model-dropdown-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid #ececf3;
+    background: #eeeeee;
+    flex-shrink: 0;
+}
+
+.model-type-tabs {
+    display: flex;
+    gap: 8px;
+    padding: 6px 16px 8px;
+    border-bottom: 1px solid #ececf3;
+    background: #f9f9ff;
+}
+
+.model-type-tab {
+    flex: 1;
+    border: none;
+    border-radius: 999px;
+    padding: 4px 8px;
+    font-size: 11px;
+    cursor: pointer;
+    background: transparent;
+    color: #5f6880;
+    transition: all 0.2s ease;
+}
+
+.model-type-tab:hover {
+    background: #eef2ff;
+    color: #394368;
+}
+
+.model-type-tab.active {
+    background: #4b5da8;
+    color: #ffffff;
+}
+
+.model-dropdown-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.model-sync-meta {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: 2px;
+}
+
+.model-sync-source {
+    font-size: 12px;
+    font-weight: 600;
+    color: #2f3a55;
+}
+
+.model-sync-time {
+    font-size: 11px;
+    color: #7a8194;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.model-refresh-btn {
+    border: 1px solid #d8ddee;
+    background: white;
+    color: #4f5d7a;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.model-refresh-btn:hover {
+    background: #f2f5ff;
+    border-color: #bcc8ee;
+    color: #334266;
+}
+
+
+.model-group + .model-group {
+    border-top: 1px solid #f2f3f8;
+}
+
+.model-group-title {
+    padding: 0 16px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #7b8193;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.model-provider-group-title {
+    padding: 8px 16px 6px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #4f5d7a;
+    background: #f8faff;
+    border-top: 1px solid #eef2f8;
+    border-bottom: 1px solid #eef2f8;
 }
 
 .model-option {
@@ -791,14 +902,19 @@ body {
     border-bottom: 1px solid #f0f0f0;
     transition: background-color 0.2s ease;
     font-size: 13px;
-}
-
-.model-option:last-child {
-    border-bottom: none;
+    background: #ffffff;
 }
 
 .model-option:hover {
     background: #f8f9fa;
+}
+
+.model-option.preferred {
+    background: #f7f7fb;
+}
+
+.model-option.preferred:hover {
+    background: #f0f0f7;
 }
 
 .model-option.selected {
@@ -810,8 +926,61 @@ body {
     display: block;
     font-size: 11px;
     color: #666;
-    margin-top: 2px;
+    margin-top: 4px;
     font-weight: normal;
+}
+
+.model-price {
+    display: block;
+    font-size: 11px;
+    color: #7a8194;
+    margin-top: 4px;
+    font-weight: normal;
+}
+
+.model-price-link {
+    color: #4b5da8;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.model-price-link:hover {
+    text-decoration: underline;
+}
+
+.model-option-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.model-option-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+}
+
+.model-cost-badge {
+    flex-shrink: 0;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    line-height: 1.4;
+    background: #eef2ff;
+    color: #4b5da8;
+}
+
+.model-option.selected .model-desc,
+.model-option.selected .model-price {
+    color: inherit;
+    opacity: 0.9;
+}
+
+.model-option.selected .model-price-link {
+    color: inherit;
 }
 
 /* 图片上传容器 */
@@ -2744,7 +2913,7 @@ kbd.key {
 
 /* 滚动条样式 */
 ::-webkit-scrollbar {
-    width: 8px;
+    width: 6px;
 }
 
 ::-webkit-scrollbar-track {
