@@ -158,6 +158,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   chatWithAI: (messages, model) => ipcRenderer.invoke('chatWithAI', messages, model),
 
   /**
+   * Exa MCP Web Search（ClawHub 的 exa-web-search-free 底层能力）
+   * @param {string} query - 搜索查询
+   * @param {{numResults?: number, type?: 'auto'|'fast'|'deep'}} [options]
+   * @returns {Promise<{success:boolean, results:Array<any>, raw?:string, error?:string}>}
+   */
+  webSearchExa: (query, options = {}) => ipcRenderer.invoke('web-search-exa', query, options),
+
+  /**
    * 获取assets文件夹路径
    */
   getAssetsPath: () => ipcRenderer.invoke('get-assets-path'),
@@ -209,6 +217,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   onUpdateStatus: (callback) => {
     ipcRenderer.on('update-status', (_, payload) => callback(payload));
+  },
+
+  /**
+   * 监听技能/工具调用进度（Cursor-like steps）
+   * @param {(payload: any) => void} callback - 回调函数
+   */
+  onAgentSkillProgress: (callback) => {
+    ipcRenderer.on('agent-skill-progress', (_, payload) => callback(payload));
+  },
+
+  /**
+   * 移除技能/工具调用进度监听（会移除所有该 channel 的监听）
+   */
+  removeAgentSkillProgressListener: () => {
+    ipcRenderer.removeAllListeners('agent-skill-progress');
+  },
+
+  /**
+   * 监听 agent loop 最终结果
+   * @param {(payload: any) => void} callback - 回调函数
+   */
+  onAgentSkillFinal: (callback) => {
+    ipcRenderer.on('agent-skill-final', (_, payload) => callback(payload));
   },
 
   /**

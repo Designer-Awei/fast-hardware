@@ -466,7 +466,7 @@ async function fetchPublicPageText({ hostname, path: requestPath }) {
       path: requestPath,
       method: 'GET',
       headers: {
-        'User-Agent': 'Fast-Hardware/0.2.3'
+        'User-Agent': 'Fast-Hardware/0.2.4'
       }
     }, (res) => {
       let responseBody = '';
@@ -2952,6 +2952,96 @@ ipcMain.handle('chatWithAI', async (event, messages, model) => {
     return {
       success: false,
       error: error.message
+    };
+  }
+});
+
+/**
+ * 通过 ClawHub 的 Exa MCP（exa-web-search-free skill 的底层能力）提供免费 web search
+ * 分发说明：该实现使用 `mcporter` 的 npm 依赖 JS API，避免要求用户本机额外安装 mcporter CLI。
+ * @param {string} query - 搜索查询
+ * @param {{numResults?: number, type?: 'auto'|'fast'|'deep'}} [options]
+ * @returns {Promise<{success: boolean, results: Array<any>, raw?: string, error?: string}>}
+ */
+ipcMain.handle('web-search-exa', async (event, query, options = {}) => {
+  const safeQuery = String(query || '').trim().replace(/\s+/g, ' ');
+  const numResults = typeof options.numResults === 'number' ? options.numResults : 5;
+  const type = options.type || 'fast';
+
+  if (!safeQuery) {
+    return { success: false, results: [], error: 'query 不能为空' };
+  }
+
+  const exaServerName = 'exa';
+  const exaMcpUrl = 'https://mcp.exa.ai/mcp';
+
+  try {
+    const mcporter = await import('mcporter');
+    const runtime = await mcporter.createRuntime({
+      servers: [
+        {
+          name: exaServerName,
+          description: 'Exa Web Search (free) MCP',
+          command: { kind: 'http', url: new URL(exaMcpUrl) }
+        }
+      ]
+    });
+
+    try {
+      const args = {
+        query: safeQuery,
+        numResults
+      };
+      if (type && type !== 'auto') {
+        args.type = type;
+      }
+
+      const raw = await runtime.callTool(exaServerName, 'web_search_exa', {
+        args,
+        timeoutMs: 45000
+      });
+
+      const wrapped = mcporter.wrapCallResult(raw);
+      const callResult = wrapped?.callResult;
+      const contentBlocks = callResult?.content?.() ?? null;
+
+      const text = Array.isArray(contentBlocks)
+        ? contentBlocks.map(b => b?.text).filter(Boolean).join('\n')
+        : '';
+
+      const results = [];
+      const textStr = String(text || '').trim();
+      if (textStr) {
+        const chunks = textStr
+          .split(/(?=Title:\s*)/g)
+          .map(s => s.trim())
+          .filter(s => s.startsWith('Title:'));
+
+        for (const chunk of chunks.slice(0, numResults)) {
+          const title = (chunk.match(/^Title:\s*(.+)$/m) || [])[1] || '';
+          const url = (chunk.match(/^URL:\s*(.+)$/m) || [])[1] || '';
+          const idx = chunk.indexOf('Text:');
+          const snippetRaw = idx >= 0 ? chunk.slice(idx + 'Text:'.length).trim() : '';
+          const snippet = snippetRaw
+            ? String(snippetRaw).replace(/\s+/g, ' ').slice(0, 240)
+            : '';
+
+          if (title || url || snippet) {
+            results.push({ title: title.trim(), url: url.trim(), snippet });
+          }
+        }
+      }
+
+      return { success: true, results, raw: textStr };
+    } finally {
+      await runtime.close();
+    }
+  } catch (error) {
+    console.error('❌ web-search-exa 调用失败:', error?.message || error);
+    return {
+      success: false,
+      results: [],
+      error: error?.message || String(error)
     };
   }
 });

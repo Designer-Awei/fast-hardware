@@ -1,11 +1,12 @@
 /**
  * Fast Hardware - 发布打包脚本
- * 负责在打包前清理 dist 目录，避免历史产物残留。
+ * 负责在打包前按 `package.json` 同步展示用版本号，并清理 dist 目录，避免历史产物残留。
  */
 
 const fs = require('fs/promises');
 const path = require('path');
 const { spawn } = require('child_process');
+const { syncVersionFromPackageJson } = require('./sync-version');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PACKAGE_JSON_PATH = path.join(PROJECT_ROOT, 'package.json');
@@ -66,6 +67,11 @@ function runElectronBuilder() {
  */
 async function main() {
   const cleanOnly = process.argv.includes('--clean-only');
+
+  if (!cleanOnly) {
+    syncVersionFromPackageJson();
+  }
+
   await cleanOutputDirectory();
 
   if (cleanOnly) {

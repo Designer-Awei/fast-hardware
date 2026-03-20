@@ -1,15 +1,17 @@
 {
   "name": "fast-hardware",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "一个基于纯Electron的智能硬件开发辅助桌面应用程序",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "node cross-platform-runner.js dev",
+    "dev": "node cross-platform-runner.js dev-no-reload",
+    "dev-reload": "node cross-platform-runner.js dev",
     "dev-simple": "node cross-platform-runner.js dev-simple",
     "dev-debug": "node cross-platform-runner.js dev-debug",
     "dev-no-reload": "node cross-platform-runner.js dev-no-reload",
     "build": "electron-builder",
+    "sync-version": "node scripts/sync-version.js",
     "clean:dist": "node scripts/build-dist.js --clean-only",
     "dist": "node scripts/build-dist.js",
     "check-platform": "node platform-check.js",
@@ -32,6 +34,7 @@
     "electron": "^27.0.0",
     "electron-builder": "^24.6.4",
     "electron-icon-maker": "^0.0.5",
+    "playwright": "^1.58.2",
     "sharp": "^0.34.4",
     "to-ico": "^1.1.5"
   },
@@ -52,6 +55,7 @@
       "!cross-platform-runner.js",
       "!dev-runner*.js",
       "!test-*.js",
+      "!test-cases/**",
       "!edit_prd.md",
       "!Fast Hardware.txt",
       "!nul",
@@ -163,6 +167,7 @@
   "dependencies": {
     "electron-updater": "^6.8.3",
     "marked": "^16.3.0",
+    "mcporter": "^0.7.3",
     "pathfinding": "^0.4.18"
   }
 }

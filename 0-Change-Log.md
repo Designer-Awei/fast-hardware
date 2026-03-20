@@ -2,6 +2,33 @@
 
 ## 📝 更新日志
 
+### 🎉 v0.2.4 (2026-03-12)
+
+#### 📦 版本与发布流程
+- **版本号全仓对齐**: 展示用版本与 `package.json`、安装包命名统一为 **0.2.4**
+- **一键同步脚本**: 新增 `npm run sync-version`，从 `package.json` 自动更新 `index.html`、`main.js`、`assets/update.txt`、`README.md`、`README_EN.md` 中的版本字符串
+- **打包前自动同步**: `npm run dist` 在清理 `dist/` 与调用 electron-builder 之前会执行版本同步（`npm run clean:dist` 不触发）
+
+#### 🎨 工作流展示
+- 📐 **匹配结果列宽**: 元件匹配结果表格列宽调整为「元件名称 25% / 匹配状态 30% / 匹配结果 45%」
+- 🧹 **移除旧按钮驱动 workflow**: `scripts/chat.js` 中旧的“按钮分阶段 workflow”方法已彻底移除，统一由 skills 自动执行链路，避免残留逻辑误导/误触发
+- 🧠 **workflow-circuit 命名收口到 skills**: `scripts/workflow-circuit.js` 已切换为 skills 叙事与命名（`CircuitSkillsEngine`、`currentSkillState`、`mapSkillTypeToSystemCategory` 等），并保留旧命名兼容别名避免现有调用中断
+- 🧩 **chat/adapter 命名继续收口**: `scripts/chat.js` 与 `skills/workflowSkills.js` 主调用命名统一到 `skillsEngine/currentSkillState/shouldRunSkillsFlow`，旧 `workflow*` 名称仅保留兼容入口（不再作为主链路）
+- ✂️ **移除兼容别名**: 已删除 `CircuitWorkflowEngine/shouldRunWorkflow/currentWorkflowState/mapWorkflowTypeToSystemCategory/workflowEngine/isWorkflow/workflowState` 等旧命名兼容层，代码仅保留 skills 主命名，避免旧链路干扰
+- 🔀 **移除前置路由判别**: `scripts/chat.js` 文本消息改为统一进入 skills agent loop，不再先做 should-run 判别，LLM 可随时自主选择调用 skills
+- 🕒 **实时场景强制检索与校时上下文**: 在 `scripts/chat.js` 的 agent loop 中加入当前时间/时区注入（校时机制），并对“新闻/最新/实时”问题强制先执行 `web_search_exa` 后再输出最终回复
+---
+#### 🧪 测试与打包
+- 精简 `test-cases/`：仅保留真实链路 `live-workflow-chain-real-apis.js`，删除无用/弃用的 Electron E2E 与 mock 测试脚本
+- 更新打包忽略：`package.json` 将 `test-cases/**` 排除出安装包内容，避免打包携带测试代码
+- 新增真实 skills 链路测试 `test-cases/live-skills-agent-real-apis.js`：验证 SiliconFlow 根据问题选择工具、执行 `web_search_exa`、读取工具结果并继续到 `final_message`
+- 删除旧 workflow e2e 测试 `test-cases/live-workflow-chain-real-apis.js`，避免旧链路干扰
+
+#### 🧑‍💻 开发体验
+- 默认 `npm run dev` 已切换为无热重载模式；如需热重载可使用 `npm run dev-reload`
+
+---
+
 ### 🎉 v0.2.3 (2026-03-10)
 
 #### 🎨 设置页与工作流展示优化

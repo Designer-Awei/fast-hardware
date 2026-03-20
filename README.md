@@ -10,7 +10,7 @@
 
 [🇨🇳 中文](README.md) | [🇺🇸 English](README_EN.md)
 
-[![Version](https://img.shields.io/badge/version-0.2.3-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
+[![Version](https://img.shields.io/badge/version-0.2.4-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
 [![Electron](https://img.shields.io/badge/Electron-27.0.0-47848F.svg)](https://electronjs.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-16+-339933.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -62,10 +62,14 @@
 ### 🚧 LLM智能助手 (规划中)
 自然语言交互，智能推荐硬件方案，自动生成电路设计。
 
-## ✨ 最新特性 (v0.2.3)
+## ✨ 最新特性 (v0.2.4)
+
+### 📦 版本与发布
+- **一键同步版本号**: 修改 `package.json` 的 `version` 后执行 `npm run sync-version`，或直接 `npm run dist`（打包前会自动同步 `index.html`、`main.js`、`assets/update.txt`、中英文 README）
+- **说明**: `0-Change-Log.md` 仍需手写发布说明；`npm run clean:dist` 不会触发同步
 
 ### 🎨 设置页与工作流展示优化
-- **匹配结果列宽优化**: 元件匹配结果表格调整为 `30% / 35% / 35%`，长状态与结果文本显示更清晰
+- **匹配结果列宽优化**: 元件匹配结果表格调整为 `25% / 30% / 45%`，长状态与结果文本显示更清晰
 - **设置卡片布局优化**: 存储位置、AI API、关于、应用更新卡片高度重新校准，整体信息密度更均衡
 - **快捷键卡片滚动修复**: 去掉内部 `shortcuts-grid` 滚动，仅保留外层 `card-content` 滚动，消除双滚动条
 - **更新日志入口补充**: 应用更新卡片头部新增“更新日志”按钮，可直接查看版本记录
@@ -80,7 +84,7 @@
 - **开发版本状态提示**: 当本地版本高于远程版本时，更新区会显示“当前为开发版本”
 
 ### 📚 文档与版本同步
-- **版本升级**: 项目当前版本升级为 `0.2.3`
+- **版本升级**: 项目当前版本升级为 `0.2.4`
 - **更新日志链接修正**: README 中的更新日志入口同步指向现有的 `0-Change-Log.md`
 
 ---
@@ -187,7 +191,7 @@ fast-hardware/
 ├── 📁 scripts/                   # 前端脚本
 ├── 📁 styles/                    # 样式文件
 ├── 📁 dist/                      # 构建输出目录 (打包后生成)
-│   ├── Fast-Hardware-Setup-0.2.3.exe    # Windows安装程序
+│   ├── Fast-Hardware-Setup-0.2.4.exe    # Windows安装程序
 │   ├── Fast Hardware-0.1.9-win.zip      # Windows绿色版
 │   └── win-unpacked/                    # 未打包版本
 ├── 📄 main.js                    # Electron主进程
@@ -232,6 +236,7 @@ npm run dev
 ### 🎯 主要命令
 - `npm run dev` - 开发模式 (热重载)
 - `npm run build` - 构建应用
+- `npm run sync-version` - 按 `package.json` 的 `version` 同步展示用版本字符串
 - `npm run check-platform` - 环境检测
 
 ### 🤖 AI功能配置 (可选)
@@ -277,10 +282,16 @@ npm run clean:dist
 
 > 说明：`npm run dist` 现在会在打包前自动清空 `dist/` 目录，避免旧版本安装包与新版本产物混在一起。
 
+### 版本号维护（推荐流程）
+
+1. 修改根目录 `package.json` 中的 **`version`**（Electron / npm 与安装包 `${version}` 均以此为准）。
+2. 执行 **`npm run sync-version`** 同步展示用文案；或直接执行 **`npm run dist`**（会在清理 `dist/` 之前自动执行同步）。
+3. **`0-Change-Log.md`** 仍需手动补充本次发布的变更条目。
+
 ### 分发文件说明
 
 #### 🎯 **Windows (64位专用)**
-- **`Fast-Hardware-Setup-0.2.3.exe`** (约76MB) - **专业安装程序**
+- **`Fast-Hardware-Setup-0.2.4.exe`** (约76MB) - **专业安装程序**
   - ✅ 自定义安装路径选择
   - ✅ 自动创建桌面快捷方式
   - ✅ 自动创建开始菜单快捷方式
@@ -300,7 +311,7 @@ npm run clean:dist
 - **存储空间**: 200MB 可用空间
 
 ### 🚀 安装指南
-1. 下载 `Fast-Hardware-Setup-0.2.3.exe`
+1. 下载 `Fast-Hardware-Setup-0.2.4.exe`
 2. 双击运行安装程序
 3. 选择安装位置（可自定义）
 4. 按照提示完成安装
@@ -310,7 +321,7 @@ npm run clean:dist
 
 - **[0-Change-Log.md](0-Change-Log.md)** - 完整更新日志和开发记录
 - **[PRD.md](PRD.md)** - 产品需求文档和技术架构
-- **[3-llm_prd.md](3-llm_prd.md)** - LLM集成功能详细需求文档
+- **[3-skills_prd.md](feature-prd/3-skills_prd.md)** - Skills 驱动的 LLM 工作流重构规范
 - **[data/README.md](data/README.md)** - 数据结构和元件库说明
 - **[SiliconFlow API](https://siliconflow.cn/)** - AI服务提供商官方文档
 

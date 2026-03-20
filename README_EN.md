@@ -10,7 +10,7 @@
 
 [🇨🇳 中文](README.md) | [🇺🇸 English](README_EN.md)
 
-[![Version](https://img.shields.io/badge/version-0.2.3-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
+[![Version](https://img.shields.io/badge/version-0.2.4-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
 [![Electron](https://img.shields.io/badge/Electron-27.0.0-47848F.svg)](https://electronjs.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-16+-339933.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -73,10 +73,14 @@
 - **🎨 Automatic Generation**: Automatically generate circuit diagrams based on dialogue
 - **⚡ API Integration**: Support for multiple LLM service providers
 
-## ✨ Latest Features (v0.2.3)
+## ✨ Latest Features (v0.2.4)
+
+### 📦 Versioning And Release Workflow
+- **One-command version sync**: After editing `package.json` → `version`, run `npm run sync-version`, or run `npm run dist` (sync runs automatically before packaging)
+- **Note**: You still maintain `0-Change-Log.md` manually; `npm run clean:dist` does not run the sync script
 
 ### 🎨 Settings And Workflow UI Improvements
-- **Component match table layout**: The match result table now uses `30% / 35% / 35%` column widths for clearer status and result text
+- **Component match table layout**: The match result table now uses `25% / 30% / 45%` column widths for clearer status and result text
 - **Settings card layout**: Storage, AI API, About, and Update cards were rebalanced with more consistent heights
 - **Shortcut card scrolling fix**: Removed the inner `shortcuts-grid` scrollbar and kept a single outer `card-content` scrollbar
 - **Release notes entry**: The Update card now includes a `Release Notes` button for viewing version history in-app
@@ -91,7 +95,7 @@
 - **Development version hint**: When the local version is higher than the remote release, the UI shows `当前为开发版本`
 
 ### 📚 Documentation And Release Sync
-- **Version bump**: The project version is now `0.2.3`
+- **Version bump**: The project version is now `0.2.4`
 - **Changelog link fix**: README links now point to the existing `0-Change-Log.md`
 
 ---
@@ -241,6 +245,7 @@ npm run dev
 | `npm run dev` | 🔥 Hot reload development mode | Daily development |
 | `npm run dev-simple` | ⚡ Simple development mode | No hot reload required |
 | `npm run dev-debug` | 🐛 Debug mode | Developer tools debugging |
+| `npm run sync-version` | 🔢 Sync display versions from `package.json` | After bumping `version` / before release |
 | `npm run check-platform` | 🔍 Environment check | Environment compatibility check |
 | `npm run error-help` | 🚨 Error diagnosis | When encountering problems |
 
@@ -285,6 +290,7 @@ This project supports **seamless development** on Windows, macOS, and Linux syst
 | Command | Output Format | Supported Platforms | Applicable Scenario |
 |---------|---------------|-------------------|-------------------|
 | `npm run build` | Application package | Full platform | Development testing |
+| `npm run sync-version` | Sync version strings in docs and UI fallbacks | All platforms | After editing `package.json` version |
 | `npm run dist` | Installation program | Full platform | Release distribution |
 
 ### 📋 Build Product Description
@@ -292,19 +298,19 @@ This project supports **seamless development** on Windows, macOS, and Linux syst
 Build products are saved in the `dist/` directory:
 
 **Windows** 🎯
-- `Fast-Hardware-Setup-0.2.3.exe` - NSIS installation program
+- `Fast-Hardware-Setup-0.2.4.exe` - NSIS installation program
 - `win-unpacked/` - Unpacked version
 - `win-x64.zip` - ZIP compressed package
 
 **macOS** 🍎
-- `Fast Hardware-0.2.3.dmg` - DMG disk image
+- `Fast Hardware-0.2.4.dmg` - DMG disk image
 - `mac/` - Application package
 - `mac-x64.zip` - ZIP compressed package
 
 **Linux** 🐧
-- `Fast Hardware-0.2.3.AppImage` - AppImage executable file
-- `fast-hardware_0.2.3_amd64.deb` - Debian package
-- `fast-hardware-0.2.3.x86_64.rpm` - RPM package
+- `Fast Hardware-0.2.4.AppImage` - AppImage executable file
+- `fast-hardware_0.2.4_amd64.deb` - Debian package
+- `fast-hardware-0.2.4.x86_64.rpm` - RPM package
 
 ### 🏗️ Build Process
 
@@ -320,6 +326,12 @@ npm run clean:dist
 ```
 
 > Note: `npm run dist` now clears the `dist/` directory before packaging, preventing old and new release artifacts from being mixed together.
+
+### 🔢 Version maintenance (recommended)
+
+1. Update **`version`** in the root `package.json` (this is the single source of truth for Electron Builder artifacts).
+2. Run **`npm run sync-version`**, or run **`npm run dist`** (sync runs automatically before cleaning/building).
+3. Update **`0-Change-Log.md`** with human-readable release notes for this version.
 
 ### ⚙️ Advanced Build Configuration
 

@@ -18,7 +18,8 @@ class ChatManager {
         this.isInterrupted = false; // 中断标志
         this.currentUserMessage = null; // 当前用户消息，用于中断恢复
         this.currentAbortController = null; // 用于中断API请求
-        this.workflowEngine = null; // 工作流引擎
+        this.skillsEngine = null; // skills 引擎
+        this.activeSkillContextId = null; // 当前“最新”skills上下文ID（用于消息追踪）
         this.init();
     }
 
@@ -30,12 +31,12 @@ class ChatManager {
         this.bindModelConfigEvents();
         await this.loadInitialMessages();
         await this.initializeModelDisplay();
-        // 初始化工作流引擎
-        if (window.CircuitWorkflowEngine) {
-            this.workflowEngine = new window.CircuitWorkflowEngine(this);
-            console.log('✅ 工作流引擎初始化完成');
+        // 初始化 skills 引擎
+        if (window.CircuitSkillsEngine) {
+            this.skillsEngine = new window.CircuitSkillsEngine(this);
+            console.log('✅ skills 引擎初始化完成');
         } else {
-            console.warn('⚠️ 工作流引擎类未找到，请确保 workflow-circuit.js 已加载');
+            console.warn('⚠️ skills 引擎类未找到，请确保 workflow-circuit.js 已加载');
         }
     }
 
@@ -455,26 +456,13 @@ class ChatManager {
         // 滚动到底部
         this.scrollToBottom();
 
-        // 🔍 工作流判别：判断是直接回复还是走工作流
-        if (this.workflowEngine && (!userMessage.images || userMessage.images.length === 0)) {
-            // 只有纯文本消息才进行工作流判别（图片消息直接走普通回复）
-            try {
-                // 获取对话历史（排除当前消息）
-                const conversationHistory = this.messages.slice(0, -1);
-                const shouldRun = await this.workflowEngine.shouldRunWorkflow(messageContent, conversationHistory);
-                console.log('🔍 工作流判别结果:', shouldRun);
-                
-                if (shouldRun.shouldRunWorkflow) {
-                    // 走工作流
-                    await this.runWorkflow(messageContent, userMessage);
-                    return;
-                }
-            } catch (error) {
-                console.error('❌ 工作流判别失败，回退到普通回复:', error);
-            }
+        // 文本消息统一走 skills agent loop（不再做前置路由判别）
+        if (this.skillsEngine && (!userMessage.images || userMessage.images.length === 0)) {
+            await this.runSkillsWorkflow(messageContent, userMessage);
+            return;
         }
 
-        // 普通回复流程
+        // 图片消息仍走原有多模态回复流程
         this.simulateAIResponse(messageContent, this.selectedModel, userMessage.images);
     }
 
@@ -523,7 +511,6 @@ class ChatManager {
 
         // 重置状态
         this.isTyping = false;
-        this.isInterrupted = false;
         this.currentUserMessage = null;
 
         // 重新渲染消息
@@ -903,7 +890,7 @@ class ChatManager {
     }
 
     /**
-     * 调用LLM API（供工作流引擎使用）
+     * 调用LLM API（供 skills 引擎使用）
      * @param {Object} params - API参数 {messages, model, temperature}
      * @returns {Promise<Object>} LLM响应 {content: string}
      */
@@ -925,269 +912,321 @@ class ChatManager {
     }
 
     /**
-     * 运行工作流
-     * @param {string} userMessage - 用户消息
+     * 尝试宽松解析 JSON
+     * @param {string} text - 原始文本
+     * @returns {any}
+     */
+    parseJsonLoose(text) {
+        const s = String(text || '').trim();
+        if (!s) return null;
+        const fence = s.match(/```json\s*([\s\S]*?)\s*```/i) || s.match(/```([\s\S]*?)```/);
+        if (fence?.[1]) {
+            try { return JSON.parse(fence[1].trim()); } catch { }
+        }
+        try { return JSON.parse(s); } catch { }
+        const first = s.indexOf('{');
+        const last = s.lastIndexOf('}');
+        if (first >= 0 && last > first) {
+            try { return JSON.parse(s.slice(first, last + 1)); } catch { }
+        }
+        // 兼容：模型输出 "web_search_exa\n{...}"
+        const toolCallLike = s.match(/^([a-zA-Z0-9_\-]+)\s*\n([\s\S]+)$/);
+        if (toolCallLike?.[1] && toolCallLike?.[2]) {
+            const argsObj = this.parseJsonLoose(toolCallLike[2]);
+            if (argsObj && typeof argsObj === 'object') {
+                return {
+                    reasoning_steps: [{ step: 1, summary: `选择调用 ${toolCallLike[1]}` }],
+                    tool_calls: [{ toolCallId: 'auto_tool_1', skillName: toolCallLike[1], args: argsObj }]
+                };
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 获取给 LLM 的 skills 定义（运行时）
+     * @returns {Array<{name:string, description:string}>}
+     */
+    getSkillsForAgent() {
+        return [
+            { name: 'web_search_exa', description: '联网检索公开资料（新闻/型号/参数/文档）' },
+            { name: 'scheme_design_skill', description: '根据需求生成硬件方案摘要与估算参数' },
+            { name: 'requirement_analysis_skill', description: '把需求分解为元件并匹配系统元件库' },
+            { name: 'component_autocomplete_validated_skill', description: '自动补全缺失元件并校验 pins（最多重试3次）' },
+            { name: 'structured_wiring_skill', description: '生成结构化连线建议（当前最小实现）' }
+        ];
+    }
+
+    /**
+     * 规范化 tool_calls
+     * @param {any} raw - 原始 tool_calls
+     * @returns {Array<{toolCallId:string, skillName:string, args:any}>}
+     */
+    normalizeToolCalls(raw) {
+        if (!Array.isArray(raw)) return [];
+        return raw
+            .filter((x) => x && typeof x === 'object')
+            .map((x, idx) => ({
+                toolCallId: String(x.toolCallId || x.id || `tool_${idx + 1}`),
+                skillName: String(x.skillName || x.name || '').trim(),
+                args: x.args ?? {}
+            }))
+            .filter((x) => !!x.skillName);
+    }
+
+    /**
+     * 判断用户问题是否属于“实时信息”场景
+     * @param {string} userMessage - 用户输入
+     * @returns {boolean}
+     */
+    isRealtimeQuery(userMessage) {
+        const text = String(userMessage || '').toLowerCase();
+        if (!text) return false;
+        const keywords = [
+            '新闻', '最新', '今日', '今天', '实时', '刚刚', '近期', '最近',
+            'hot', 'headline', 'breaking', 'news', 'current'
+        ];
+        return keywords.some((kw) => text.includes(kw));
+    }
+
+    /**
+     * 生成当前时间上下文（参考 OpenClaw 校时思路）
+     * @returns {string}
+     */
+    getAgentTimeContext() {
+        const now = new Date();
+        const locale = Intl.DateTimeFormat().resolvedOptions().locale || 'zh-CN';
+        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai';
+        const iso = now.toISOString();
+        const local = now.toLocaleString(locale, { hour12: false });
+        return `当前本地时间=${local}；ISO时间=${iso}；时区=${timezone}；locale=${locale}`;
+    }
+
+    /**
+     * 执行单个 skill
+     * @param {string} skillName - 技能名
+     * @param {any} args - 入参
+     * @param {string} userMessage - 原始用户消息
+     * @returns {Promise<any>}
+     */
+    async executeSkill(skillName, args, userMessage) {
+        if (!this.skillsEngine) {
+            return { success: false, error: 'skillsEngine 未初始化' };
+        }
+        if (skillName === 'web_search_exa') {
+            const query = String(args?.query || userMessage || '').trim();
+            const numResults = typeof args?.numResults === 'number' ? args.numResults : 3;
+            const type = args?.type || 'fast';
+            return this.skillsEngine.webSearchExa(query, { numResults, type });
+        }
+        if (skillName === 'scheme_design_skill') {
+            const requirement = String(args?.userRequirement || userMessage || '').trim();
+            const result = await this.skillsEngine.runSchemeDesign(requirement);
+            return { success: true, data: result };
+        }
+        if (skillName === 'requirement_analysis_skill') {
+            const requirement = String(args?.userRequirement || userMessage || '').trim();
+            const schemeDesignResult =
+                args?.schemeDesignResult ||
+                this.skillsEngine?.currentSkillState?.schemeDesignResult;
+            const result = await this.skillsEngine.runRequirementAnalysis(requirement, schemeDesignResult);
+            return { success: true, data: result };
+        }
+        if (skillName === 'component_autocomplete_validated_skill') {
+            const analysisResult = args?.analysisResult || this.skillsEngine?.currentSkillState?.analysisResult;
+            const missingComponents = Array.isArray(args?.missingComponents)
+                ? args.missingComponents
+                : (Array.isArray(analysisResult?.components) ? analysisResult.components.filter((c) => c.exists === 0) : []);
+            const createdComponents = await this.skillsEngine.autoCompleteComponents(missingComponents);
+            return { success: true, data: { createdComponents } };
+        }
+        if (skillName === 'structured_wiring_skill') {
+            return { success: true, data: { wiring: 'placeholder' } };
+        }
+        return { success: false, error: `未知 skill: ${skillName}` };
+    }
+
+    /**
+     * 走 skills 自动执行链路（统一入口，不做路由判别）
+     * @param {string} userMessage - 用户需求原文
      * @param {Object} userMessageObj - 用户消息对象
      */
-    async runWorkflow(userMessage, userMessageObj) {
-        if (!this.workflowEngine) {
-            console.error('❌ 工作流引擎未初始化');
+    async runSkillsWorkflow(userMessage, userMessageObj) {
+        if (!this.skillsEngine) {
+            console.error('❌ skills 引擎未初始化');
             return;
         }
 
         this.isTyping = true;
-        this.showTypingIndicator();
+        this.isInterrupted = false;
+
+        // 贯穿本次自动链路的上下文ID（用于消息追踪/弃用语义；目前 UI 不再依赖按钮）
+        const skillContextId = Date.now() + Math.floor(Math.random() * 1000);
+        this.activeSkillContextId = skillContextId;
 
         try {
-            // 第一步：方案设计（简明分析 + 元件预估参数）
-            const schemeDesignResult = await this.workflowEngine.runSchemeDesign(userMessage);
+            const skills = this.getSkillsForAgent();
+            const toolResults = [];
+            const maxIterations = 4;
+            const needsRealtimeSearch = this.isRealtimeQuery(userMessage);
+            let webSearchCalled = false;
 
-            if (this.isInterrupted) {
-                return;
-            }
+            for (let iter = 0; iter < maxIterations; iter++) {
+                if (this.isInterrupted) return;
+                this.showTypingIndicator(iter === 0 ? '正在分析并决策技能...' : '正在基于工具结果继续推理...');
+                this.updateSendButton();
 
-            this.hideTypingIndicator();
+                const prompt = [
+                    '你是 Fast Hardware 的 skills agent。你可以自主决定是否调用 tools。',
+                    needsRealtimeSearch
+                        ? '这是实时信息场景：必须先调用 web_search_exa，再给 final_message。'
+                        : '如问题涉及外部资料不足，请优先调用 web_search_exa。',
+                    '若无需工具，可直接给 final_message。',
+                    '必须输出严格 JSON，字段仅允许：reasoning_steps、tool_calls、final_message。',
+                    this.getAgentTimeContext(),
+                    '',
+                    '可用 skills：',
+                    JSON.stringify(skills, null, 2),
+                    '',
+                    '历史工具结果：',
+                    toolResults.length ? JSON.stringify(toolResults, null, 2) : '[]',
+                    '',
+                    '用户消息：',
+                    userMessage
+                ].join('\n');
 
-            const formattedContent = this.workflowEngine.formatSchemeDesignForDisplay(schemeDesignResult);
-
-            const aiMessage = {
-                id: Date.now(),
-                type: 'assistant',
-                content: formattedContent,
-                isWorkflow: true,
-                workflowState: this.workflowEngine.currentWorkflowState,
-                timestamp: new Date()
-            };
-
-            this.messages.push(aiMessage);
-            await this.renderMessages();
-            this.scrollToBottom();
-
-            this.bindSchemeDesignButtons(userMessage);
-
-        } catch (error) {
-            console.error('❌ 工作流执行失败:', error);
-            this.hideTypingIndicator();
-
-            const errorMessage = {
-                id: Date.now(),
-                type: 'assistant',
-                content: `❌ 工作流执行失败：${error.message}`,
-                timestamp: new Date()
-            };
-
-            this.messages.push(errorMessage);
-            await this.renderMessages();
-            this.scrollToBottom();
-        } finally {
-            this.isTyping = false;
-        }
-    }
-
-    /**
-     * 绑定方案设计阶段的「开始匹配」「暂不匹配」按钮
-     * @param {string} userMessage - 用户需求原文
-     */
-    bindSchemeDesignButtons(userMessage) {
-        setTimeout(() => {
-            const startMatchBtn = document.getElementById('workflow-start-match');
-            const skipMatchBtn = document.getElementById('workflow-skip-match');
-
-            if (startMatchBtn) {
-                startMatchBtn.addEventListener('click', async () => {
-                    await this.runMatchingStage(userMessage);
+                const llmResp = await this.callLLMAPI({
+                    messages: [
+                        { role: 'system', content: '你是一个会调用 tools 的 agent，输出必须是 JSON。' },
+                        { role: 'user', content: prompt }
+                    ],
+                    model: this.selectedModel || this.defaultChatModel,
+                    temperature: 0.2
                 });
-            }
+                if (this.isInterrupted) return;
+                this.setTypingIndicatorText(`第 ${iter + 1} 轮决策完成，正在解析调用计划...`);
+                const parsed = this.parseJsonLoose(llmResp?.content || '');
+                if (!parsed) {
+                    this.hideTypingIndicator();
+                    this.messages.push({
+                        id: Date.now(),
+                        type: 'assistant',
+                        content: String(llmResp?.content || '模型输出为空'),
+                        timestamp: new Date()
+                    });
+                    await this.renderMessages();
+                    this.scrollToBottom();
+                    return;
+                }
 
-            if (skipMatchBtn) {
-                skipMatchBtn.addEventListener('click', () => {
-                    this.handleSkipMatch();
-                });
-            }
-        }, 100);
-    }
+                const finalMessage = typeof parsed.final_message === 'string' ? parsed.final_message : '';
+                let toolCalls = this.normalizeToolCalls(parsed.tool_calls);
 
-    /**
-     * 用户点击「开始匹配」后执行：带方案设计参考的需求分析与元件匹配
-     * @param {string} userMessage - 用户需求原文
-     */
-    async runMatchingStage(userMessage) {
-        const state = this.workflowEngine.currentWorkflowState;
-        const schemeDesignResult = state && state.schemeDesignResult ? state.schemeDesignResult : null;
+                // 实时场景强约束：若尚未触发 web_search，则强制补一轮 web_search
+                const containsWebSearch = toolCalls.some((tc) => tc.skillName === 'web_search_exa');
+                if (needsRealtimeSearch && !webSearchCalled && !containsWebSearch) {
+                    toolCalls = [
+                        {
+                            toolCallId: `forced_web_${iter + 1}`,
+                            skillName: 'web_search_exa',
+                            args: { query: String(userMessage || '').trim(), numResults: 5, type: 'fast' }
+                        },
+                        ...toolCalls
+                    ];
+                }
 
-        this.isTyping = true;
-        this.showTypingIndicator();
+                if (finalMessage && (!needsRealtimeSearch || webSearchCalled)) {
+                    this.setTypingIndicatorText('正在整理最终回复...');
+                    this.hideTypingIndicator();
+                    this.messages.push({
+                        id: Date.now(),
+                        type: 'assistant',
+                        content: finalMessage,
+                        isSkillFlow: true,
+                        skillState: this.skillsEngine.currentSkillState,
+                        timestamp: new Date()
+                    });
+                    await this.renderMessages();
+                    this.scrollToBottom();
+                    return;
+                }
 
-        try {
-            const analysisResult = await this.workflowEngine.runRequirementAnalysis(userMessage, schemeDesignResult);
+                if (!toolCalls.length) {
+                    this.hideTypingIndicator();
+                    this.messages.push({
+                        id: Date.now(),
+                        type: 'assistant',
+                        content: '⚠️ 当前回合未产生可执行工具调用，请你换个说法再试一次。',
+                        timestamp: new Date()
+                    });
+                    await this.renderMessages();
+                    this.scrollToBottom();
+                    return;
+                }
 
-            if (this.isInterrupted) {
-                return;
-            }
-
-            this.hideTypingIndicator();
-
-            const formattedContent = this.workflowEngine.formatAnalysisResultForDisplay(analysisResult);
-
-            const aiMessage = {
-                id: Date.now(),
-                type: 'assistant',
-                content: formattedContent,
-                isWorkflow: true,
-                workflowState: this.workflowEngine.currentWorkflowState,
-                timestamp: new Date()
-            };
-
-            this.messages.push(aiMessage);
-            await this.renderMessages();
-            this.scrollToBottom();
-
-            this.bindWorkflowButtons(analysisResult);
-        } catch (error) {
-            console.error('❌ 匹配阶段失败:', error);
-            this.hideTypingIndicator();
-            const errorMessage = {
-                id: Date.now(),
-                type: 'assistant',
-                content: `❌ 元件匹配失败：${error.message}`,
-                timestamp: new Date()
-            };
-            this.messages.push(errorMessage);
-            await this.renderMessages();
-            this.scrollToBottom();
-        } finally {
-            this.isTyping = false;
-        }
-    }
-
-    /**
-     * 用户点击「暂不匹配」：不执行匹配，后续可凭「检查缺什么元件」等再次发起匹配
-     */
-    handleSkipMatch() {
-        const msg = '已暂不匹配。如需匹配元件库，可说「开始匹配」或「检查缺什么元件」';
-        if (typeof this.showNotification === 'function') {
-            this.showNotification(msg);
-        } else if (typeof window.showNotification === 'function') {
-            window.showNotification(msg, 'info');
-        }
-    }
-
-    /**
-     * 绑定工作流按钮事件
-     * @param {Object} analysisResult - 分析结果
-     */
-    bindWorkflowButtons(analysisResult) {
-        // 延迟绑定，确保DOM已渲染
-        setTimeout(() => {
-            const autoCompleteBtn = document.getElementById('workflow-auto-complete');
-            const manualCompleteBtn = document.getElementById('workflow-manual-complete');
-
-            if (autoCompleteBtn) {
-                autoCompleteBtn.addEventListener('click', async () => {
-                    await this.handleAutoComplete(analysisResult);
-                });
-            }
-
-            if (manualCompleteBtn) {
-                manualCompleteBtn.addEventListener('click', () => {
-                    this.handleManualComplete();
-                });
-            }
-        }, 100);
-    }
-
-    /**
-     * 处理自动补全
-     * @param {Object} analysisResult - 分析结果
-     */
-    async handleAutoComplete(analysisResult) {
-        const missingComponents = analysisResult.components.filter(c => c.exists === 0);
-        
-        if (missingComponents.length === 0) {
-            return;
-        }
-
-        this.isTyping = true;
-        this.showTypingIndicator();
-
-        try {
-            // 调用工作流引擎的自动补全方法
-            const createdComponents = await this.workflowEngine.autoCompleteComponents(missingComponents);
-
-            // 更新工作流状态
-            if (this.workflowEngine.currentWorkflowState) {
-                // 更新匹配结果，将创建的元件标记为已存在
-                createdComponents.forEach(created => {
-                    const comp = this.workflowEngine.currentWorkflowState.analysisResult.components.find(
-                        c => c.name === created.name
-                    );
-                    if (comp) {
-                        comp.exists = 1;
-                        comp.matchedKey = created.componentKey;
+                for (const toolCall of toolCalls) {
+                    if (this.isInterrupted) return;
+                    const skillName = toolCall.skillName;
+                    if (skillName === 'web_search_exa') {
+                        const q = String(toolCall?.args?.query || '').trim();
+                        this.setTypingIndicatorText(`正在搜索资料...${q ? `（${q.slice(0, 24)}${q.length > 24 ? '...' : ''}）` : ''}`);
+                    } else if (skillName === 'component_autocomplete_validated_skill') {
+                        this.setTypingIndicatorText('正在自动补全缺失元件...');
+                    } else {
+                        this.setTypingIndicatorText(`正在执行技能：${skillName}`);
                     }
-                });
+
+                    // eslint-disable-next-line no-await-in-loop
+                    const result = await this.executeSkill(skillName, toolCall.args, userMessage);
+                    if (skillName === 'web_search_exa' && result?.success) {
+                        webSearchCalled = true;
+                        const count = Array.isArray(result?.results) ? result.results.length : 0;
+                        this.setTypingIndicatorText(`检索完成（${count} 条），正在继续推理...`);
+                    } else if (result?.success) {
+                        this.setTypingIndicatorText(`技能执行完成：${skillName}，正在继续推理...`);
+                    } else {
+                        this.setTypingIndicatorText(`技能执行失败：${skillName}，正在自动兜底...`);
+                    }
+                    toolResults.push({
+                        toolCallId: toolCall.toolCallId,
+                        skillName,
+                        args: toolCall.args,
+                        result
+                    });
+                }
+                this.hideTypingIndicator();
             }
 
-            this.hideTypingIndicator();
-
-            // 显示成功消息
-            const successMessage = {
+            this.messages.push({
                 id: Date.now(),
                 type: 'assistant',
-                content: `✅ 已为 ${createdComponents.length} 个缺失元件自动创建占位元件，存放于系统元件库的 custom 目录。\n\n现在可以继续下一步：元件生成与整理。`,
+                content: '⚠️ 达到最大迭代次数仍未完成最终回复，请换个问法或缩小问题范围。',
                 timestamp: new Date()
-            };
-
-            this.messages.push(successMessage);
+            });
             await this.renderMessages();
             this.scrollToBottom();
-
-            // TODO: 进入下一阶段（元件生成与整理）
-
         } catch (error) {
-            console.error('❌ 自动补全失败:', error);
+            console.error('❌ skills 链路执行失败:', error);
             this.hideTypingIndicator();
 
-            const errorMessage = {
+            this.messages.push({
                 id: Date.now(),
                 type: 'assistant',
-                content: `❌ 自动补全失败：${error.message}`,
+                    content: `❌ skills 链路执行失败：${error?.message || String(error)}`,
                 timestamp: new Date()
-            };
-
-            this.messages.push(errorMessage);
+            });
             await this.renderMessages();
             this.scrollToBottom();
         } finally {
             this.isTyping = false;
-        }
-    }
-
-    /**
-     * 处理手动补全
-     */
-    handleManualComplete() {
-        const message = {
-            id: Date.now(),
-            type: 'assistant',
-            content: '✋ 已切换为手动补全模式。请在元件库中创建或导入缺失元件，然后重新发起电路设计需求。',
-            timestamp: new Date()
-        };
-
-        this.messages.push(message);
-        this.renderMessages();
-        this.scrollToBottom();
-
-        // 结束工作流
-        if (this.workflowEngine) {
-            this.workflowEngine.currentWorkflowState = null;
+            this.updateSendButton();
         }
     }
 
     /**
      * 显示正在输入指示器
      */
-    async showTypingIndicator() {
+    async showTypingIndicator(text = '正在输入...') {
         const messagesContainer = document.getElementById('chat-messages');
         if (!messagesContainer) return;
 
@@ -1201,7 +1240,7 @@ class ChatManager {
         typingDiv.innerHTML = `
             <div class="message-header">
                 <div class="message-avatar"><img src="file://${botIconSrc}" alt="AI" width="20" height="20"></div>
-                <div class="message-time">正在输入...</div>
+                <div class="message-time">${this.escapeHtml(String(text || '正在输入...'))}</div>
             </div>
             <div class="message-content">
                 <div class="typing-dots">
@@ -1214,6 +1253,18 @@ class ChatManager {
 
         messagesContainer.appendChild(typingDiv);
         this.scrollToBottom();
+    }
+
+    /**
+     * 更新“正在输入”提示文字（用于区分 web search / 总结等阶段）
+     * @param {string} text - 要展示的提示文字
+     */
+    setTypingIndicatorText(text) {
+        const typingIndicator = document.getElementById('typing-indicator');
+        if (!typingIndicator) return;
+        const timeDiv = typingIndicator.querySelector('.message-time');
+        if (!timeDiv) return;
+        timeDiv.textContent = String(text || '');
     }
 
     /**
@@ -1412,10 +1463,10 @@ class ChatManager {
             second: '2-digit'
         });
 
-        // 对于工作流消息，如果内容已经是HTML，直接使用；否则进行markdown渲染
+        // 对于 skills 链路消息，如果内容已经是HTML，直接使用；否则进行markdown渲染
         let contentHtml;
-        if (message.isWorkflow && message.content.trim().startsWith('<div')) {
-            // 工作流消息，内容已经是HTML格式，直接使用
+        if (message.isSkillFlow && message.content.trim().startsWith('<div')) {
+            // skills 链路消息，内容已经是HTML格式，直接使用
             contentHtml = message.content;
         } else {
             // 普通消息，进行markdown渲染
@@ -1440,12 +1491,14 @@ class ChatManager {
         const isShortMessage = message.type === 'user' && this.isShortMessage(message.content, contentHtml, message.images);
 
         // 为用户消息添加编辑和重新发送按钮
+        const resendDisabled = this.isTyping ? 'disabled' : '';
+        const resendTitle = this.isTyping ? '正在回复中，无法重发' : '重新发送';
         const userActionsHtml = message.type === 'user' ? `
             <div class="message-actions">
                 <button class="message-action-btn edit-btn" title="编辑消息" data-message-id="${message.id}">
                     <img src="file://${editIconSrc}" alt="编辑" width="16" height="16">
                 </button>
-                <button class="message-action-btn resend-btn" title="重新发送" data-message-id="${message.id}">
+                <button class="message-action-btn resend-btn" title="${resendTitle}" ${resendDisabled} data-message-id="${message.id}">
                     <img src="file://${refreshIconSrc}" alt="重新发送" width="16" height="16">
                 </button>
             </div>
@@ -1567,8 +1620,10 @@ class ChatManager {
         // 如果正在回复中，显示中断样式
         if (this.isTyping) {
             sendBtn.disabled = false;
+            sendBtn.style.opacity = '1';
             sendBtn.classList.add('interrupt-available');
             sendBtn.title = '点击中断AI回复';
+            this.updateResendButtons();
             return;
         }
 
@@ -1578,6 +1633,32 @@ class ChatManager {
         sendBtn.disabled = !canSend;
         sendBtn.style.opacity = canSend ? '1' : '0.5';
         sendBtn.title = canSend ? '发送消息' : '请输入消息内容';
+
+        this.updateResendButtons();
+    }
+
+    /**
+     * 根据当前是否正在生成回复，动态启用/禁用历史消息的「重发」按钮。
+     * @returns {void}
+     */
+    updateResendButtons() {
+        const resendBtns = document.querySelectorAll('.resend-btn');
+        const shouldDisable = this.isTyping === true;
+        const disabledTitle = '正在回复中，无法重发';
+        const enabledTitle = '重新发送';
+
+        resendBtns.forEach((btn) => {
+            if (!(btn instanceof HTMLButtonElement)) return;
+
+            if (shouldDisable) {
+                btn.disabled = true;
+                btn.title = disabledTitle;
+            } else {
+                btn.disabled = false;
+                btn.removeAttribute('disabled');
+                btn.title = enabledTitle;
+            }
+        });
     }
 
     /**
@@ -1693,6 +1774,17 @@ class ChatManager {
      * @param {number} messageId - 消息ID
      */
     async resendMessage(messageId) {
+        // 如果当前仍在生成回复中，避免并发重发导致“双机器人回复”
+        if (this.isTyping) {
+            const msg = '当前正在生成回复中，暂不支持重发。请等待回复完成或点击发送按钮中断后再试。';
+            if (typeof this.showNotification === 'function') {
+                this.showNotification(msg);
+            } else if (typeof window.showNotification === 'function') {
+                window.showNotification(msg, 'info');
+            }
+            return;
+        }
+
         // 查找消息
         const messageIndex = this.messages.findIndex(msg => msg.id === messageId);
         if (messageIndex === -1) return;
@@ -1717,23 +1809,14 @@ class ChatManager {
         await this.renderMessages();
         this.scrollToBottom();
 
-        // 🔍 工作流判别：判断是直接回复还是走工作流（与sendMessage保持一致）
-        if (this.workflowEngine && (!userMessage.images || userMessage.images.length === 0)) {
-            // 只有纯文本消息才进行工作流判别（图片消息直接走普通回复）
+        // 文本消息统一走 skills agent loop（与 sendMessage 保持一致）
+        if (this.skillsEngine && (!userMessage.images || userMessage.images.length === 0)) {
             try {
-                // 获取对话历史（排除当前消息）
-                const conversationHistory = this.messages.slice(0, -1);
-                const shouldRun = await this.workflowEngine.shouldRunWorkflow(message.content, conversationHistory);
-                console.log('🔍 重新发送 - 工作流判别结果:', shouldRun);
-                
-                if (shouldRun.shouldRunWorkflow) {
-                    // 走工作流
-                    await this.runWorkflow(message.content, userMessage);
-                    console.log(`🔄 重新发送消息 ID: ${messageId}`);
-                    return;
-                }
+                await this.runSkillsWorkflow(message.content, userMessage);
+                console.log(`🔄 重新发送消息 ID: ${messageId}`);
+                return;
             } catch (error) {
-                console.error('❌ 重新发送 - 工作流判别失败，回退到普通回复:', error);
+                console.error('❌ 重新发送 - skills 链路失败，回退到普通回复:', error);
             }
         }
 
