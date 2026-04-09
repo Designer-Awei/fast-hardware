@@ -1,6 +1,6 @@
 {
   "name": "fast-hardware",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "一个基于纯Electron的智能硬件开发辅助桌面应用程序",
   "main": "main.js",
   "scripts": {
@@ -15,7 +15,19 @@
     "clean:dist": "node scripts/build-dist.js --clean-only",
     "dist": "node scripts/build-dist.js",
     "check-platform": "node platform-check.js",
-    "error-help": "node error-handler.js"
+    "error-help": "node error-handler.js",
+    "test:live-skills": "node test-cases/live-skills-siliconflow-benchmark.js",
+    "test:live-skills-integration": "node test-cases/live-skills-siliconflow-integration.js",
+    "test:live-skill-completion": "node test-cases/live-skill-completion-suggestion-siliconflow.js",
+    "test:live-skill-scheme": "node test-cases/live-skill-scheme-design-siliconflow.js",
+    "test:live-skill-wiring": "node test-cases/live-skill-wiring-edit-siliconflow.js",
+    "test:live-skill-firmware": "node test-cases/live-skill-firmware-codegen-siliconflow.js",
+    "test:live-agent-loop": "node test-cases/live-skills-agent-loop-siliconflow.js",
+    "test:live-agent-workspace-tools": "node test-cases/live-agent-workspace-tools-siliconflow.js",
+    "test:benchmark-thinking": "node test-cases/benchmark-enable-thinking-skill.js",
+    "test:skills-execute": "node test-cases/unit/skills-workflow-execute.unit.test.js",
+    "test:workspace-tools": "node --test test-cases/unit/workspace-direct-chat-tools.unit.test.mjs",
+    "cli": "node cli/index.js"
   },
   "keywords": [
     "electron",

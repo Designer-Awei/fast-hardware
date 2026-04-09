@@ -39,6 +39,12 @@ class CanvasManager {
         // 连线管理
         this.connections = []; // 存储所有连线
         this.selectedConnection = null; // 当前选中的连线
+        /** @type {string} */
+        this.currentCodePath = '';
+        /** @type {string} */
+        this.lastSavedCodeContent = '';
+        /** @type {null|{ patchText: string, rows: Array<any>, reviewedCode: string }} */
+        this.firmwarePatchReviewState = null;
 
         // 撤回功能
         this.undoStack = []; // 撤回操作栈
@@ -271,7 +277,7 @@ class CanvasManager {
             // 确保画布内容可见（额外保险）
             requestAnimationFrame(() => {
                 this.draw();
-                console.log('🎨 画布初始化完成');
+                console.debug('🎨 画布初始化完成');
             });
         }, 100);
     }
@@ -1877,7 +1883,7 @@ class CanvasManager {
     /**
      * 打开固件代码编辑器
      */
-    openFirmwareCodeEditor() {
+    async openFirmwareCodeEditor() {
         console.log('🔧 尝试打开固件代码编辑器');
         console.log('📱 window.mainApp 存在:', !!window.mainApp);
         console.log('📂 currentProject:', window.mainApp?.currentProject);
@@ -1888,7 +1894,7 @@ class CanvasManager {
             modal.style.display = 'flex';
 
             // 加载项目代码（如果有项目）或显示默认模板
-            this.loadProjectCode();
+            await this.loadProjectCode();
 
             // 初始化拖拽功能
             this.initCodeEditorDrag();
@@ -1920,7 +1926,37 @@ class CanvasManager {
 
             // 不清理lastSavedCodeContent，让它在编辑器重新打开时保持可用
             // 只有在切换项目或明确需要时才清理
+            this.exitFirmwarePatchReview();
         }
+    }
+
+    /**
+     * 导出当前项目的代码编辑器内存态（不落盘）
+     * @returns {{ currentCodePath: string, lastSavedCodeContent: string, draftCodeContent: string, isEditorOpen: boolean }}
+     */
+    getCodeEditorStateForProject() {
+        const modal = document.getElementById('code-editor-modal');
+        const textarea = document.getElementById('code-editor-textarea');
+        const isEditorOpen = !!(modal && modal.style.display === 'flex');
+        const draftCodeContent =
+            textarea && typeof textarea.value === 'string' ? textarea.value : '';
+        return {
+            currentCodePath: String(this.currentCodePath || ''),
+            lastSavedCodeContent: String(this.lastSavedCodeContent || ''),
+            draftCodeContent,
+            isEditorOpen
+        };
+    }
+
+    /**
+     * 恢复项目级代码编辑器内存态（不自动打开窗口）
+     * @param {{ currentCodePath?: string, lastSavedCodeContent?: string, draftCodeContent?: string }} state
+     * @returns {void}
+     */
+    restoreCodeEditorStateForProject(state) {
+        const st = state && typeof state === 'object' ? state : {};
+        this.currentCodePath = String(st.currentCodePath || '');
+        this.lastSavedCodeContent = String(st.draftCodeContent || st.lastSavedCodeContent || '');
     }
 
     /**
@@ -2020,7 +2056,12 @@ void loop() {
                 return;
             }
 
-            const codeContent = textarea.value;
+            let codeContent = textarea.value;
+            if (this.firmwarePatchReviewState && typeof this.firmwarePatchReviewState.reviewedCode === 'string') {
+                codeContent = this.firmwarePatchReviewState.reviewedCode;
+                textarea.value = codeContent;
+                this.exitFirmwarePatchReview();
+            }
 
             // 检查是否有当前项目
             if (window.mainApp?.currentProject) {
@@ -2029,14 +2070,16 @@ void loop() {
                     return;
                 }
                 await window.electronAPI.saveFile(this.currentCodePath, codeContent);
+                this.lastSavedCodeContent = codeContent;
+                this.showSaveNotification('代码已保存');
             } else {
-                // 没有项目时，需要创建新项目
-                await this.saveCodeAsNewProject(codeContent);
-                // saveCodeAsNewProject 内部已经处理了成功提示，这里不需要return
+                // 未保存项目：仅内存级保存，不强制创建/保存项目文件夹
+                this.lastSavedCodeContent = codeContent;
+                if (!this.currentCodePath || this.currentCodePath.trim() === '') {
+                    this.currentCodePath = '未命名.ino';
+                }
+                this.showSaveNotification('代码已暂存到当前项目会话（内存）');
             }
-
-            // 显示保存成功提示
-            this.showSaveNotification();
 
         } catch (error) {
             console.error('保存代码失败:', error);
@@ -2092,10 +2135,10 @@ void loop() {
     /**
      * 显示保存成功提示
      */
-    showSaveNotification() {
+    showSaveNotification(message = '代码已保存') {
         // 创建临时提示元素
         const notification = document.createElement('div');
-        notification.textContent = '代码已保存';
+        notification.textContent = String(message || '代码已保存');
         notification.style.cssText = `
             position: fixed;
             top: 20px;
@@ -2123,6 +2166,9 @@ void loop() {
      * 更新行号显示
      */
     updateCodeEditorLineNumbers() {
+        if (this.firmwarePatchReviewState) {
+            return;
+        }
         const textarea = document.getElementById('code-editor-textarea');
         const lineNumbers = document.getElementById('code-editor-line-numbers');
 
@@ -2233,6 +2279,19 @@ void loop() {
             closeBtn.addEventListener('click', () => this.closeFirmwareCodeEditor());
         }
 
+        const exitReviewBtn = document.getElementById('exit-code-review-btn');
+        if (exitReviewBtn) {
+            exitReviewBtn.addEventListener('click', () => this.exitFirmwarePatchReview());
+        }
+        const acceptAllReviewBtn = document.getElementById('accept-all-code-review-btn');
+        if (acceptAllReviewBtn) {
+            acceptAllReviewBtn.addEventListener('click', () => this.acceptAllFirmwarePatchChanges());
+        }
+        const rejectAllReviewBtn = document.getElementById('reject-all-code-review-btn');
+        if (rejectAllReviewBtn) {
+            rejectAllReviewBtn.addEventListener('click', () => this.rejectAllFirmwarePatchChanges());
+        }
+
         // 文本区域事件
         const textarea = document.getElementById('code-editor-textarea');
         if (textarea) {
@@ -2255,6 +2314,9 @@ void loop() {
         this.cleanupCodeEditorEvents = () => {
             if (saveBtn) saveBtn.removeEventListener('click', () => this.saveCode());
             if (closeBtn) closeBtn.removeEventListener('click', () => this.closeFirmwareCodeEditor());
+            if (exitReviewBtn) exitReviewBtn.removeEventListener('click', () => this.exitFirmwarePatchReview());
+            if (acceptAllReviewBtn) acceptAllReviewBtn.removeEventListener('click', () => this.acceptAllFirmwarePatchChanges());
+            if (rejectAllReviewBtn) rejectAllReviewBtn.removeEventListener('click', () => this.rejectAllFirmwarePatchChanges());
             if (textarea) {
                 textarea.removeEventListener('input', () => this.updateCodeEditorLineNumbers());
                 textarea.removeEventListener('scroll', () => this.updateCodeEditorLineNumbers());
@@ -2288,6 +2350,257 @@ void loop() {
 
             this.updateCodeEditorLineNumbers();
         }
+    }
+
+    /**
+     * 在固件编辑器中预览补丁（行级增删审阅）
+     * @param {string} patchText
+     * @param {{ autoOpen?: boolean }} [options]
+     * @returns {Promise<void>}
+     */
+    async previewFirmwarePatchInEditor(patchText, options = {}) {
+        const patch = String(patchText || '').trim();
+        if (!patch) return;
+        const autoOpen = options.autoOpen !== false;
+        const modal = document.getElementById('code-editor-modal');
+        if (autoOpen && (!modal || modal.style.display !== 'flex')) {
+            await this.openFirmwareCodeEditor();
+        }
+
+        const textarea = document.getElementById('code-editor-textarea');
+        if (!textarea) return;
+        const baseCode = String(textarea.value || this.lastSavedCodeContent || '');
+        const rows = this.parseUnifiedPatchRows(patch);
+        if (!rows.length) {
+            this.showSaveNotification('补丁预览失败：未识别到可审阅改动行');
+            return;
+        }
+        this.firmwarePatchReviewState = {
+            patchText: patch,
+            rows,
+            reviewedCode: baseCode,
+            decisionSummary: { addAccepted: 0, addRejected: 0, removeAccepted: 0, removeRejected: 0 }
+        };
+        this.renderFirmwarePatchReview(baseCode);
+        this.refreshFirmwarePatchReviewOutput();
+    }
+
+    /**
+     * 退出补丁审阅模式
+     * @returns {void}
+     */
+    exitFirmwarePatchReview() {
+        this.firmwarePatchReviewState = null;
+        const content = document.querySelector('.code-editor-content');
+        const textarea = document.getElementById('code-editor-textarea');
+        const lineNumbers = document.getElementById('code-editor-line-numbers');
+        const review = document.getElementById('firmware-diff-review');
+        const reviewedOutput = document.getElementById('firmware-reviewed-output');
+        const summary = document.getElementById('firmware-diff-summary');
+        const exitBtn = document.getElementById('exit-code-review-btn');
+        const acceptAllBtn = document.getElementById('accept-all-code-review-btn');
+        const rejectAllBtn = document.getElementById('reject-all-code-review-btn');
+        if (review && review.parentNode) review.parentNode.removeChild(review);
+        if (reviewedOutput && reviewedOutput.parentNode) reviewedOutput.parentNode.removeChild(reviewedOutput);
+        if (summary && summary.parentNode) summary.parentNode.removeChild(summary);
+        if (textarea) textarea.style.display = '';
+        if (lineNumbers) lineNumbers.style.display = '';
+        if (content) content.classList.remove('is-diff-review');
+        if (exitBtn) exitBtn.style.display = 'none';
+        if (acceptAllBtn) acceptAllBtn.style.display = 'none';
+        if (rejectAllBtn) rejectAllBtn.style.display = 'none';
+        this.updateCodeEditorLineNumbers();
+    }
+
+    /**
+     * @param {string} patchText
+     * @returns {Array<{ type: 'context'|'add'|'remove', text: string, decision: 'pending'|'accepted'|'rejected' }>}
+     */
+    parseUnifiedPatchRows(patchText) {
+        const lines = String(patchText || '').split('\n');
+        /** @type {Array<{ type: 'context'|'add'|'remove', text: string, decision: 'pending'|'accepted'|'rejected' }>} */
+        const rows = [];
+        let inHunk = false;
+        for (const line of lines) {
+            if (line.startsWith('@@')) {
+                inHunk = true;
+                continue;
+            }
+            if (!inHunk) continue;
+            if (line.startsWith('+') && !line.startsWith('+++')) {
+                rows.push({ type: 'add', text: line.slice(1), decision: 'pending' });
+            } else if (line.startsWith('-') && !line.startsWith('---')) {
+                rows.push({ type: 'remove', text: line.slice(1), decision: 'pending' });
+            } else if (line.startsWith(' ')) {
+                rows.push({ type: 'context', text: line.slice(1), decision: 'accepted' });
+            }
+        }
+        return rows;
+    }
+
+    /**
+     * @param {string} baseCode
+     * @returns {void}
+     */
+    renderFirmwarePatchReview(baseCode) {
+        const content = document.querySelector('.code-editor-content');
+        const textarea = document.getElementById('code-editor-textarea');
+        const lineNumbers = document.getElementById('code-editor-line-numbers');
+        if (!content || !textarea || !lineNumbers || !this.firmwarePatchReviewState) return;
+        textarea.style.display = 'none';
+        lineNumbers.style.display = 'none';
+        content.classList.add('is-diff-review');
+        let review = document.getElementById('firmware-diff-review');
+        if (!review) {
+            review = document.createElement('div');
+            review.id = 'firmware-diff-review';
+            review.className = 'firmware-diff-review';
+            content.appendChild(review);
+        }
+        review.innerHTML = '';
+        let summary = document.getElementById('firmware-diff-summary');
+        if (!summary) {
+            summary = document.createElement('div');
+            summary.id = 'firmware-diff-summary';
+            summary.className = 'firmware-diff-summary';
+            content.appendChild(summary);
+        }
+        const rows = this.firmwarePatchReviewState.rows;
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            const line = document.createElement('div');
+            line.className = `firmware-diff-line ${row.type} ${row.decision}`;
+            const sign = row.type === 'add' ? '+' : row.type === 'remove' ? '-' : ' ';
+            line.innerHTML = `<span class="sign">${sign}</span><code>${this.escapeHtml(row.text)}</code>`;
+            review.appendChild(line);
+        }
+        let reviewedOutput = document.getElementById('firmware-reviewed-output');
+        if (!reviewedOutput) {
+            reviewedOutput = document.createElement('pre');
+            reviewedOutput.id = 'firmware-reviewed-output';
+            reviewedOutput.className = 'firmware-reviewed-output';
+            content.appendChild(reviewedOutput);
+        }
+        const title = document.getElementById('code-editor-title');
+        if (title) {
+            title.textContent = `${title.textContent.split('（')[0]}（补丁审阅模式）`;
+        }
+        const exitBtn = document.getElementById('exit-code-review-btn');
+        if (exitBtn) exitBtn.style.display = 'inline-flex';
+        const acceptAllBtn = document.getElementById('accept-all-code-review-btn');
+        if (acceptAllBtn) acceptAllBtn.style.display = 'inline-flex';
+        const rejectAllBtn = document.getElementById('reject-all-code-review-btn');
+        if (rejectAllBtn) rejectAllBtn.style.display = 'inline-flex';
+        void baseCode;
+    }
+
+    /**
+     * 根据审阅决策生成最新代码
+     * @returns {void}
+     */
+    refreshFirmwarePatchReviewOutput() {
+        if (!this.firmwarePatchReviewState) return;
+        const rows = this.firmwarePatchReviewState.rows;
+        const output = [];
+        let addAccepted = 0;
+        let addRejected = 0;
+        let removeAccepted = 0;
+        let removeRejected = 0;
+        for (const row of rows) {
+            if (row.type === 'context') {
+                output.push(row.text);
+                continue;
+            }
+            if (row.type === 'remove') {
+                if (row.decision === 'rejected') {
+                    removeRejected += 1;
+                    output.push(row.text);
+                } else {
+                    removeAccepted += 1;
+                }
+                continue;
+            }
+            if (row.type === 'add') {
+                if (row.decision !== 'rejected') {
+                    addAccepted += 1;
+                    output.push(row.text);
+                } else {
+                    addRejected += 1;
+                }
+            }
+        }
+        this.firmwarePatchReviewState.reviewedCode = output.join('\n');
+        this.firmwarePatchReviewState.decisionSummary = {
+            addAccepted,
+            addRejected,
+            removeAccepted,
+            removeRejected
+        };
+        const textarea = document.getElementById('code-editor-textarea');
+        if (textarea) {
+            textarea.value = this.firmwarePatchReviewState.reviewedCode;
+        }
+        const reviewedOutput = document.getElementById('firmware-reviewed-output');
+        if (reviewedOutput) {
+            reviewedOutput.textContent = this.firmwarePatchReviewState.reviewedCode;
+        }
+        const summary = document.getElementById('firmware-diff-summary');
+        if (summary) {
+            summary.textContent =
+                `本次决策：新增 接受 ${addAccepted} / 拒绝 ${addRejected}；删除 接受 ${removeAccepted} / 拒绝 ${removeRejected}`;
+        }
+        const review = document.getElementById('firmware-diff-review');
+        if (review) {
+            review.querySelectorAll('.firmware-diff-line').forEach((el, idx) => {
+                const row = rows[idx];
+                if (!row) return;
+                el.classList.remove('pending', 'accepted', 'rejected');
+                el.classList.add(row.decision);
+            });
+        }
+    }
+
+    /**
+     * @param {string} text
+     * @returns {string}
+     */
+    escapeHtml(text) {
+        return String(text || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
+    /**
+     * 接受全部补丁并自动保存
+     * @returns {Promise<void>}
+     */
+    async acceptAllFirmwarePatchChanges() {
+        if (!this.firmwarePatchReviewState) return;
+        const rows = this.firmwarePatchReviewState.rows;
+        for (const row of rows) {
+            if (row.type === 'add' || row.type === 'remove') {
+                row.decision = 'accepted';
+            }
+        }
+        this.refreshFirmwarePatchReviewOutput();
+        await this.saveCode();
+    }
+
+    /**
+     * 拒绝全部补丁并自动保存
+     * @returns {Promise<void>}
+     */
+    async rejectAllFirmwarePatchChanges() {
+        if (!this.firmwarePatchReviewState) return;
+        const rows = this.firmwarePatchReviewState.rows;
+        for (const row of rows) {
+            if (row.type === 'add' || row.type === 'remove') {
+                row.decision = 'rejected';
+            }
+        }
+        this.refreshFirmwarePatchReviewOutput();
+        await this.saveCode();
     }
 
     /**

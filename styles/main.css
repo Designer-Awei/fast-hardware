@@ -527,6 +527,227 @@ body {
     line-height: 1.4;
 }
 
+.message-content table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 10px 0;
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.message-content th,
+.message-content td {
+    border: 1px solid #cbd5e1;
+    padding: 6px 10px;
+    text-align: left;
+    vertical-align: top;
+}
+
+.message-content th {
+    background: #e8edf3;
+    font-weight: 600;
+    color: #334155;
+}
+
+.message-content thead th {
+    background: #dde4ee;
+}
+
+/* Skills Agent：Anthropic/Cursor 式块追踪（模型轮次、步骤摘要、工具入参/返回摘要） */
+.fh-agent-trace-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+}
+
+.fh-agent-blocks {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.fh-agent-blocks-empty {
+    font-size: 12px;
+    color: #64748b;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: #f1f5f9;
+    border: 1px dashed #cbd5e1;
+}
+
+.fh-agent-placeholder {
+    margin: 0;
+    font-size: 13px;
+    color: #64748b;
+}
+
+.fh-agent-answer {
+    min-height: 0;
+}
+
+.fh-agent-answer .fh-agent-placeholder {
+    margin-top: 4px;
+}
+
+.fh-agent-block {
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    font-size: 13px;
+    line-height: 1.45;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.fh-agent-block summary {
+    cursor: pointer;
+    padding: 8px 12px;
+    list-style: none;
+    user-select: none;
+}
+
+.fh-agent-block-summary {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    font-weight: 600;
+    color: #334155;
+}
+
+.fh-agent-block-summary-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.fh-reasoning-summary-title {
+    font-weight: 600;
+}
+
+.fh-agent-block-toggle {
+    flex-shrink: 0;
+    margin-left: auto;
+    padding: 4px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #475569;
+    cursor: pointer;
+    line-height: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.fh-agent-block-toggle:hover {
+    background: rgba(148, 163, 184, 0.22);
+}
+
+.fh-agent-block-toggle-icon {
+    display: block;
+    opacity: 0.78;
+}
+
+.fh-agent-block-toggle:hover .fh-agent-block-toggle-icon {
+    opacity: 1;
+}
+
+.fh-tool-prose {
+    margin: 0;
+    padding: 8px 10px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.55;
+    color: #334155;
+    background: #f8fafc;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+.fh-agent-block summary::-webkit-details-marker {
+    display: none;
+}
+
+.fh-agent-block-reasoning[open] summary {
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.fh-reasoning-list {
+    margin: 0;
+    padding: 10px 14px 12px 28px;
+    color: #475569;
+}
+
+.fh-reasoning-list li {
+    margin-bottom: 6px;
+}
+
+.fh-agent-block-tool .fh-tool-name {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+}
+
+.fh-agent-block-tool .fh-tool-status {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #e2e8f0;
+    color: #475569;
+}
+
+.fh-agent-block-tool.is-running .fh-tool-status {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+.fh-agent-block-tool.is-ok .fh-tool-status {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.fh-agent-block-tool.is-err .fh-tool-status {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.fh-tool-section {
+    padding: 0 12px 10px;
+}
+
+.fh-tool-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: #64748b;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.fh-tool-pre {
+    margin: 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    font-size: 11px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
 /* 短消息样式 - 自适应宽度，允许换行，两端对齐 */
 .message-content.short-message {
     flex: 0 0 fit-content !important; /* 不伸缩，基础尺寸适应内容 */
@@ -1660,7 +1881,7 @@ body {
     min-height: 100%;
     max-height: 100vh;
     background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-    padding: 32px 24px;
+    padding: 20px;
     overflow-y: auto;
     box-sizing: border-box;
 }
@@ -1687,10 +1908,9 @@ body {
 .settings-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-    gap: 24px;
+    gap: 20px;
     max-width: 1200px;
     margin: 0 auto;
-    padding-bottom: 24px;
 }
 
 /* 设置卡片样式 */
@@ -1706,21 +1926,26 @@ body {
 }
 
 .equal-height-card {
-    height: 320px;
-    max-height: 320px;
+    height: 240px;
     display: flex;
     flex-direction: column;
 }
 
+/**
+ * 紧凑设置卡：不要用固定高度 + content flex:1，否则在 settings-grid 多列时
+ * 同行卡片被 grid 拉高后，content 会吃掉中间空白，api-status 与 card-actions 间距异常大。
+ * 高度随内容增长，同行仍由 grid align-items: stretch 对齐外框；多余空白落在卡片底部。
+ */
 .compact-setting-card {
-    height: 240px;
-    max-height: 240px;
+    height: auto;
+    min-height: 0;
+    max-height: 500px;
     display: flex;
     flex-direction: column;
 }
 
 .fixed-info-card {
-    height: 260px;
+    height: 220px;
     max-height: 260px;
     display: flex;
     flex-direction: column;
@@ -1731,10 +1956,18 @@ body {
     overflow: auto;
 }
 
-.compact-setting-card .card-content,
+/* 固定信息卡：正文区可滚动占满中间区域 */
 .fixed-info-card .card-content {
     flex: 1;
     overflow: auto;
+    min-height: 0;
+}
+
+/* 紧凑卡：中间区域随内容，避免被 flex:1 在「被网格拉高」时撑出大片空隙 */
+.compact-setting-card .card-content {
+    flex: 0 0 auto;
+    overflow: visible;
+    min-height: 0;
 }
 
 .equal-height-card .card-actions {
@@ -1759,7 +1992,7 @@ body {
 .card-header {
     display: flex;
     align-items: center;
-    padding: 24px 24px 16px 24px;
+    padding: 24px 24px 12px 24px;
     gap: 16px;
 }
 
@@ -1808,11 +2041,13 @@ body {
 
 .card-content {
     padding: 0 24px;
-    margin-bottom: 20px;
 }
 
+/* 无 card-actions，需自带底部留白，与 .api-card 的 card-actions 下内边距（24px）视觉一致 */
 .storage-card .card-content {
     margin-bottom: 0;
+    padding-bottom: 24px;
+    box-sizing: border-box;
 }
 
 /* 存储路径行样式 */
@@ -1866,11 +2101,15 @@ body {
     line-height: 1.4;
 }
 
-/* API状态样式 */
+/* API状态样式：徽章与说明同一行，说明靠右 */
 .api-status {
     display: flex;
-    flex-direction: column;
-    gap: 8px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .status-badge {
@@ -1910,13 +2149,20 @@ body {
     line-height: 1.4;
 }
 
+/* 仅 API 卡片内与徽章同行的说明（避免影响其它 .status-text） */
+.api-status .status-text {
+    text-align: right;
+    flex: 1;
+    min-width: 0;
+}
+
 .update-version-row,
 .update-toggle-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    padding: 10px 0;
+    padding: 8px 0;
     border-bottom: 1px solid #edf2f7;
 }
 
@@ -1976,6 +2222,54 @@ body {
 
 .switch-toggle input:checked + .switch-slider::before {
     transform: translateX(20px);
+}
+
+/* SiliconFlow 卡片：密钥 + 思考开关同一行（密钥按钮按内容宽，不被 flex 拉长） */
+.api-card-actions .api-card-actions-row {
+    margin: 10px 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px 20px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.api-card-actions .api-card-actions-row > #configure-api-key {
+    flex: 0 0 auto;
+    width: auto;
+    max-width: 100%;
+    align-self: center;
+}
+
+.api-thinking-toggle-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    flex: 0 0 auto;
+    margin-left: auto;
+}
+
+.api-thinking-label {
+    font-size: 14px;
+    color: #4a5568;
+    white-space: nowrap;
+}
+
+.api-thinking-hint {
+    font-size: 12px;
+    color: #a0aec0;
+    margin: 10px 0 0;
+    line-height: 1.45;
+    width: 100%;
+}
+
+.api-thinking-hint code {
+    font-size: 11px;
+    padding: 1px 4px;
+    background: #edf2f7;
+    border-radius: 4px;
 }
 
 /* 快捷键预览样式 */
@@ -2266,6 +2560,34 @@ body {
 }
 
 
+/* 应用更新：头栏单行排布，「更新日志」始终在右侧；标题区过窄时省略号，不挤按钮换行 */
+.update-card .card-header {
+    flex-wrap: nowrap;
+    align-items: center;
+    min-width: 0;
+}
+
+.update-card .card-header .card-icon {
+    flex-shrink: 0;
+}
+
+.update-card .card-header .card-info {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.update-card .card-header .card-info h3,
+.update-card .card-header .card-info p {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.update-card .card-header .update-card-header-actions {
+    flex: 0 0 auto;
+    margin-left: auto;
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
     .settings-page {
@@ -2310,14 +2632,20 @@ body {
         margin-left: 0;
     }
 
-    .update-card-header-actions {
-        width: 100%;
-        justify-content: flex-start;
+    /* 仅「应用更新」头栏需保留按钮靠右（其它卡片无 header-actions） */
+    .update-card .card-header-actions {
+        margin-left: auto;
     }
 
     .card-content {
         padding: 0 20px;
         margin-bottom: 16px;
+    }
+
+    /* 存储卡无 actions：用内边距代替 margin，避免与下方留白重复计算 */
+    .storage-card .card-content {
+        margin-bottom: 0;
+        padding-bottom: 20px;
     }
 
     /* 平板端：保持水平排列，但调整间距和按钮大小 */

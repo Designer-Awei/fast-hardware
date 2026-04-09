@@ -279,6 +279,22 @@
     filter: brightness(0) invert(1); /* 将图标转换为白色 */
 }
 
+.code-editor-exit-review-btn {
+    width: auto;
+    padding: 0 10px;
+    font-size: 12px;
+    color: #e2e8f0;
+    border: 1px solid #4a5568;
+}
+
+.code-editor-review-all-btn {
+    width: auto;
+    padding: 0 10px;
+    font-size: 12px;
+    color: #e2e8f0;
+    border: 1px solid #4a5568;
+}
+
 .code-editor-content {
     flex: 1;
     display: flex;
@@ -312,6 +328,77 @@
     white-space: pre;
     word-wrap: normal;
     tab-size: 4;
+}
+
+.code-editor-content.is-diff-review {
+    background: #111827;
+}
+
+.firmware-diff-review {
+    flex: 1;
+    overflow: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.4;
+    padding: 8px 0;
+    color: #e2e8f0;
+}
+
+.firmware-diff-summary {
+    border-top: 1px solid #374151;
+    border-bottom: 1px solid #374151;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: #cbd5e1;
+    background: #0f172a;
+}
+
+.firmware-diff-line {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 0 12px 0 8px;
+    min-height: 20px;
+    white-space: pre;
+}
+
+.firmware-diff-line .sign {
+    width: 14px;
+    flex: 0 0 14px;
+    opacity: 0.9;
+}
+
+.firmware-diff-line code {
+    font-family: inherit;
+    white-space: pre;
+    color: inherit;
+}
+
+.firmware-diff-line.add {
+    background: rgba(16, 185, 129, 0.16);
+}
+
+.firmware-diff-line.remove {
+    background: rgba(239, 68, 68, 0.16);
+}
+
+.firmware-diff-line.rejected {
+    opacity: 0.45;
+}
+
+.firmware-reviewed-output {
+    margin: 0;
+    border-top: 1px solid #374151;
+    background: #0b1220;
+    color: #cbd5e1;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    padding: 10px;
+    max-height: 120px;
+    overflow: auto;
+    white-space: pre;
 }
 
 /* 自定义代码块样式 */

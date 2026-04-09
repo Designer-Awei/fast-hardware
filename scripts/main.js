@@ -156,7 +156,7 @@ class FastHardwareApp {
      * @param {string} tabName - 标签页名称
      */
     switchTab(tabName) {
-        console.log('切换标签页:', tabName);
+        console.debug('切换标签页:', tabName);
 
         // 更新按钮状态
         document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -183,7 +183,7 @@ class FastHardwareApp {
                 requestAnimationFrame(() => {
                     window.canvasInstance.resizeCanvas();
                     window.canvasInstance.draw();
-                    console.log('✅ 画布已重绘');
+                    logRenderStartup('canvas:redraw');
                 });
             }
         } else {
@@ -1277,7 +1277,7 @@ void loop() {
                 }
             });
 
-            console.log('图标路径初始化完成:', assetsPath);
+            logRenderStartup('iconPaths:ready', { assetsPath });
         } catch (error) {
             console.error('初始化图标路径失败:', error);
         }

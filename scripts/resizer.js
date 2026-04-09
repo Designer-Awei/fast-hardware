@@ -86,13 +86,6 @@ class ResizerManager {
         document.body.style.cursor = 'col-resize';
         this.resizer.style.background = '#007acc';
         this.resizer.style.opacity = '1';
-
-        console.log('开始调整分割线', {
-            startX: this.startX,
-            canvasWidth: this.startCanvasWidth,
-            chatWidth: this.chatSection.offsetWidth,
-            responsiveMode: isResponsiveMode
-        });
     }
 
     /**
@@ -114,7 +107,6 @@ class ResizerManager {
 
         // 检查是否会小于最小像素宽度
         if (potentialNewChatWidth < this.minChatWidthPx) {
-            console.log(`聊天区宽度不能小于 ${this.minChatWidthPx}px，当前计算宽度: ${potentialNewChatWidth}px`);
             return; // 不进行调整
         }
 
@@ -146,7 +138,6 @@ class ResizerManager {
             // 计算对应的像素宽度，确保不小于最小像素宽度
             const newChatWidthPx = newChatPercent * workspaceRect.width;
             if (newChatWidthPx < this.minChatWidthPx) {
-                console.log(`聊天区宽度不能小于 ${this.minChatWidthPx}px，当前计算宽度: ${newChatWidthPx}px`);
                 return; // 不进行调整
             }
 
@@ -180,8 +171,6 @@ class ResizerManager {
         document.body.style.cursor = '';
         this.resizer.style.background = '';
         this.resizer.style.opacity = '';
-
-        console.log('停止调整分割线');
     }
 
     /**

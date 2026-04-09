@@ -43,7 +43,7 @@ class ModelConfigManager {
                     return scoreB - scoreA;
                 });
             await this.loadSyncStatus();
-            console.log('✅ 模型配置加载成功:', this.models.length, '个模型');
+            console.debug('✅ 模型配置加载成功:', this.models.length, '个模型');
             this.notifyConfigUpdated();
             return this.config;
         } catch (error) {
@@ -70,11 +70,24 @@ class ModelConfigManager {
             source: 'builtin',
             fetchedAt: null,
             defaults: {
-                chat: 'THUDM/GLM-4-9B-0414',
+                chat: 'Qwen/Qwen3.5-27B',
                 thinking: 'Qwen/Qwen3-8B',
                 visual: 'Qwen/Qwen2.5-VL-32B-Instruct'
             },
             models: [
+                {
+                    id: 'qwen3.5-27b',
+                    name: 'Qwen/Qwen3.5-27B',
+                    displayName: 'Qwen3.5-27B',
+                    providerType: 'text',
+                    appType: 'chat',
+                    type: 'chat',
+                    capabilities: ['text', 'code', 'long_context'],
+                    description: '默认对话模型',
+                    enabled: true,
+                    costLevel: 'medium',
+                    score: 100
+                },
                 {
                     id: 'glm-4-9b',
                     name: 'THUDM/GLM-4-9B-0414',
@@ -83,10 +96,10 @@ class ModelConfigManager {
                     appType: 'chat',
                     type: 'chat',
                     capabilities: ['text', 'code'],
-                    description: '默认对话模型',
+                    description: '备选小尺寸对话模型',
                     enabled: true,
                     costLevel: 'low',
-                    score: 100
+                    score: 72
                 },
                 {
                     id: 'qwen3-8b',
@@ -503,7 +516,7 @@ class ModelConfigManager {
             window.chatManager.updateModelSelection(window.chatManager.selectedModel);
         }
 
-        console.log('✅ 模型选择器UI渲染完成');
+        console.debug('✅ 模型选择器UI渲染完成');
     }
 
     /**
@@ -558,9 +571,17 @@ class ModelConfigManager {
 // 创建全局实例
 window.modelConfigManager = new ModelConfigManager();
 
-// 页面加载时初始化
-document.addEventListener('DOMContentLoaded', async () => {
+/**
+ * 首次完成模型列表 loadConfig + 下拉渲染，供 {@link ChatManager} 等在 init 时 await，避免与 `initializeModelDisplay` 竞态。
+ * @type {Promise<void>}
+ */
+window.whenModelConfigLoaded = (async () => {
+    if (document.readyState === 'loading') {
+        await new Promise((resolve) => {
+            document.addEventListener('DOMContentLoaded', resolve, { once: true });
+        });
+    }
     await window.modelConfigManager.loadConfig();
     window.modelConfigManager.renderModelDropdown();
-});
+})();
 

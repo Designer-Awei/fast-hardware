@@ -2,7 +2,7 @@
   "version": "2.0.0",
   "lastUpdate": "2026-03-10",
   "defaults": {
-    "chat": "THUDM/GLM-4-9B-0414",
+    "chat": "Qwen/Qwen3.5-27B",
     "thinking": "Qwen/Qwen3-8B",
     "visual": "Qwen/Qwen2.5-VL-32B-Instruct"
   },
@@ -24,12 +24,25 @@
     "maxCostLevel": "high"
   },
   "overrides": {
+    "Qwen/Qwen3.5-27B": {
+      "displayName": "Qwen3.5-27B",
+      "appType": "chat",
+      "capabilities": ["text", "code", "long_context"],
+      "description": "默认对话模型",
+      "priority": 100,
+      "costLevel": "medium",
+      "pricing": {
+        "inputPerMillion": null,
+        "outputPerMillion": null,
+        "currency": "CNY"
+      }
+    },
     "THUDM/GLM-4-9B-0414": {
       "displayName": "GLM-4-9B",
       "appType": "chat",
       "capabilities": ["text", "code"],
-      "description": "默认对话模型",
-      "priority": 100,
+      "description": "备选小尺寸对话模型",
+      "priority": 72,
       "costLevel": "low",
       "pricing": {
         "inputPerMillion": null,

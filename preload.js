@@ -154,8 +154,47 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   /**
    * 与AI对话
+   * @param {Array<{role:string, content: unknown}>} messages
+   * @param {string} model
+   * @param {{ siliconFlowEnableThinking?: boolean, stream?: boolean }} [apiOptions] - `stream:false` 关闭 SSE；默认流式
    */
-  chatWithAI: (messages, model) => ipcRenderer.invoke('chatWithAI', messages, model),
+  chatWithAI: (messages, model, apiOptions) =>
+    ipcRenderer.invoke('chatWithAI', messages, model, apiOptions ?? {}),
+
+  /**
+   * 订阅 SiliconFlow 流式增量（仅 `stream !== false` 时主进程会推送）
+   * @param {(payload: { delta?: string }) => void} callback
+   * @returns {() => void} 取消订阅
+   */
+  onSiliconflowChatStream: (callback) => {
+    if (typeof callback !== 'function') {
+      return () => {};
+    }
+    /** @param {unknown} _evt @param {{ delta?: string }} payload */
+    const handler = (_evt, payload) => {
+      callback(payload && typeof payload === 'object' ? payload : {});
+    };
+    ipcRenderer.on('siliconflow-chat-stream-chunk', handler);
+    return () => ipcRenderer.removeListener('siliconflow-chat-stream-chunk', handler);
+  },
+
+  /**
+   * 订阅 Skills Agent **最终合成** 的 SiliconFlow SSE 增量（channel `skills-agent-loop-final-stream-chunk`）
+   * @param {(payload: { delta?: string }) => void} callback
+   * @returns {() => void} 取消订阅
+   */
+  onSkillsAgentLoopFinalStream: (callback) => {
+    if (typeof callback !== 'function') {
+      return () => {};
+    }
+    /** @param {unknown} _evt @param {{ delta?: string }} payload */
+    const handler = (_evt, payload) => {
+      callback(payload && typeof payload === 'object' ? payload : {});
+    };
+    const ch = 'skills-agent-loop-final-stream-chunk';
+    ipcRenderer.on(ch, handler);
+    return () => ipcRenderer.removeListener(ch, handler);
+  },
 
   /**
    * Exa MCP Web Search（ClawHub 的 exa-web-search-free 底层能力）
@@ -217,6 +256,88 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   onUpdateStatus: (callback) => {
     ipcRenderer.on('update-status', (_, payload) => callback(payload));
+  },
+
+  /**
+   * 将 skills / agent 进度从渲染进程发往主进程，再由主进程广播 `agent-skill-progress`（供 onAgentSkillProgress 订阅）
+   * @param {Record<string, unknown>} detail - 建议含 type、phase、line、skillName 等
+   */
+  publishAgentSkillProgress: (detail) => {
+    ipcRenderer.send('agent-skill-progress-emit', detail);
+  },
+
+  /**
+   * 注册主进程 `execute-skill` 触发的引擎 RPC：主进程 `webContents.send('skills-engine-invoke')`，
+   * 渲染进程在此执行真实 `CircuitSkillsEngine` 方法并回传结果。
+   * @param {(detail: { op: string, args: unknown[] }) => Promise<unknown>} handler
+   * @returns {void}
+   */
+  registerSkillsEngineRpcHandler: (handler) => {
+    if (typeof handler !== 'function') {
+      return;
+    }
+    ipcRenderer.removeAllListeners('skills-engine-invoke');
+    ipcRenderer.on('skills-engine-invoke', async (_event, detail) => {
+      const callId = detail && detail.callId;
+      if (typeof callId !== 'string') {
+        return;
+      }
+      try {
+        const result = await handler({
+          op: detail.op,
+          args: Array.isArray(detail.args) ? detail.args : []
+        });
+        ipcRenderer.send('skills-engine-result', { callId, ok: true, result });
+      } catch (e) {
+        ipcRenderer.send('skills-engine-result', {
+          callId,
+          ok: false,
+          error: String(e && e.message ? e.message : e)
+        });
+      }
+    });
+  },
+
+  /**
+   * 主进程执行 skill（见 `main.js` `execute-skill`）
+   * @param {{ skillName: string, args?: unknown, ctxPayload?: { userRequirement?: string, canvasSnapshot?: unknown } }} payload
+   * @returns {Promise<unknown>}
+   */
+  executeSkill: (payload) => ipcRenderer.invoke('execute-skill', payload),
+
+  /**
+   * 主进程 Skills Agent 多轮循环（`scripts/agent/skills-agent-loop.js`）
+   * @param {{ userMessage?: string, model?: string, temperature?: number, canvasSnapshot?: unknown, projectPath?: string }} payload
+   * @returns {Promise<{ success: boolean, ok?: boolean, outcome?: string, assistantMessages?: Array<{type:string, content?:string, isSkillFlow?:boolean}>, error?: string }>}
+   */
+  runSkillsAgentLoop: (payload) => ipcRenderer.invoke('run-skills-agent-loop', payload),
+
+  /**
+   * 项目工作区工具（list/read/grep/explore/verify），主进程读盘
+   * @param {{ projectRoot: string, toolName: string, args?: Record<string, unknown> }} payload
+   * @returns {Promise<{ success: boolean, data?: unknown, error?: string }>}
+   */
+  executeProjectWorkspaceTool: (payload) => ipcRenderer.invoke('execute-project-workspace-tool', payload),
+
+  /**
+   * 请求中断主进程 `runSkillsAgentLoop` 多轮循环（与渲染侧「中断」按钮配合）
+   * @returns {void}
+   */
+  abortSkillsAgentLoop: () => {
+    ipcRenderer.send('skills-agent-loop-abort');
+  },
+
+  /**
+   * 订阅主进程 Agent 循环进度（与 `runSkillsAgentLoop` invoke 并发；`callback` 传 `null` 清除监听）
+   * @param {((detail: Record<string, unknown>) => void) | null} callback
+   * @returns {void}
+   */
+  registerSkillsAgentLoopProgress: (callback) => {
+    const ch = 'skills-agent-loop-progress';
+    ipcRenderer.removeAllListeners(ch);
+    if (typeof callback === 'function') {
+      ipcRenderer.on(ch, (_event, detail) => callback(detail));
+    }
   },
 
   /**

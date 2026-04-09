@@ -17,8 +17,11 @@ class ProjectTabsManager {
      * 初始化项目标签页管理器
      */
     init() {
-        console.log('📂 项目标签页管理器初始化');
+        console.debug('📂 项目标签页管理器初始化');
         this.bindEvents();
+        if (this.projects.length === 0) {
+            this.createNewProject({ name: '未命名项目', silent: true });
+        }
     }
 
     /**
@@ -61,6 +64,7 @@ class ProjectTabsManager {
             path: null, // 新建项目暂时没有路径，保存时才会指定
             isModified: false,
             isSaved: false,
+            isUnnamedDefault: projectName === '未命名项目',
             canvasData: {
                 components: [],
                 connections: [],
@@ -81,7 +85,9 @@ class ProjectTabsManager {
         this.switchProject(projectId);
 
         console.log(`✅ 新建项目: ${projectName} (ID: ${projectId}), 默认位置: (${defaultPanX}, ${defaultPanY})`);
-        this.app.showNotification(`新建项目: ${projectName}`, 'success');
+        if (!options.silent) {
+            this.app.showNotification(`新建项目: ${projectName}`, 'success');
+        }
 
         return newProject;
     }
@@ -214,6 +220,14 @@ class ProjectTabsManager {
         this.app.isProjectModified = project.isModified;
 
         console.log(`🔄 切换到项目: ${project.name} (ID: ${projectId})`);
+        document.dispatchEvent(
+            new CustomEvent('fh-project-switched', {
+                detail: {
+                    projectId: project.id,
+                    project
+                }
+            })
+        );
     }
 
     /**
@@ -253,9 +267,7 @@ class ProjectTabsManager {
             if (this.projects.length > 0) {
                 this.switchProject(this.projects[0].id);
             } else {
-                this.activeProjectId = null;
-                this.clearCanvas();
-                this.app.currentProject = null;
+                this.createNewProject({ name: '未命名项目', silent: true });
             }
         }
 
@@ -295,6 +307,9 @@ class ProjectTabsManager {
                 panX: window.canvasInstance.offsetX || 0,
                 panY: window.canvasInstance.offsetY || 0
             };
+            if (typeof window.canvasInstance.getCodeEditorStateForProject === 'function') {
+                activeProject.codeEditorState = window.canvasInstance.getCodeEditorStateForProject();
+            }
             
             console.log(`💾 保存画布状态到项目: ${activeProject.name}, 元件数: ${activeProject.canvasData.components.length}, 连线数: ${activeProject.canvasData.connections.length}`);
         }
@@ -314,8 +329,13 @@ class ProjectTabsManager {
             // 清空当前画布
             window.canvasInstance.clearComponents();
             
-            // 如果是已保存的项目，使用应用的渲染方法
-            if (project.isSaved && project.path && window.app && project.projectData) {
+            const hasInMemoryCanvas =
+                !!project.canvasData &&
+                ((Array.isArray(project.canvasData.components) && project.canvasData.components.length > 0) ||
+                    (Array.isArray(project.canvasData.connections) && project.canvasData.connections.length > 0));
+
+            // 已保存项目：若当前已有内存快照，优先恢复内存（避免覆盖未保存改动）
+            if (project.isSaved && project.path && window.app && project.projectData && !hasInMemoryCanvas) {
                 console.log(`🔄 恢复已保存项目: ${project.name} from ${project.path}`);
                 
                 // 临时禁用画布修改标记
@@ -344,7 +364,7 @@ class ProjectTabsManager {
                 window.canvasInstance.markProjectAsModified = originalMarkFunction;
                 
             } else {
-                // 新建或未保存的项目，直接恢复画布状态
+                // 新建/未保存，或已保存但有未保存内存改动：恢复内存状态
                 console.log(`🔄 恢复项目画布状态: ${project.name}, 元件数: ${project.canvasData.components?.length || 0}, 连线数: ${project.canvasData.connections?.length || 0}`);
                 
                 // 深拷贝恢复元件和连线，避免共享引用
@@ -362,6 +382,9 @@ class ProjectTabsManager {
 
                 // 重新渲染
                 window.canvasInstance.draw();
+            }
+            if (typeof window.canvasInstance.restoreCodeEditorStateForProject === 'function') {
+                window.canvasInstance.restoreCodeEditorStateForProject(project.codeEditorState || null);
             }
 
             console.log(`✅ 画布状态恢复完成: ${project.name}`);

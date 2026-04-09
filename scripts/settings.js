@@ -90,6 +90,13 @@ class SettingsManager {
                 this.saveAutoCheckUpdates(event.target.checked);
             });
         }
+
+        const sfThinkingToggle = document.getElementById('siliconflow-enable-thinking-toggle');
+        if (sfThinkingToggle) {
+            sfThinkingToggle.addEventListener('change', (event) => {
+                this.saveSiliconFlowEnableThinking(event.target.checked);
+            });
+        }
     }
 
     /**
@@ -104,6 +111,8 @@ class SettingsManager {
 
         // 加载API密钥状态
         this.loadApiKeyStatus();
+
+        this.loadSiliconFlowEnableThinking();
 
         // 加载版本与更新状态
         this.loadVersionInfo();
@@ -659,6 +668,43 @@ class SettingsManager {
      * 保存自动检查更新设置
      * @param {boolean} enabled - 是否启用
      */
+    /**
+     * 加载 SiliconFlow「模型思考」开关（与 `env.local` 中 `SILICONFLOW_ENABLE_THINKING` 及主进程 `callSiliconFlowAPI` 同源）
+     */
+    loadSiliconFlowEnableThinking() {
+        const el = document.getElementById('siliconflow-enable-thinking-toggle');
+        if (!el || !window.electronAPI || !window.electronAPI.getSettings) return;
+
+        window.electronAPI
+            .getSettings('siliconFlowEnableThinking')
+            .then((value) => {
+                el.checked = String(value || '').toLowerCase() === 'true';
+            })
+            .catch((error) => {
+                console.error('加载模型思考开关失败:', error);
+                el.checked = false;
+            });
+    }
+
+    /**
+     * 保存 SiliconFlow enable_thinking 偏好（写入 env.local，主进程请求体 `enable_thinking` 与此一致）
+     * @param {boolean} enabled - 是否启用思考链
+     */
+    saveSiliconFlowEnableThinking(enabled) {
+        if (!window.electronAPI || !window.electronAPI.saveSettings) return;
+
+        window.electronAPI
+            .saveSettings('siliconFlowEnableThinking', enabled ? 'true' : 'false')
+            .then(() => {
+                const message = enabled ? '已开启模型思考（enable_thinking）' : '已关闭模型思考，对话将更快';
+                this.showNotification(message, 'success');
+            })
+            .catch((error) => {
+                console.error('保存模型思考开关失败:', error);
+                this.showNotification('保存模型思考设置失败', 'error');
+            });
+    }
+
     saveAutoCheckUpdates(enabled) {
         if (!window.electronAPI || !window.electronAPI.saveSettings) return;
 
@@ -733,17 +779,12 @@ class SettingsManager {
         this.updateState = state || {};
 
         const latestVersionEl = document.getElementById('update-latest-version');
-        const statusTextEl = document.getElementById('update-status-text');
         const downloadBtn = document.getElementById('download-update-btn');
         const installBtn = document.getElementById('install-update-btn');
         const autoToggle = document.getElementById('auto-check-updates-toggle');
 
         if (latestVersionEl) {
             latestVersionEl.textContent = state.latestVersion ? `v${state.latestVersion}` : '未检查';
-        }
-
-        if (statusTextEl) {
-            statusTextEl.textContent = state.message || '启动后将根据开关设置自动检查更新';
         }
 
         if (autoToggle && typeof state.autoCheckEnabled === 'boolean') {

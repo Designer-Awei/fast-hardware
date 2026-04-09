@@ -3,12 +3,142 @@
  * 处理与AI助手的对话交互
  */
 
+import {
+    canonicalWorkspaceToolName,
+    extractDirectWorkspaceFinalMessage,
+    normalizeWorkspaceToolCalls,
+    parseLooseJsonFromModel,
+    workspaceToolArgsPreview,
+    workspaceToolDetailSummary,
+    workspaceToolPlanningSummary,
+    workspaceToolResultPreview,
+    workspaceToolShortNameForUi
+} from './tools/workspace-direct-chat-tools.mjs';
+
+/** 与 `scripts/skills/renderer-engine-bridge.js` 中 `ALLOWED_ENGINE_OPS` 保持一致 */
+const ALLOWED_SKILLS_ENGINE_RPC_OPS = new Set([
+    'runSchemeDesign',
+    'runRequirementAnalysis',
+    'runCompletionSuggestions',
+    'runSummarizeText',
+    'runFirmwareCodePatch',
+    'getCanvasSnapshotForSkill',
+    'runWiringEditPlan',
+    'applyWiringEditOperations',
+    'webSearchExa',
+    'getCurrentSkillState'
+]);
+
+/**
+ * 纯寒暄/短问候：不走 skills agent，直连 `chatWithAI`，降低首包延迟。
+ * 含硬件/工程关键词的短句不视为寒暄，避免误伤「做个灯」等需求描述。
+ * @param {string} text
+ * @returns {boolean}
+ */
+function isSimpleChitchatMessage(text) {
+    const t = String(text || '').trim();
+    if (!t || t.length > 48) return false;
+    if (
+        /电路|元件|芯片|云台|无人机|传感器|电机|MCU|BOM|画布|连线|电压|选型|方案|设计|硬件|Arduino|ESP|STM32|PWM|GPIO|飞控|电调|电池|LiPo|锂电池|螺旋桨|IMU|陀螺|航拍|模块|接口|引脚/i.test(
+            t
+        )
+    ) {
+        return false;
+    }
+    return /^(你好|您好|嗨|哈喽|hi|hello|hey|在吗|在么|早上好|中午好|下午好|晚上好|谢谢|多谢|辛苦|拜拜|再见)(\s|！|!|。|…|~|～|呀|哦|哈|啊|，|,|、)*$/i.test(
+        t
+    );
+}
+
+/**
+ * 用户明确想先要简要说明、暂不跑 skills agent 编排时的保守路由（在 `isSimpleChitchatMessage` 之后判断）。
+ * @param {string} text
+ * @returns {boolean}
+ */
+function preferBriefAnswerFirst(text) {
+    const t = String(text || '').trim();
+    if (!t || t.length > 220) return false;
+    const wantsBrief =
+        /简单说说|简要|先大概|了解一下就行|不用很详细|先说下思路|口头说说|先别查库|不用完整方案|先给思路|只要概念|大致讲讲/i.test(
+            t
+        );
+    const strongDesignIntent =
+        /BOM|原理图|元件库匹配|帮我画板|完整方案|按.*skill|必须调用|runBomAnalysis|画布上/i.test(t);
+    return wantsBrief && !strongDesignIntent;
+}
+
+/**
+ * 用户明确要求走完整 skills agent / 元件库编排（与默认短答区分）。
+ * @param {string} text
+ * @returns {boolean}
+ */
+function explicitFullAgentIntent(text) {
+    const t = String(text || '');
+    return (
+        /「生成完整方案」|生成完整方案|「生成方案编排」|生成方案编排/.test(t) ||
+        /(?:元件库|画布).{0,12}(?:匹配|方案|分析)|(?:完整|深度)(?:编排|方案).{0,8}(?:元件|库|画布)/.test(t) ||
+        /BOM\s*匹配|帮我出(?:一份)?BOM|runBomAnalysis/i.test(t) ||
+        /固件|代码补丁|改代码|改固件|生成代码|codegen|firmware/i.test(t)
+    );
+}
+
+/**
+ * 默认短答路径下，是否在叙述「具体要做的事」而非纯概念问句（用于文末提示「生成完整方案」）。
+ * @param {string} text
+ * @returns {boolean}
+ */
+function userHasExplicitHardwareRequirement(text) {
+    const t = String(text || '').trim();
+    if (t.length < 10) return false;
+    if (/^(什么是|啥是|什么叫|解释一下|介绍一下)/.test(t)) return false;
+    return (
+        /(我想|我要|帮我|需要做|做一个|做个|搭建|设计|实现|开发|装置|系统|自动|控制|监测|报警|选型|硬件)/.test(t)
+    );
+}
+
+/**
+ * 用户主要在了解「当前项目/工程是做什么的」，不是要立刻做设计或走完整编排；此类不追加「生成方案编排」强提示。
+ * @param {string} text
+ * @returns {boolean}
+ */
+function isProjectOrWorkspaceOverviewQuestion(text) {
+    const t = String(text || '').trim();
+    if (!t) return false;
+    if (explicitFullAgentIntent(t)) return false;
+    if (
+        /(?:看下|看看|瞧瞧|读下|浏览).{0,8}画(?:布|板)|画(?:布|板).{0,14}(?:上有啥|里有啥|有啥|有什么|哪些|内容|情况|东西)|画(?:布|板).{0,8}(?:吗|么|嘛|空|空的|有没有)|啥(?:内容|东西).{0,6}画/i.test(
+            t
+        )
+    ) {
+        return true;
+    }
+    return /(?:这个|本|该|打开的|当前)?(?:项目|工程).{0,16}(?:是|干|做)(?:什么|啥|啥的|嘛)|(?:什么|啥)(?:项目|工程)|(?:项目|工程).{0,10}(?:干啥|干什么|做啥|用途|干嘛|介绍|啥意思|说明)|(?:看下|看看|瞧瞧|读下|浏览|了解下|说说|讲讲).{0,12}(?:项目|工程)|画布.{0,8}(?:干啥|干什么的|什么项目)|what\s*(?:'?s|is).{0,16}project|purpose\s+of.{0,12}project/i.test(
+        t
+    );
+}
+
+/**
+ * 直连对话是否适合走「工作区工具」多轮读盘（与旧版预读全文触发条件一致）。
+ * @param {string} userMessage
+ * @returns {boolean}
+ */
+function directChatWantsProjectWorkspaceDeep(userMessage) {
+    const um = String(userMessage || '');
+    return /项目|工程|电路|画布|readme|\bino\b|固件|干啥|干什么|做什么|用途|了解|介绍|干嘛|是什[么麽]|啥用|circuit|功能是|干什么的|是干啥|本项目|该(?:项目|工程)|what\s*'?s?\s+this\s+project|what\s+does\s+(this|the)\s+project|purpose\s+of\s+(this|the)\s+project/i.test(
+        um
+    );
+}
+
 class ChatManager {
     constructor() {
         this.messages = [];
+        /** @type {Map<string, { messages: Array<any> }>} */
+        this._projectSessions = new Map();
+        /** @type {string} */
+        this._activeProjectSessionKey = 'project:default-unnamed';
         this.isTyping = false;
-        this.selectedModel = 'THUDM/GLM-4-9B-0414';
-        this.defaultChatModel = 'THUDM/GLM-4-9B-0414';
+        this.selectedModel = 'Qwen/Qwen3.5-27B';
+        this.defaultChatModel = 'Qwen/Qwen3.5-27B';
         this.defaultThinkingModel = 'Qwen/Qwen3-8B';
         this.defaultVisualModel = 'Qwen/Qwen2.5-VL-32B-Instruct';
         this.uploadedImages = []; // 支持多图上传
@@ -20,6 +150,38 @@ class ChatManager {
         this.currentAbortController = null; // 用于中断API请求
         this.skillsEngine = null; // skills 引擎
         this.activeSkillContextId = null; // 当前“最新”skills上下文ID（用于消息追踪）
+        /** @type {ReturnType<typeof setInterval>|null} skills 链路「用时 n S」定时器 */
+        this._skillsFlowElapsedTimerId = null;
+        /** @type {number|null} skills 链路开始时间戳（用于计时） */
+        this._skillsFlowElapsedT0 = null;
+        /** @type {number} 阶段行「用时 n S」峰值（与 `_buildSkillsFlowTypingLine` 一致，收口前再 flush） */
+        this._skillsFlowMaxElapsedSec = 0;
+        /** @type {string|null} skills 链路当前阶段文案（与计时组合展示） */
+        this._skillsFlowPhaseLabel = null;
+        /** @type {boolean} 是否处于 runSkillsAgentLoop 执行区间（用于在阶段切换时补建 typing 指示器） */
+        this._skillsFlowActive = false;
+        /** @type {number|null} 流式回复在 typing 气泡内刷新用的 rAF */
+        this._typingStreamRaf = null;
+        /** @type {string} 流式增量合并缓冲（与 rAF 对齐） */
+        this._typingStreamPending = '';
+        /** @type {number|null} 当前 skills agent 运行中写入的「块式追踪」助手消息 id */
+        this._agentTraceMessageId = null;
+        /** @type {boolean} 最终合成 SSE 进行中：仅刷新块列表后需恢复 `.fh-agent-answer-stream` */
+        this._skillsAgentFinalSynthesisActive = false;
+        /** @type {number|null} 阶段+用时行显示在追踪气泡 `.message-time` 上（避免双气泡） */
+        this._agentTraceHeaderMessageId = null;
+        /** @type {Promise<string>|null} `getAssetsPath` 缓存，供 data-icon 动态节点复用 */
+        this._cachedAssetsPathPromise = null;
+        /** 直连工作区工具是否已把正文合并进追踪气泡（避免再 push 一条助手消息） */
+        this._mergedDirectWorkspaceReply = false;
+        /** @type {number|null} 上述合并对应的消息 id */
+        this._lastDirectWorkspaceTraceId = null;
+        /** @type {number|null} 工作区工具循环 LLM 流式预览 rAF */
+        this._workspaceLoopStreamRaf = null;
+        /** @type {number|null} */
+        this._workspaceLoopStreamPendingMsgId = null;
+        /** @type {string} 工作区循环 SSE delta 合并缓冲 */
+        this._workspaceLoopStreamBuf = '';
         this.init();
     }
 
@@ -27,16 +189,126 @@ class ChatManager {
      * 初始化对话管理器
      */
     async init() {
+        this._configureMarkedRenderer();
+        this._bindSkillsProgressBus();
         this.bindEvents();
         this.bindModelConfigEvents();
+        if (typeof window.whenModelConfigLoaded?.then === 'function') {
+            await window.whenModelConfigLoaded.catch((err) => {
+                console.error('模型配置初始化未完成:', err);
+            });
+        }
         await this.loadInitialMessages();
+        this._saveCurrentSessionState();
         await this.initializeModelDisplay();
         // 初始化 skills 引擎
         if (window.CircuitSkillsEngine) {
             this.skillsEngine = new window.CircuitSkillsEngine(this);
-            console.log('✅ skills 引擎初始化完成');
+            console.debug('✅ skills 引擎初始化完成');
         } else {
-            console.warn('⚠️ skills 引擎类未找到，请确保 workflow-circuit.js 已加载');
+            console.warn('⚠️ skills 引擎类未找到，请确保 circuit-skills-engine.js 已加载');
+        }
+        if (this.skillsEngine && window.electronAPI?.registerSkillsEngineRpcHandler) {
+            window.electronAPI.registerSkillsEngineRpcHandler(async ({ op, args }) => {
+                const engine = this.skillsEngine;
+                if (!engine || typeof engine[op] !== 'function') {
+                    throw new Error(`skillsEngine.${op} 不可用`);
+                }
+                if (!ALLOWED_SKILLS_ENGINE_RPC_OPS.has(op)) {
+                    throw new Error(`不允许的 engine 操作: ${op}`);
+                }
+                return await engine[op](...(args || []));
+            });
+        }
+    }
+
+    /**
+     * 打开 marked 的 GFM（表格等），与 CDN `marked.min.js` 各版本兼容
+     * @returns {void}
+     */
+    _configureMarkedRenderer() {
+        const m = typeof marked !== 'undefined' ? marked : null;
+        if (!m) return;
+        try {
+            if (typeof m.use === 'function') {
+                m.use({ gfm: true, breaks: true });
+            } else if (typeof m.setOptions === 'function') {
+                m.setOptions({ gfm: true, breaks: true });
+            }
+        } catch (e) {
+            console.warn('[chat] marked 配置失败', e);
+        }
+    }
+
+    /**
+     * @returns {Promise<string>}
+     */
+    _ensureAssetsPathForIcons() {
+        if (!this._cachedAssetsPathPromise) {
+            this._cachedAssetsPathPromise =
+                typeof window.electronAPI?.getAssetsPath === 'function'
+                    ? window.electronAPI.getAssetsPath().catch(() => '')
+                    : Promise.resolve('');
+        }
+        return this._cachedAssetsPathPromise;
+    }
+
+    /**
+     * 将 `img[data-icon]` 映射到 `assets/icon-<name>.svg`（与 `main.js` initializeIconPaths 一致）
+     * @param {HTMLImageElement} img
+     * @returns {Promise<void>}
+     */
+    async _setImgDataIconSrc(img) {
+        const name = img?.dataset?.icon;
+        if (!name) return;
+        try {
+            const base = await this._ensureAssetsPathForIcons();
+            if (base) {
+                img.src = `file://${base}/icon-${name}.svg`;
+            }
+        } catch {
+            /* empty */
+        }
+    }
+
+    /**
+     * @param {ParentNode|null} root
+     * @returns {Promise<void>}
+     */
+    async _hydrateDataIconImgsIn(root) {
+        if (!root || typeof root.querySelectorAll !== 'function') return;
+        const imgs = root.querySelectorAll('img[data-icon]');
+        await Promise.all(Array.from(imgs).map((el) => this._setImgDataIconSrc(el)));
+    }
+
+    /**
+     * Agent 块折叠按钮：展开显示 chevron-down，收起（已展开）显示 chevron-up
+     * @param {HTMLButtonElement|null} btn
+     * @param {boolean} detailsOpen
+     * @returns {void}
+     */
+    _syncFhAgentBlockToggleChevron(btn, detailsOpen) {
+        if (!btn) return;
+        btn.setAttribute('aria-expanded', detailsOpen ? 'true' : 'false');
+        btn.setAttribute('aria-label', detailsOpen ? '收起详情' : '展开详情');
+        const img = btn.querySelector('img.fh-agent-block-toggle-icon[data-icon]');
+        if (img) {
+            img.dataset.icon = detailsOpen ? 'chevron-up' : 'chevron-down';
+            void this._setImgDataIconSrc(img);
+        }
+    }
+
+    /**
+     * Skills 全链路调试日志（控制台可过滤 `[skills-chain]`）
+     * @param {string} step - 步骤说明
+     * @param {Record<string, unknown>} [extra] - 附加字段
+     * @returns {void}
+     */
+    _logSkillsChain(step, extra) {
+        if (extra !== undefined && extra !== null && typeof extra === 'object') {
+            console.log('[skills-chain]', step, extra);
+        } else {
+            console.log('[skills-chain]', step);
         }
     }
 
@@ -88,7 +360,7 @@ class ChatManager {
             this.updateModelDisplay(currentModelInfo);
         }
 
-        console.log('✅ 模型配置已同步到聊天管理器:', {
+        console.debug('✅ 模型配置已同步到聊天管理器:', {
             defaultChatModel: this.defaultChatModel,
             defaultThinkingModel: this.defaultThinkingModel,
             defaultVisualModel: this.defaultVisualModel,
@@ -100,70 +372,18 @@ class ChatManager {
     /**
      * 初始化模型显示
      */
-    async initializeModelDisplay() {
-        console.log('🔧 开始初始化模型显示，当前 selectedModel:', this.selectedModel);
-        
-        // 等待 modelConfigManager 加载完成（对象和数据都要检查）
-        if (!window.modelConfigManager || window.modelConfigManager.models.length === 0) {
-            console.log('⏳ modelConfigManager 未就绪，等待加载...');
-            await this.waitForModelConfig();
-        }
-
-        // 设置默认显示的模型
-        if (window.modelConfigManager && window.modelConfigManager.models.length > 0) {
-            this.handleModelConfigUpdated({
-                syncStatus: window.modelConfigManager.syncStatus
-            });
-            console.log('🔍 尝试获取模型信息:', this.selectedModel);
-            const modelInfo = window.modelConfigManager.getModelByName(this.selectedModel);
-            console.log('📦 获取到的模型信息:', modelInfo);
-            
-            if (modelInfo) {
-                this.updateModelDisplay(modelInfo);
-                console.log('✅ 模型显示初始化完成:', `${modelInfo.type}/${modelInfo.displayName}`);
-            } else {
-                console.warn('⚠️ 未找到模型信息，保持 HTML 默认显示');
-                // 不修改显示，保持 HTML 中的默认值 "Chat/GLM-4-9B"
-            }
-        } else {
-            console.warn('⚠️ modelConfigManager 数据未就绪，保持 HTML 默认显示');
-            // 不修改显示，保持 HTML 中的默认值 "Chat/GLM-4-9B"
-        }
-    }
-
     /**
-     * 等待模型配置加载完成
+     * 在 `whenModelConfigLoaded` 完成后刷新顶栏当前模型展示（无数据则保持 HTML 默认）
+     * @returns {Promise<void>}
      */
-    async waitForModelConfig(maxWait = 5000) {
-        const startTime = Date.now();
-        console.log('⏳ 开始等待 modelConfigManager...');
-        
-        // 等待 modelConfigManager 对象创建
-        while (!window.modelConfigManager && (Date.now() - startTime < maxWait)) {
-            await new Promise(resolve => setTimeout(resolve, 50));
-        }
-        if (!window.modelConfigManager) {
-            console.warn('⚠️ modelConfigManager 对象加载超时');
+    async initializeModelDisplay() {
+        if (!window.modelConfigManager || window.modelConfigManager.models.length === 0) {
             return;
         }
-        console.log('✅ modelConfigManager 对象已创建');
-        
-        // 等待 models 数据加载完成
-        let checkCount = 0;
-        while (window.modelConfigManager.models.length === 0 && (Date.now() - startTime < maxWait)) {
-            checkCount++;
-            if (checkCount % 10 === 0) {
-                console.log(`⏳ 等待 models 数据加载... (${checkCount * 50}ms)`);
-            }
-            await new Promise(resolve => setTimeout(resolve, 50));
-        }
-        
-        if (window.modelConfigManager.models.length === 0) {
-            console.warn('⚠️ modelConfigManager 数据加载超时，models 数组仍为空');
-        } else {
-            console.log('✅ modelConfigManager 数据加载完成，共', window.modelConfigManager.models.length, '个模型');
-            console.log('📋 模型列表:', window.modelConfigManager.models.map(m => m.name).join(', '));
-        }
+
+        this.handleModelConfigUpdated({
+            syncStatus: window.modelConfigManager.syncStatus
+        });
     }
 
     /**
@@ -175,7 +395,6 @@ class ChatManager {
         const modelNameElement = document.getElementById('current-model');
         if (modelNameElement && modelInfo) {
             const displayText = modelInfo.displayName;
-            console.log('🎨 更新模型显示:', displayText);
             modelNameElement.textContent = displayText;
             modelNameElement.title = modelInfo.description;
 
@@ -197,7 +416,6 @@ class ChatManager {
         modelOptions.forEach(option => {
             if (option.getAttribute('data-model') === modelName) {
                 option.classList.add('selected');
-                console.log('✅ 设置选中状态:', modelName);
             } else {
                 option.classList.remove('selected');
             }
@@ -316,6 +534,123 @@ class ChatManager {
                 }
             }
         });
+
+        // 聊天区内 http(s) 链接用系统浏览器打开（Markdown 渲染后的 <a>）
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('.fh-agent-block-toggle');
+            if (btn && btn.closest('#chat-messages')) {
+                e.preventDefault();
+                e.stopPropagation();
+                const details = btn.closest('details.fh-agent-block');
+                if (details) {
+                    details.open = !details.open;
+                    this._syncFhAgentBlockToggleChevron(btn, details.open);
+                }
+                return;
+            }
+        });
+
+        document.addEventListener(
+            'toggle',
+            (e) => {
+                const el = e.target;
+                if (!(el instanceof HTMLDetailsElement)) return;
+                if (!el.classList.contains('fh-agent-block')) return;
+                if (!el.closest('#chat-messages')) return;
+                const sum = el.querySelector(':scope > summary.fh-agent-block-summary');
+                const b = sum && sum.querySelector('.fh-agent-block-toggle');
+                if (!b) return;
+                this._syncFhAgentBlockToggleChevron(b, el.open);
+            },
+            true
+        );
+
+        document.addEventListener('click', (e) => {
+            const inChat = e.target.closest('#chat-messages');
+            if (!inChat) return;
+            const anchor = e.target.closest('a');
+            if (!anchor || !anchor.href) return;
+            const href = anchor.getAttribute('href');
+            if (!href || !/^https?:\/\//i.test(href)) return;
+            if (window.electronAPI?.openExternal) {
+                e.preventDefault();
+                window.electronAPI.openExternal(href);
+            }
+        });
+
+        // 项目标签切换：按项目隔离会话
+        document.addEventListener('fh-project-switched', (e) => {
+            const detail = e?.detail && typeof e.detail === 'object' ? e.detail : {};
+            this._switchProjectSession(detail);
+        });
+    }
+
+    /**
+     * @param {{ projectId?: number, project?: { id?: number, path?: string|null, name?: string } }} detail
+     * @returns {string}
+     */
+    _resolveProjectSessionKey(detail) {
+        const project = detail && typeof detail.project === 'object' ? detail.project : {};
+        const pid = detail?.projectId ?? project?.id;
+        const pth = typeof project?.path === 'string' ? project.path.trim() : '';
+        if (pth) return `project:path:${pth}`;
+        if (pid != null) return `project:id:${pid}`;
+        return 'project:default-unnamed';
+    }
+
+    /**
+     * @returns {Array<any>}
+     */
+    _buildInitialAssistantMessages() {
+        return [
+            {
+                id: Date.now(),
+                type: 'assistant',
+                content: '你好！我是Fast Hardware智能助手。我可以帮你进行硬件选型、电路设计和代码生成。请告诉我你想要实现什么功能？',
+                timestamp: new Date()
+            }
+        ];
+    }
+
+    /**
+     * @param {Array<any>} arr
+     * @returns {Array<any>}
+     */
+    _cloneMessages(arr) {
+        if (!Array.isArray(arr)) return [];
+        return arr.map((m) => ({
+            ...m,
+            timestamp: m?.timestamp ? new Date(m.timestamp) : new Date()
+        }));
+    }
+
+    /**
+     * @returns {void}
+     */
+    _saveCurrentSessionState() {
+        this._projectSessions.set(this._activeProjectSessionKey, {
+            messages: this._cloneMessages(this.messages)
+        });
+    }
+
+    /**
+     * @param {{ projectId?: number, project?: { id?: number, path?: string|null, name?: string } }} detail
+     * @returns {Promise<void>}
+     */
+    async _switchProjectSession(detail) {
+        const nextKey = this._resolveProjectSessionKey(detail);
+        if (nextKey === this._activeProjectSessionKey) return;
+        this._saveCurrentSessionState();
+        this._activeProjectSessionKey = nextKey;
+        const got = this._projectSessions.get(nextKey);
+        if (got && Array.isArray(got.messages)) {
+            this.messages = this._cloneMessages(got.messages);
+        } else {
+            this.messages = this._buildInitialAssistantMessages();
+            this._saveCurrentSessionState();
+        }
+        await this.renderMessages();
+        this.scrollToBottom();
     }
 
     /**
@@ -393,14 +728,7 @@ class ChatManager {
      * 加载初始消息
      */
     async loadInitialMessages() {
-        const initialMessage = {
-            id: Date.now(),
-            type: 'assistant',
-            content: '你好！我是Fast Hardware智能助手。我可以帮你进行硬件选型、电路设计和代码生成。请告诉我你想要实现什么功能？',
-            timestamp: new Date()
-        };
-
-        this.messages.push(initialMessage);
+        this.messages = this._buildInitialAssistantMessages();
         this.renderMessages();
     }
 
@@ -456,14 +784,15 @@ class ChatManager {
         // 滚动到底部
         this.scrollToBottom();
 
-        // 文本消息统一走 skills agent loop（不再做前置路由判别）
         if (this.skillsEngine && (!userMessage.images || userMessage.images.length === 0)) {
-            await this.runSkillsWorkflow(messageContent, userMessage);
+            await this._dispatchAfterTextUserMessage(messageContent, userMessage);
             return;
         }
 
         // 图片消息仍走原有多模态回复流程
-        this.simulateAIResponse(messageContent, this.selectedModel, userMessage.images);
+        this.simulateAIResponse(messageContent, this.selectedModel, userMessage.images, {
+            progressMode: 'vision'
+        });
     }
 
     /**
@@ -472,10 +801,20 @@ class ChatManager {
     async interruptResponse() {
         if (!this.isTyping) return;
 
+        const wasSkillsFlow = this._skillsFlowActive;
+
         // 设置中断标志
         this.isInterrupted = true;
 
-        // 中断API请求
+        if (wasSkillsFlow && window.electronAPI?.abortSkillsAgentLoop) {
+            window.electronAPI.abortSkillsAgentLoop();
+        }
+
+        if (!wasSkillsFlow) {
+            this._skillsFlowActive = false;
+        }
+
+        // 中断API请求（多模态/旧链路 fetch；主进程 Skills Agent 另由 abortSkillsAgentLoop 通知）
         if (this.currentAbortController) {
             this.currentAbortController.abort();
             this.currentAbortController = null;
@@ -484,34 +823,38 @@ class ChatManager {
         // 隐藏正在输入指示器
         this.hideTypingIndicator();
 
-        // 移除最后一条AI消息（如果存在）
-        if (this.messages.length > 0 && this.messages[this.messages.length - 1].type === 'assistant' && this.messages[this.messages.length - 1].isTyping) {
-            this.messages.pop();
-        }
+        if (!wasSkillsFlow) {
+            // 移除最后一条AI消息（如果存在）
+            if (this.messages.length > 0 && this.messages[this.messages.length - 1].type === 'assistant' && this.messages[this.messages.length - 1].isTyping) {
+                this.messages.pop();
+            }
 
-        // 移除用户发送的消息（如果存在）
-        if (this.messages.length > 0 && this.messages[this.messages.length - 1].type === 'user') {
-            this.messages.pop();
-        }
+            // 移除用户发送的消息（如果存在）
+            if (this.messages.length > 0 && this.messages[this.messages.length - 1].type === 'user') {
+                this.messages.pop();
+            }
 
-        // 恢复输入框内容
-        if (this.currentUserMessage) {
-            const input = document.getElementById('chat-input');
-            if (input) {
-                input.value = this.currentUserMessage.content;
+            // 恢复输入框内容
+            if (this.currentUserMessage) {
+                const input = document.getElementById('chat-input');
+                if (input) {
+                    input.value = this.currentUserMessage.content;
 
-                // 恢复图片
-                if (this.currentUserMessage.images && this.currentUserMessage.images.length > 0) {
-                    this.uploadedImages = [...this.currentUserMessage.images];
-                    this.currentImageIndex = 0;
-                    this.toggleImagePreview();
+                    // 恢复图片
+                    if (this.currentUserMessage.images && this.currentUserMessage.images.length > 0) {
+                        this.uploadedImages = [...this.currentUserMessage.images];
+                        this.currentImageIndex = 0;
+                        this.toggleImagePreview();
+                    }
                 }
             }
         }
 
         // 重置状态
         this.isTyping = false;
-        this.currentUserMessage = null;
+        if (!wasSkillsFlow) {
+            this.currentUserMessage = null;
+        }
 
         // 重新渲染消息
         await this.renderMessages();
@@ -521,15 +864,372 @@ class ChatManager {
     }
 
     /**
-     * 模拟AI回复
-     * @param {string} userMessage - 用户消息
-     * @param {string} model - 使用的模型
-     * @param {Array} images - 上传的图片信息数组
+     * 当前工作台打开的项目元数据（无磁盘读取）。
+     * @returns {{ path: string, folderName: string, sep: string, norm: string } | null}
      */
-    async simulateAIResponse(userMessage, model, images) {
+    _getOpenProjectMeta() {
+        const app = typeof window !== 'undefined' ? window.app : null;
+        const projectPathRaw = app?.currentProject ? String(app.currentProject).trim() : '';
+        if (!projectPathRaw) {
+            return null;
+        }
+        const folderName =
+            typeof app.getProjectNameFromPath === 'function'
+                ? app.getProjectNameFromPath(projectPathRaw)
+                : projectPathRaw.split(/[/\\]/).filter(Boolean).pop() || '';
+        const sep = projectPathRaw.includes('/') && !projectPathRaw.includes('\\') ? '/' : '\\';
+        const norm = projectPathRaw.replace(/[/\\]+$/, '');
+        return { path: projectPathRaw, folderName, sep, norm };
+    }
+
+    /**
+     * 直连对话用的**轻量**项目提示（不读盘、不长列表）。
+     * @param {{ path: string, folderName: string } | null} meta
+     * @returns {string}
+     */
+    _buildLightweightOpenProjectScaffold(meta) {
+        if (!meta) {
+            return '';
+        }
+        const lines = [
+            '【当前打开的项目（轻量摘要，不含磁盘文件全文）】',
+            `- 本地路径：${meta.path}`,
+            `- 文件夹名：${meta.folderName || '（未知）'}`
+        ];
+        if (this.skillsEngine && typeof this.skillsEngine.getCanvasSnapshotForSkill === 'function') {
+            const snap = this.skillsEngine.getCanvasSnapshotForSkill();
+            if (snap && !snap.error) {
+                const comps = Array.isArray(snap.components) ? snap.components.length : 0;
+                const conns = Array.isArray(snap.connections) ? snap.connections.length : 0;
+                lines.push(`- 画布：约 ${comps} 个元件、${conns} 条连线（未列明细）`);
+            } else if (snap?.error) {
+                lines.push(`- 画布：暂不可读（${snap.error}）`);
+            }
+        }
+        return lines.join('\n');
+    }
+
+    /**
+     * 为直连对话附加画布 JSON（未保存项目无磁盘路径、不会走工作区工具时使用）。
+     * @returns {string}
+     */
+    _buildCanvasSnapshotJsonForDirectChat() {
+        try {
+            const eng = this.skillsEngine;
+            if (!eng || typeof eng.getCanvasSnapshotForSkill !== 'function') {
+                return JSON.stringify({ error: 'skillsEngine 不可用' }, null, 2);
+            }
+            const snap = eng.getCanvasSnapshotForSkill();
+            const safe = snap && typeof snap === 'object' ? snap : { error: 'snapshot invalid' };
+            let s = JSON.stringify(safe, null, 2);
+            const max = 12000;
+            if (s.length > max) {
+                s = `${s.slice(0, max)}\n…(快照已截断，仍可根据已有字段判断是否为空画布)`;
+            }
+            return s;
+        } catch (e) {
+            return JSON.stringify({ error: e?.message || String(e) }, null, 2);
+        }
+    }
+
+    /**
+     * 类 Cursor 的多轮工具说明：模型按需 list/read/grep，避免首轮塞全文。
+     * @param {{ path: string, folderName: string } | null} meta
+     * @returns {string}
+     */
+    _buildProjectWorkspaceToolingPrompt(meta) {
+        if (!meta) {
+            return '';
+        }
+        let canvasHint = '';
+        if (this.skillsEngine && typeof this.skillsEngine.getCanvasSnapshotForSkill === 'function') {
+            const snap = this.skillsEngine.getCanvasSnapshotForSkill();
+            if (snap && !snap.error) {
+                const comps = Array.isArray(snap.components) ? snap.components.length : 0;
+                const conns = Array.isArray(snap.connections) ? snap.connections.length : 0;
+                canvasHint = `当前画布约 ${comps} 元件、${conns} 连线；细节请用 read_file 读 circuit_config.json。\n`;
+            }
+        }
+        return [
+            '【工作区工具 · Cursor 式按需读盘】',
+            `项目根目录（绝对路径）：${meta.path}`,
+            `文件夹名：${meta.folderName || '（未知）'}`,
+            canvasHint.trimEnd(),
+            '',
+            '你**尚未**看到磁盘文件内容；请先通过工具读取再回答。',
+            '',
+            '### 尚需读盘时（调用工具）',
+            '输出**单个 JSON 对象**（不要用 Markdown 代码块包裹整段）。字段：',
+            '- `reasoning_steps`（可选）',
+            '- `workspace_tool_calls`：**非空数组**（本回合要继续读盘时必填）',
+            '`workspace_tool_calls` 每项：`{ "name": "<工具名>", "args": { ... } }`。**工具名**可用简短式（list_dir、read_file、grep_workspace）或与 agent 一致的 **workspace_***（workspace_list_dir、workspace_read_file、workspace_grep、workspace_explore、workspace_verify）。',
+            '- list / workspace_list_dir：args.relativePath 相对项目根，默认 `"."`',
+            '- read / workspace_read_file：args.relativePath 必填；args.maxChars 500～64000（默认 12000）。**长文件**：不传行号则从文件头读取并可能在换行处截断，返回 `nextStartLine` / `nextCharOffset`；**按行续读**传 `startLine` / `endLine`（1-based，含首尾）；仅 `startLine` 时默认再读约 320 行；**按字符续读**传 `charOffset`（0-based）。返回含 `totalLines`、`lineRange`、`truncated`、`note`。',
+            '- grep / workspace_grep：项目根**一级**文件内**子串**搜索；args.pattern 必填',
+            '- explore / workspace_explore：args.relativePath 默认 `"."`；args.maxDepth 1～4；args.maxEntries 默认 80',
+            '- verify / workspace_verify：args.relativePath 必填；args.expect 可选 `"file"`|`"directory"`',
+            '',
+            '### 信息已足够时（最终答复）',
+            '**直接输出中文 Markdown** 给用户：不要 JSON、不要用代码块包裹整段答复。**正文不得以字符 `{` 打头**（勿先输出 JSON），以便与「工具回合」区分。',
+            '',
+            '兼容旧习惯：也可输出仅含 `final_message` 的单层 JSON（`workspace_tool_calls` 为 `[]` 或省略），但**优先**使用纯 Markdown 终答。',
+            '',
+            '首轮若需要了解项目用途：可先 list_dir 或 workspace_explore，再 read_file(circuit_config.json) 与相关 .ino。不要说「未收到项目文件」。'
+        ]
+            .filter((x) => x !== '')
+            .join('\n');
+    }
+
+    /**
+     * 执行一条工作区工具（经主进程 `project-workspace-tools`，与 agent-loop 同源）。
+     * @param {string} toolName
+     * @param {object} args
+     * @param {{ path: string }} extraMeta - path 为项目根绝对路径
+     * @returns {Promise<Record<string, unknown>>}
+     */
+    async _executeProjectWorkspaceTool(toolName, args, extraMeta) {
+        const api = window.electronAPI;
+        const name = canonicalWorkspaceToolName(toolName);
+        const a = args && typeof args === 'object' ? args : {};
+        const projectRoot = String(extraMeta?.path || '').trim();
+
+        if (!api?.executeProjectWorkspaceTool) {
+            return { success: false, error: '工作区工具 IPC 不可用（请使用 Electron 启动）' };
+        }
+        if (!projectRoot) {
+            return { success: false, error: '未设置项目根路径' };
+        }
+
+        try {
+            const out = await api.executeProjectWorkspaceTool({
+                projectRoot,
+                toolName: name,
+                args: a
+            });
+            if (out && out.success === true && out.data != null && typeof out.data === 'object' && !Array.isArray(out.data)) {
+                return { success: true, ...out.data };
+            }
+            if (out && out.success === true) {
+                return { success: true, data: out.data };
+            }
+            return { success: false, error: String(out?.error || '工作区工具执行失败') };
+        } catch (e) {
+            return { success: false, error: e?.message || String(e) };
+        }
+    }
+
+    /**
+     * 解析模型 JSON：兼容 `workspace_tool_calls` 与 `tool_calls`。
+     * @param {any} parsed
+     * @returns {{ toolCalls: ReturnType<typeof normalizeWorkspaceToolCalls>, finalMessage: string }}
+     */
+    _parseWorkspaceModelJson(parsed) {
+        if (!parsed || typeof parsed !== 'object') {
+            return { toolCalls: [], finalMessage: '' };
+        }
+        const rawCalls = parsed.workspace_tool_calls ?? parsed.tool_calls;
+        let toolCalls = normalizeWorkspaceToolCalls(rawCalls);
+        if (
+            toolCalls.length === 0 &&
+            Array.isArray(parsed.tool_calls) &&
+            parsed.tool_calls.length > 0
+        ) {
+            toolCalls = normalizeWorkspaceToolCalls(
+                parsed.tool_calls.map((x) => ({
+                    ...x,
+                    name: x.skillName || x.name
+                }))
+            );
+        }
+        const finalMessage = typeof parsed.final_message === 'string' ? parsed.final_message.trim() : '';
+        return { toolCalls, finalMessage };
+    }
+
+    /**
+     * 多轮工作区工具循环；成功返回用户可见 Markdown，失败返回 null 以回退单轮流式。
+     * @param {Array<{role:string, content: unknown}>} messages
+     * @param {string} model
+     * @param {{ siliconFlowEnableThinking?: boolean, stream?: boolean, directReplyStyle?: string }} [apiOptions]
+     * @param {{ norm: string, sep: string, path: string }} meta
+     * @param {number|null} [traceMessageId] - 追踪气泡 id，用于展示与 agent-loop 同形的 tool 折叠块
+     * @returns {Promise<string|null>}
+     */
+    async _runDirectChatProjectWorkspaceLoop(messages, model, apiOptions, meta, traceMessageId = null) {
+        const maxIter = 5;
+        /** @type {Array<{role:string, content: unknown}>} */
+        let loopMessages = messages.map((m) => ({
+            role: m.role,
+            content: m.content
+        }));
+
+        for (let iter = 0; iter < maxIter; iter++) {
+            if (this.isInterrupted) {
+                return null;
+            }
+
+            const useStream =
+                traceMessageId != null &&
+                typeof window.electronAPI?.onSiliconflowChatStream === 'function';
+
+            this._workspaceLoopStreamBuf = '';
+            this._cancelWorkspaceLoopStreamRaf();
+
+            let unsubscribeStream = null;
+            if (useStream) {
+                unsubscribeStream = window.electronAPI.onSiliconflowChatStream((payload) => {
+                    if (this.isInterrupted) return;
+                    const delta = typeof payload?.delta === 'string' ? payload.delta : '';
+                    if (!delta) return;
+                    this._workspaceLoopStreamBuf += delta;
+                    this._scheduleWorkspaceLoopStreamPreview(traceMessageId);
+                });
+            }
+
+            const callOpts = {
+                ...(apiOptions && typeof apiOptions === 'object' ? apiOptions : {}),
+                stream: useStream
+            };
+            let result;
+            try {
+                result = await window.electronAPI.chatWithAI(loopMessages, model, callOpts);
+            } catch (e) {
+                console.warn('[direct-project-tools] API 异常:', e?.message || e);
+                return null;
+            } finally {
+                if (typeof unsubscribeStream === 'function') {
+                    unsubscribeStream();
+                }
+                this._cancelWorkspaceLoopStreamRaf();
+            }
+
+            if (!result?.success || typeof result.content !== 'string') {
+                console.warn('[direct-project-tools] API 失败:', result?.error);
+                return null;
+            }
+
+            const raw = result.content;
+            if (useStream && traceMessageId != null) {
+                this._workspaceLoopStreamBuf = raw;
+                this._applyWorkspaceLoopStreamToDom(traceMessageId);
+            }
+            const parsed = parseLooseJsonFromModel(raw);
+            const { toolCalls, finalMessage } = this._parseWorkspaceModelJson(parsed);
+
+            if (toolCalls.length === 0) {
+                const extracted = extractDirectWorkspaceFinalMessage(raw);
+                if (extracted) {
+                    return extracted;
+                }
+                if (finalMessage) {
+                    return finalMessage;
+                }
+                const trimmed = raw.trim();
+                if (trimmed && !parsed) {
+                    return trimmed;
+                }
+                return null;
+            }
+
+            console.log(`[direct-project-tools] 第 ${iter + 1} 轮：${toolCalls.length} 个工具调用`);
+
+            const traceMsg =
+                traceMessageId != null ? this.messages.find((m) => m.id === traceMessageId) : null;
+
+            /** @type {object[]} */
+            const batchResults = [];
+            for (const tc of toolCalls) {
+                if (traceMsg && Array.isArray(traceMsg.agentBlocks)) {
+                    traceMsg.agentBlocks.push({
+                        blockType: 'tool',
+                        phase: 'run',
+                        toolCallId: tc.toolCallId,
+                        skillName: tc.name,
+                        shortName: workspaceToolShortNameForUi(tc.name),
+                        argsPreview: workspaceToolArgsPreview(tc.args),
+                        detailSummary: workspaceToolPlanningSummary(tc.name, tc.args)
+                    });
+                    await this._refreshAgentTraceBlocksDom(traceMessageId);
+                }
+
+                const one = await this._executeProjectWorkspaceTool(tc.name, tc.args, meta);
+                batchResults.push({
+                    toolCallId: tc.toolCallId,
+                    name: tc.name,
+                    ...one
+                });
+
+                if (traceMsg && Array.isArray(traceMsg.agentBlocks)) {
+                    const pending = [...traceMsg.agentBlocks]
+                        .reverse()
+                        .find(
+                            (b) =>
+                                b &&
+                                b.blockType === 'tool' &&
+                                b.phase === 'run' &&
+                                String(b.toolCallId || '') === String(tc.toolCallId)
+                        );
+                    if (pending) {
+                        pending.phase = 'done';
+                        pending.success = one.success !== false && !one.error;
+                        pending.resultPreview = workspaceToolResultPreview(
+                            /** @type {Record<string, unknown>} */ (one)
+                        );
+                        pending.detailSummary = workspaceToolDetailSummary(
+                            tc.name,
+                            tc.args,
+                            /** @type {Record<string, unknown>} */ (one)
+                        );
+                    }
+                    await this._refreshAgentTraceBlocksDom(traceMessageId);
+                }
+            }
+
+            loopMessages.push({ role: 'assistant', content: raw });
+            loopMessages.push({
+                role: 'user',
+                content: [
+                    '[workspace_tool 执行结果]',
+                    JSON.stringify(batchResults, null, 2),
+                    '',
+                    '请继续：',
+                    '- **仍需工具**：仅输出一层 JSON，且含**非空** `workspace_tool_calls`（可有 reasoning_steps）。本回合不要输出最终 Markdown。',
+                    '- **信息已足够**：直接输出中文 Markdown 终答；**全文不得以 `{` 打头**，不要 JSON、不要用代码块包裹整段。',
+                    '- 兼容：也可输出仅含 `final_message` 的单层 JSON（`workspace_tool_calls` 为 `[]` 或省略）。',
+                    '- read_file 若 `truncated`：用返回的 `nextStartLine`（按行）或 `nextCharOffset`（按字符）续读，可酌情调大 `maxChars`（≤64000）。'
+                ].join('\n')
+            });
+        }
+
+        return '（工作区工具轮次已用尽，请重试或发送「生成方案编排」获取更深入分析。）';
+    }
+
+    /**
+     * 直连 LLM：模拟/执行 AI 回复（非 skills 编排链路）。
+     * @param {string} userMessage
+     * @param {string} model
+     * @param {Array} images
+     * @param {{ progressMode?: string, directReplyStyle?: string, siliconFlowEnableThinking?: boolean, stream?: boolean }} [apiOptions]
+     * @returns {Promise<void>}
+     */
+    async simulateAIResponse(userMessage, model, images, apiOptions = {}) {
         this.isTyping = true;
         this.isInterrupted = false;
-        this.showTypingIndicator();
+
+        /** 与 agent-loop 同形：阶段 + 用时（直连 LLM 不设 `_skillsFlowActive`，避免误走 abortSkillsAgentLoop） */
+        const mode = apiOptions.progressMode;
+        let phase = '对话模式 · 生成回复';
+        if (mode === 'chitchat') {
+            phase = '直连对话 · 生成回复';
+        } else if (mode === 'brief') {
+            phase = '直连对话 · 简要说明';
+        } else if (apiOptions.directReplyStyle === 'shortDefault') {
+            phase = '直连对话 · 简要答疑';
+        } else if (mode === 'vision' || (images && images.length > 0)) {
+            phase = '多模态对话 · 视觉理解';
+        } else if (isSimpleChitchatMessage(userMessage)) {
+            phase = '直连对话 · 生成回复';
+        }
+        await this._beginDirectLlmProgressUi(phase);
 
         // 立即更新按钮状态为中断模式
         this.updateSendButton();
@@ -580,11 +1280,50 @@ class ChatManager {
             }
             
             console.log('🚀 准备调用AI API - 使用模型:', currentModel);
-            const aiResponse = await this.generateAIResponse(userMessage, currentModel, images);
+            let aiResponse = await this.generateAIResponse(userMessage, currentModel, images, apiOptions);
 
             // 检查是否被中断
             if (this.isInterrupted) {
+                this.hideTypingIndicator();
                 return;
+            }
+
+            if (this._mergedDirectWorkspaceReply && this._lastDirectWorkspaceTraceId != null) {
+                const tid = this._lastDirectWorkspaceTraceId;
+                this._mergedDirectWorkspaceReply = false;
+                this._lastDirectWorkspaceTraceId = null;
+                const mergedMsg = this.messages.find((m) => m.id === tid);
+                let content = String(mergedMsg?.content || aiResponse || '');
+                if (
+                    apiOptions.directReplyStyle === 'shortDefault' &&
+                    userHasExplicitHardwareRequirement(userMessage)
+                ) {
+                    const hint =
+                        '\n\n---\n\n如果需要进入**技能编排**（当前支持：方案设计、补全建议、联网检索），请告诉我 **「生成方案编排」**（或 **「生成完整方案」**）。';
+                    if (!/生成方案编排|生成完整方案/.test(content)) {
+                        content = content.trimEnd() + hint;
+                    }
+                }
+                if (mergedMsg) {
+                    mergedMsg.content = content;
+                }
+                console.log('🤖 机器人回复原文:', content);
+                this.hideTypingIndicator();
+                await this.renderMessages();
+                this.scrollToBottom();
+                return;
+            }
+
+            if (
+                apiOptions.directReplyStyle === 'shortDefault' &&
+                userHasExplicitHardwareRequirement(userMessage) &&
+                !isProjectOrWorkspaceOverviewQuestion(userMessage)
+            ) {
+                const hint =
+                    '\n\n---\n\n如果需要进入**技能编排**（当前支持：方案设计、补全建议、联网检索），请告诉我 **「生成方案编排」**（或 **「生成完整方案」**）。';
+                if (!/生成方案编排|生成完整方案/.test(String(aiResponse || ''))) {
+                    aiResponse = String(aiResponse || '').trimEnd() + hint;
+                }
             }
 
             // 在控制台打印机器人回复原文，方便对比效果
@@ -623,9 +1362,15 @@ class ChatManager {
             await this.renderMessages();
             this.scrollToBottom();
         } finally {
+            console.log(
+                '[chat-api] 本轮直连回复 阶段用时峰值(与 UI「用时 n S」一致):',
+                `${this._skillsFlowMaxElapsedSec ?? 0}s`
+            );
+            this._skillsFlowMaxElapsedSec = 0;
             this.isTyping = false;
             this.currentAbortController = null;
             this.updateSendButton();
+            this._publishSkillsProgressEvent({ type: 'direct_llm_end' });
         }
     }
 
@@ -641,17 +1386,73 @@ class ChatManager {
      * @param {string} userMessage - 用户消息
      * @param {string} model - 使用的模型
      * @param {Array} images - 上传的图片信息数组
+     * @param {{ siliconFlowEnableThinking?: boolean, stream?: boolean, directReplyStyle?: 'brief'|'shortDefault' }} [apiOptions] - 传入主进程；`stream:false` 关闭 SSE（内部摘要等）
      * @returns {Promise<string>} AI回复内容
      */
-    async generateAIResponse(userMessage, model, images) {
+    async generateAIResponse(userMessage, model, images, apiOptions = {}) {
         try {
-            // 构建消息历史
-            const messages = [];
+            // 构建消息历史（可能被 `FastHardwareContextCompact.compactApiMessagesIfNeeded` 整体替换，需用 let）
+            let messages = [];
+
+            /** @type {string} */
+            let systemBase =
+                '你是一个专业的硬件开发助手，擅长Arduino、ESP32等嵌入式开发，熟悉各种传感器、执行器和通信模块。你可以帮助用户进行电路设计、元件选型和代码编写。请用markdown格式回复，提供清晰的结构化信息。';
+            if (apiOptions.directReplyStyle === 'brief') {
+                systemBase +=
+                    '\n\n【本轮模式】用户希望先得到简要说明，不要求你代表本产品拉取元件库或执行工具链。用较短篇幅 Markdown 回答要点；结尾可提示：如需进入 skills 编排，可发送「生成方案编排」。';
+            } else if (apiOptions.directReplyStyle === 'shortDefault') {
+                systemBase +=
+                    '\n\n【本轮模式】请优先**简短**作答（几段话或短列表即可）。不要假设已联网检索或查询过本产品的元件库；未经验证的型号、链接勿写死。不要承诺当前未实现的能力（如自动生成电路连接图、完整代码框架、画布自动接线执行）。若系统消息附有**画布结构化快照**，视为应用已读取当前画布，请据实作答：components/connections 为空即暂无元件/连线，**禁止**声称无法查看画布或强求用户粘贴整份 JSON。**勿主动**建议使用「生成方案编排」或「生成完整方案」，除非用户明确要做完整 BOM、深度方案或编排类操作。若系统消息要求使用「工作区工具」读盘，请先按协议输出 JSON 调用工具再作答，勿声称未收到项目文件。';
+            }
+
+            const projectMeta = this._getOpenProjectMeta();
+            /** 是否与 Cursor 类似走多轮 list/read/grep（首轮不预读全文） */
+            let useWorkspaceTools = false;
+            /** @type {string} */
+            let systemExtra = '';
+            if (
+                projectMeta &&
+                (!images || images.length === 0) &&
+                apiOptions.directReplyStyle !== 'brief' &&
+                directChatWantsProjectWorkspaceDeep(userMessage) &&
+                typeof window.electronAPI?.executeProjectWorkspaceTool === 'function'
+            ) {
+                useWorkspaceTools = true;
+                systemExtra = this._buildProjectWorkspaceToolingPrompt(projectMeta);
+            } else if (projectMeta) {
+                systemExtra = this._buildLightweightOpenProjectScaffold(projectMeta);
+            }
+
+            let systemContent = systemExtra ? `${systemBase}\n\n${systemExtra}` : systemBase;
+
+            const userMsgRaw = String(userMessage || '');
+            const wantsCanvasInDirectChat =
+                /画布|画板|电路\s*图|canvas|schematic/i.test(userMsgRaw) &&
+                /有啥|有什么|哪些|内容|情况|东西|描述|列出|介绍一下|看一下|看下|看看|瞧瞧|说说|讲讲|怎么样|空了|为空|有没有|吗|么|啥|啥内容|what|which|on the canvas|what'?s on/i.test(
+                    userMsgRaw
+                );
+            let canvasSnapshotDirectBlock = '';
+            if (
+                (!images || images.length === 0) &&
+                apiOptions.directReplyStyle !== 'brief' &&
+                !useWorkspaceTools &&
+                wantsCanvasInDirectChat &&
+                this.skillsEngine &&
+                typeof this.skillsEngine.getCanvasSnapshotForSkill === 'function'
+            ) {
+                canvasSnapshotDirectBlock = this._buildCanvasSnapshotJsonForDirectChat();
+            }
+            if (canvasSnapshotDirectBlock) {
+                const unsavedNote = !projectMeta
+                    ? '【说明】当前标签可能尚未保存到磁盘，暂无项目根路径，故本轮不调用工作区读文件工具；以下快照由应用直接读取画布。\n\n'
+                    : '';
+                systemContent += `\n\n${unsavedNote}【当前画布结构化快照（已由应用读取）】\n${canvasSnapshotDirectBlock}`;
+            }
 
             // 添加系统提示
             messages.push({
                 role: 'system',
-                content: '你是一个专业的硬件开发助手，擅长Arduino、ESP32等嵌入式开发，熟悉各种传感器、执行器和通信模块。你可以帮助用户进行电路设计、元件选型和代码编写。请用markdown格式回复，提供清晰的结构化信息。'
+                content: systemContent
             });
 
             // 添加历史消息 - 使用固定对话轮数策略
@@ -770,6 +1571,77 @@ class ChatManager {
             console.log(`🖼️ 本次请求实际包含图片总数: ${totalImageCount}，大小分布:`, allImageSizes.map((s, i) => `图${i+1}:${s}MB`).join(', '));
             console.log(`📝 本次请求文本总长度: ${totalTextLength} 字符，消息结构:`, messages.map(m => `${m.role}(${typeof m.content === 'string' ? m.content.length + '字' : m.content.length + '项'})`).join(' → '));
 
+            /** 体积接近上下文上限时自动压缩早期历史（见 `scripts/context-compact.js`） */
+            if (typeof window.FastHardwareContextCompact?.compactApiMessagesIfNeeded === 'function') {
+                const beforeChars = totalTextLength;
+                const beforeMsgCount = messages.length;
+                messages = await window.FastHardwareContextCompact.compactApiMessagesIfNeeded(messages, {
+                    model,
+                    chatWithAI: (m, md) =>
+                        window.electronAPI.chatWithAI(m, md, { ...apiOptions, stream: false })
+                });
+                totalTextLength = window.FastHardwareContextCompact.estimateApiMessagesTextChars(messages);
+                if (beforeChars !== totalTextLength || beforeMsgCount !== messages.length) {
+                    console.log(
+                        `[context-compact] 压缩后估算文本 ${totalTextLength} 字符、${messages.length} 条消息（压缩前 ${beforeChars} 字符、${beforeMsgCount} 条）`
+                    );
+                }
+            }
+
+            if (useWorkspaceTools && projectMeta) {
+                this._mergedDirectWorkspaceReply = false;
+                this._lastDirectWorkspaceTraceId = null;
+                const directWsTraceId = Date.now();
+                this._agentTraceMessageId = directWsTraceId;
+                this._agentTraceHeaderMessageId = directWsTraceId;
+                this.messages.push({
+                    id: directWsTraceId,
+                    type: 'assistant',
+                    content: '',
+                    timestamp: new Date(),
+                    isAgentTrace: true,
+                    isSkillFlow: false,
+                    agentBlocks: [],
+                    isDirectWorkspaceTrace: true
+                });
+                await this.renderMessages();
+                this.scrollToBottom();
+                this._setAgentTraceHeaderLine(directWsTraceId, this._buildSkillsFlowTypingLine());
+                this._removeTypingIndicatorDomOnly();
+
+                const toolOut = await this._runDirectChatProjectWorkspaceLoop(
+                    messages,
+                    model,
+                    apiOptions,
+                    projectMeta,
+                    directWsTraceId
+                );
+                if (toolOut != null && String(toolOut).length > 0) {
+                    const textOut = String(toolOut);
+                    const merged = this.messages.find((m) => m.id === directWsTraceId);
+                    if (merged) {
+                        merged.isAgentTrace = false;
+                        merged.isDirectWorkspaceTrace = false;
+                        merged.content = textOut;
+                    }
+                    this._agentTraceMessageId = null;
+                    this._agentTraceHeaderMessageId = null;
+                    this._mergedDirectWorkspaceReply = true;
+                    this._lastDirectWorkspaceTraceId = directWsTraceId;
+                    await this.renderMessages();
+                    this.scrollToBottom();
+                    return textOut;
+                }
+
+                const rmIdx = this.messages.findIndex((m) => m.id === directWsTraceId);
+                if (rmIdx >= 0) {
+                    this.messages.splice(rmIdx, 1);
+                }
+                this._agentTraceMessageId = null;
+                this._agentTraceHeaderMessageId = null;
+                await this.renderMessages();
+            }
+
             // 记录请求详情（用于调试）
             console.log('📤 发送API请求:', {
                 model: model,
@@ -791,8 +1663,36 @@ class ChatManager {
                 timestamp: new Date().toISOString()
             });
 
-            // 调用API
-            const result = await window.electronAPI.chatWithAI(messages, model);
+            const callOpts = { stream: true, ...apiOptions };
+            console.log('[chat-api] chatWithAI stream:', callOpts.stream !== false);
+            console.log(
+                '[chat-api] chatWithAI 入参 siliconFlowEnableThinking:',
+                typeof callOpts.siliconFlowEnableThinking === 'boolean'
+                    ? callOpts.siliconFlowEnableThinking
+                    : '未设置（由主进程 resolveSiliconFlowEnableThinking 与模型白名单决定实际是否写入）'
+            );
+
+            let unsubscribeStream = null;
+            if (
+                callOpts.stream !== false &&
+                typeof window.electronAPI?.onSiliconflowChatStream === 'function'
+            ) {
+                unsubscribeStream = window.electronAPI.onSiliconflowChatStream((payload) => {
+                    const delta = typeof payload?.delta === 'string' ? payload.delta : '';
+                    if (!delta) return;
+                    this._scheduleTypingStreamPreviewAppend(delta);
+                });
+            }
+
+            let result;
+            try {
+                result = await window.electronAPI.chatWithAI(messages, model, callOpts);
+            } finally {
+                if (typeof unsubscribeStream === 'function') {
+                    unsubscribeStream();
+                }
+                this._cancelTypingStreamPreviewRaf();
+            }
 
             if (result.success) {
                 console.log('✅ AI回复成功获取，长度:', result.content.length);
@@ -861,11 +1761,21 @@ class ChatManager {
                 
                 if (result.statusCode === 500) {
                     errorMsg += `⚠️ 服务器内部错误 (500)\n\n`;
-                    errorMsg += `可能的原因：\n`;
-                    errorMsg += `- 图片过大（单张建议 < 5MB）\n`;
-                    errorMsg += `- 多图总量过大\n`;
-                    errorMsg += `- 请求参数超出限制\n`;
-                    errorMsg += `- 服务器暂时过载\n\n`;
+                    const hasImagesInRequest =
+                        Boolean(images && images.length > 0) ||
+                        Boolean(result.debugInfo && result.debugInfo.hasImages);
+                    if (hasImagesInRequest) {
+                        errorMsg += `可能的原因：\n`;
+                        errorMsg += `- 图片过大（单张建议 < 5MB）\n`;
+                        errorMsg += `- 多图总量过大\n`;
+                        errorMsg += `- 请求参数超出限制\n`;
+                        errorMsg += `- 服务器暂时过载\n\n`;
+                    } else {
+                        errorMsg += `本次请求未包含图片，此类错误通常与图片无关。\n可能原因：\n`;
+                        errorMsg += `- 上游模型或线路暂时异常，请稍后重试\n`;
+                        errorMsg += `- 当前模型暂时不可用，可在顶栏尝试更换其它模型\n`;
+                        errorMsg += `- 上下文过长、参数不兼容或服务端限流\n\n`;
+                    }
                 } else if (result.statusCode === 429) {
                     errorMsg += `⚠️ 请求过于频繁 (429)\n\n`;
                 } else if (result.statusCode === 401 || result.statusCode === 403) {
@@ -898,7 +1808,7 @@ class ChatManager {
         const { messages, model, temperature = 0.7 } = params;
         
         try {
-            const result = await window.electronAPI.chatWithAI(messages, model);
+            const result = await window.electronAPI.chatWithAI(messages, model, { stream: false });
             
             if (result.success) {
                 return { content: result.content };
@@ -949,11 +1859,36 @@ class ChatManager {
      */
     getSkillsForAgent() {
         return [
-            { name: 'web_search_exa', description: '联网检索公开资料（新闻/型号/参数/文档）' },
-            { name: 'scheme_design_skill', description: '根据需求生成硬件方案摘要与估算参数' },
-            { name: 'requirement_analysis_skill', description: '把需求分解为元件并匹配系统元件库' },
-            { name: 'component_autocomplete_validated_skill', description: '自动补全缺失元件并校验 pins（最多重试3次）' },
-            { name: 'structured_wiring_skill', description: '生成结构化连线建议（当前最小实现）' }
+            {
+                name: 'scheme_design_skill',
+                description:
+                    '**可选用**：方案骨架 + BOM 库匹配；不熟/要对齐元件库时用，熟手或简单改动可跳过。**不**自动创建元件。缺型号再 completion_suggestion / web_search。仅文字不匹配库时 runBomAnalysis:false。'
+            },
+            {
+                name: 'web_search_exa',
+                description:
+                    '联网检索（非每项必调）：**实时/外部事实**须先检索；或 scheme_design 后缺件仍模糊、需公开资料佐证具体型号时使用。返回 results[]；final_message 中外链须来自 results[].url。'
+            },
+            {
+                name: 'completion_suggestion_skill',
+                description:
+                    '在 scheme_design 之后使用更佳：把 **missingDescriptions** 设为仍缺具体型号的条目（可从 analysisResult 缺件 recommendation 概括）；输出可采购模块名（如 KY-038、SG90）。可配合 web_search_exa。'
+            },
+            {
+                name: 'summarize_skill',
+                description:
+                    '**web_search_exa 的常见后续**：将 results 拼入 **text** 或传 **urls**（公开页）做中文结构化摘要（summary + bullets）。也用于长文/日志。可选 **length**、**focus**。'
+            },
+            {
+                name: 'wiring_edit_skill',
+                description:
+                    '补线/改线：必填 wiringRules；以用户描述+画布为主，**不必**先跑方案。前序有 scheme 时可能附带 BOM 参考（可忽略）。expectedComponentsFromAgent 可选；applyToCanvas 默认 true'
+            },
+            {
+                name: 'firmware_codegen_skill',
+                description:
+                    '用户明确要改固件代码时：输入 userRequirement + 可选 codeText；会先读画布再生成 patch，结果含 canvasGuidance（空画布/补线/引脚级）；默认不直接写文件。'
+            }
         ];
     }
 
@@ -966,11 +1901,22 @@ class ChatManager {
         if (!Array.isArray(raw)) return [];
         return raw
             .filter((x) => x && typeof x === 'object')
-            .map((x, idx) => ({
-                toolCallId: String(x.toolCallId || x.id || `tool_${idx + 1}`),
-                skillName: String(x.skillName || x.name || '').trim(),
-                args: x.args ?? {}
-            }))
+            .map((x, idx) => {
+                let argsRaw = x.args !== undefined && x.args !== null ? x.args : x.arguments;
+                if (typeof argsRaw === 'string') {
+                    try {
+                        argsRaw = JSON.parse(argsRaw);
+                    } catch {
+                        argsRaw = {};
+                    }
+                }
+                const args = argsRaw != null && typeof argsRaw === 'object' ? argsRaw : {};
+                return {
+                    toolCallId: String(x.toolCallId || x.id || `tool_${idx + 1}`),
+                    skillName: String(x.skillName || x.name || '').trim(),
+                    args
+                };
+            })
             .filter((x) => !!x.skillName);
     }
 
@@ -990,6 +1936,100 @@ class ChatManager {
     }
 
     /**
+     * 是否应优先/强制 web_search（与主进程 {@link ../agent/skills-agent-shared.needsWebSearchPriority} 语义保持一致：实时性 + 选型/复杂方案检索需求）。
+     * @param {string} userMessage - 用户输入
+     * @returns {boolean}
+     */
+    needsWebSearchPriority(userMessage) {
+        if (this.isRealtimeQuery(userMessage)) return true;
+        const t = String(userMessage || '');
+        if (!t.trim()) return false;
+        const marketLike = /股价|股票|汇率|基金|比分|赛程|开奖/i.test(t);
+        const explicitLookup =
+            /查一下|查一查|查下|查查|搜一下|搜一搜|搜下|搜索|帮我查|帮我搜|网上查|联网查|上网查|检索一下|查查看/.test(t);
+        const explicitWeb = /联网|上网搜|网上搜|先搜|先查/.test(t);
+        const moduleOrPartSelection =
+            /具体型号|物料编码|订货型号|采购型号|买哪(?:种|款|个)|哪一款|哪款芯片|哪款模块|哪种料|替代料|兼容替代|pin\s*兼容|数据手册|datasheet/i.test(
+                t
+            ) ||
+            /(?:电机|芯片|传感器|模块|电调|MOS|LDO|DCDC|电池包|连接器|MCU)\s*选型|选型表|外购件|缺(?:件)?.*型号/i.test(t);
+        const similarSolutionIntent =
+            /参考(?:一下)?.*方案|类似(?:的)?.*案例|开源(?:硬件|项目)|有没有.*成品|成熟方案|行业(?:里|内).*(?:做法|方案)|对标.*产品/i.test(
+                t
+            );
+        const substantialProjectIntent =
+            t.length >= 72 &&
+            /方案|设计|实现|搭建|开发|传感器|执行器|主控|嵌入式|电路|硬件|控制|监测|自动化|装置|系统|飞控|云台|整机/.test(t) &&
+            /需要|要做|想做一个|想做个|想做|帮我|如何|怎么|哪些|清单|架构|逻辑|条件|指标/.test(t);
+
+        return (
+            marketLike ||
+            explicitLookup ||
+            explicitWeb ||
+            moduleOrPartSelection ||
+            similarSolutionIntent ||
+            substantialProjectIntent
+        );
+    }
+
+    /**
+     * 纯文本发贴后的路由：寒暄 → 用户口头简要 → 联网/完整编排 → skills agent；否则默认短答直连 LLM。
+     * @param {string} messageContent
+     * @param {{ id: number, type: 'user', content: string, images?: unknown[], model?: string, timestamp: Date }} userMessage
+     * @returns {Promise<void>}
+     */
+    async _dispatchAfterTextUserMessage(messageContent, userMessage) {
+        if (isSimpleChitchatMessage(messageContent)) {
+            this._logSkillsChain('用户发送 → 直连对话（寒暄路由）', {
+                contentPreview: String(messageContent || '').slice(0, 200),
+                contentChars: String(messageContent || '').length,
+                model: this.selectedModel
+            });
+            await this.simulateAIResponse(messageContent, this.selectedModel, userMessage.images, {
+                siliconFlowEnableThinking: false,
+                progressMode: 'chitchat'
+            });
+            return;
+        }
+        if (preferBriefAnswerFirst(messageContent)) {
+            this._logSkillsChain('用户发送 → 直连对话（用户要求先简要）', {
+                contentPreview: String(messageContent || '').slice(0, 200),
+                model: this.selectedModel
+            });
+            await this.simulateAIResponse(messageContent, this.selectedModel, userMessage.images, {
+                siliconFlowEnableThinking: false,
+                progressMode: 'brief',
+                directReplyStyle: 'brief'
+            });
+            return;
+        }
+
+        const webPri = this.needsWebSearchPriority(messageContent);
+        const fullAgent = explicitFullAgentIntent(messageContent);
+        if (webPri || fullAgent) {
+            this._logSkillsChain('用户发送 → runSkillsAgentLoop', {
+                contentPreview: String(messageContent || '').slice(0, 200),
+                contentChars: String(messageContent || '').length,
+                needsWebSearchPriority: webPri,
+                explicitFullAgentIntent: fullAgent,
+                model: this.selectedModel
+            });
+            await this.runSkillsAgentLoop(messageContent, userMessage);
+            return;
+        }
+
+        this._logSkillsChain('用户发送 → 直连对话（默认短答）', {
+            contentPreview: String(messageContent || '').slice(0, 200),
+            model: this.selectedModel
+        });
+        await this.simulateAIResponse(messageContent, this.selectedModel, userMessage.images, {
+            siliconFlowEnableThinking: false,
+            progressMode: 'direct',
+            directReplyStyle: 'shortDefault'
+        });
+    }
+
+    /**
      * 生成当前时间上下文（参考 OpenClaw 校时思路）
      * @returns {string}
      */
@@ -1003,7 +2043,105 @@ class ChatManager {
     }
 
     /**
-     * 执行单个 skill
+     * 从 URL 提取站点显示名（去 www）
+     * @param {string} urlStr - 完整 URL
+     * @returns {string}
+     */
+    getSiteLabelFromUrl(urlStr) {
+        try {
+            const u = new URL(String(urlStr || '').trim());
+            return u.hostname.replace(/^www\./i, '') || '来源';
+        } catch {
+            return '来源';
+        }
+    }
+
+    /**
+     * 规范化 web_search_exa 返回，便于模型引用信源
+     * @param {{success?:boolean, results?:Array<any>, raw?:string, error?:string}} result - 原始结果
+     * @returns {{success:boolean, results:Array<{title:string,url:string,snippet:string,siteLabel:string}>, raw?:string, error?:string}}
+     */
+    normalizeWebSearchToolResult(result) {
+        if (!result || typeof result !== 'object') {
+            return { success: false, results: [], error: '无效搜索结果' };
+        }
+        const base = { ...result };
+        if (!Array.isArray(base.results)) {
+            return base;
+        }
+        base.results = base.results
+            .map((item) => {
+                const url = String(item?.url || '').trim();
+                const title = String(item?.title || '').trim();
+                const snippet = String(item?.snippet || '').trim();
+                const siteLabel = item?.siteLabel || this.getSiteLabelFromUrl(url);
+                return {
+                    title: title || siteLabel || '来源',
+                    url,
+                    snippet,
+                    siteLabel: String(siteLabel || '').trim() || '来源'
+                };
+            })
+            .filter((x) => !!x.url);
+        return base;
+    }
+
+    /**
+     * 从历史工具结果中收集所有 web 信源（按 url 去重）
+     * @param {Array<{skillName:string, result?:any}>} toolResults - 工具结果列表
+     * @returns {Array<{title:string, url:string, siteLabel:string}>}
+     */
+    collectWebSearchSources(toolResults) {
+        /** @type {Map<string, {title:string, url:string, siteLabel:string}>} */
+        const byUrl = new Map();
+        for (const tr of toolResults || []) {
+            if (!tr || tr.skillName !== 'web_search_exa' || !tr.result?.success) continue;
+            const arr = tr.result.results;
+            if (!Array.isArray(arr)) continue;
+            for (const r of arr) {
+                const url = String(r?.url || '').trim();
+                if (!url || byUrl.has(url)) continue;
+                const siteLabel = String(r?.siteLabel || this.getSiteLabelFromUrl(url));
+                const title = String(r?.title || '').trim() || siteLabel;
+                byUrl.set(url, { title, url, siteLabel });
+            }
+        }
+        return [...byUrl.values()];
+    }
+
+    /**
+     * 若正文未包含检索到的 URL，则追加「参考资料」Markdown 块（可点击）
+     * @param {string} finalMessage - 模型给出的 final_message
+     * @param {Array<{skillName:string, result?:any}>} toolResults - 工具历史
+     * @returns {string}
+     */
+    appendWebSearchReferencesMarkdown(finalMessage, toolResults) {
+        const text = String(finalMessage || '').trim();
+        const sources = this.collectWebSearchSources(toolResults);
+        if (!sources.length) return text;
+        const missing = sources.filter((s) => !text.includes(s.url));
+        if (!missing.length) return text;
+        const lines = missing.map((s) => {
+            const label = s.siteLabel || s.title;
+            return `- [${label}](${s.url})`;
+        });
+        return `${text}\n\n### 参考资料\n${lines.join('\n')}\n`;
+    }
+
+    /**
+     * 构建 `skills/skills/<skillId>/index.js` 的 `execute(args, ctx)` 所需上下文（与 Node 真测一致）
+     * @param {string} userMessage - 当前用户消息文本
+     * @returns {{ skillsEngine: any, userRequirement: string }}
+     */
+    buildSkillExecutionContext(userMessage) {
+        return {
+            skillsEngine: this.skillsEngine,
+            userRequirement: String(userMessage || '').trim()
+        };
+    }
+
+    /**
+     * 执行单个 skill：由主进程 `require` 并调用 `skills/skills/<skillId>/index.js` 的 `execute`；`CircuitSkillsEngine` 经 IPC 在渲染进程执行。
      * @param {string} skillName - 技能名
      * @param {any} args - 入参
      * @param {string} userMessage - 原始用户消息
@@ -1013,45 +2151,557 @@ class ChatManager {
         if (!this.skillsEngine) {
             return { success: false, error: 'skillsEngine 未初始化' };
         }
-        if (skillName === 'web_search_exa') {
-            const query = String(args?.query || userMessage || '').trim();
-            const numResults = typeof args?.numResults === 'number' ? args.numResults : 3;
-            const type = args?.type || 'fast';
-            return this.skillsEngine.webSearchExa(query, { numResults, type });
+        if (!window.electronAPI?.executeSkill) {
+            return { success: false, error: 'executeSkill IPC 不可用（请使用 Electron 启动应用）' };
         }
-        if (skillName === 'scheme_design_skill') {
-            const requirement = String(args?.userRequirement || userMessage || '').trim();
-            const result = await this.skillsEngine.runSchemeDesign(requirement);
-            return { success: true, data: result };
+        const ctxPayload = {
+            userRequirement: String(userMessage || '').trim(),
+            canvasSnapshot:
+                typeof this.skillsEngine.getCanvasSnapshotForSkill === 'function'
+                    ? this.skillsEngine.getCanvasSnapshotForSkill()
+                    : null
+        };
+        try {
+            const out = await window.electronAPI.executeSkill({ skillName, args, ctxPayload });
+            if (skillName === 'web_search_exa') {
+                if (out && out.success && out.data) {
+                    return this.normalizeWebSearchToolResult(out.data);
+                }
+                if (out?.data) {
+                    return this.normalizeWebSearchToolResult(out.data);
+                }
+                return {
+                    success: false,
+                    results: [],
+                    error: String(out?.error || '检索失败')
+                };
+            }
+            return out;
+        } catch (e) {
+            return {
+                success: false,
+                error: e?.message || String(e)
+            };
         }
-        if (skillName === 'requirement_analysis_skill') {
-            const requirement = String(args?.userRequirement || userMessage || '').trim();
-            const schemeDesignResult =
-                args?.schemeDesignResult ||
-                this.skillsEngine?.currentSkillState?.schemeDesignResult;
-            const result = await this.skillsEngine.runRequirementAnalysis(requirement, schemeDesignResult);
-            return { success: true, data: result };
-        }
-        if (skillName === 'component_autocomplete_validated_skill') {
-            const analysisResult = args?.analysisResult || this.skillsEngine?.currentSkillState?.analysisResult;
-            const missingComponents = Array.isArray(args?.missingComponents)
-                ? args.missingComponents
-                : (Array.isArray(analysisResult?.components) ? analysisResult.components.filter((c) => c.exists === 0) : []);
-            const createdComponents = await this.skillsEngine.autoCompleteComponents(missingComponents);
-            return { success: true, data: { createdComponents } };
-        }
-        if (skillName === 'structured_wiring_skill') {
-            return { success: true, data: { wiring: 'placeholder' } };
-        }
-        return { success: false, error: `未知 skill: ${skillName}` };
     }
 
     /**
-     * 走 skills 自动执行链路（统一入口，不做路由判别）
+     * 直连 LLM（寒暄 / 多模态）时展示与 agent-loop 一致的阶段行 + 计时
+     * @param {string} phaseLabel - 阶段标题（如「直连对话 · 生成回复」）
+     * @returns {Promise<void>}
+     */
+    async _beginDirectLlmProgressUi(phaseLabel) {
+        const p = String(phaseLabel || '对话模式 · 生成回复').trim();
+        this._skillsFlowElapsedT0 = Date.now();
+        this._skillsFlowMaxElapsedSec = 0;
+        this._skillsFlowPhaseLabel = p;
+        if (window.fastHardwareSkillsProgress && typeof window.fastHardwareSkillsProgress.emit === 'function') {
+            window.fastHardwareSkillsProgress.emit({
+                type: 'phase',
+                phase: p,
+                source: 'chat_manager'
+            });
+        }
+        await this.showTypingIndicator(this._buildSkillsFlowTypingLine());
+        this.startSkillsFlowElapsedTimer();
+        this._publishSkillsProgressEvent({
+            type: 'direct_llm_start',
+            phase: this._skillsFlowPhaseLabel,
+            line: this._buildSkillsFlowTypingLine()
+        });
+    }
+
+    /**
+     * 组合 skills 等待行：阶段说明 + 递增秒数（无 1/N 步进，仅保留逻辑链文案）
+     * @returns {string}
+     */
+    _buildSkillsFlowTypingLine() {
+        const phase = this._skillsFlowPhaseLabel || '请稍候';
+        const t0 = this._skillsFlowElapsedT0 != null ? this._skillsFlowElapsedT0 : Date.now();
+        const sec = Math.floor((Date.now() - t0) / 1000);
+        if (sec > this._skillsFlowMaxElapsedSec) {
+            this._skillsFlowMaxElapsedSec = sec;
+        }
+        return `${phase} · 用时 ${sec} S`;
+    }
+
+    /**
+     * 在隐藏 typing 前把当前墙钟秒数并入峰值（避免最后一次 tick 与真实结束之间存在整秒差）
+     * @returns {void}
+     */
+    _flushSkillsFlowElapsedPeakForUi() {
+        if (this._skillsFlowElapsedT0 == null) return;
+        const sec = Math.floor((Date.now() - this._skillsFlowElapsedT0) / 1000);
+        if (sec > this._skillsFlowMaxElapsedSec) {
+            this._skillsFlowMaxElapsedSec = sec;
+        }
+    }
+
+    /**
+     * 订阅 `skills-progress-bus`：阶段文案由总线 detail 传入，在此刷新 typing（符合「订阅驱动」约定）
+     * @returns {void}
+     */
+    _bindSkillsProgressBus() {
+        if (typeof window === 'undefined' || !window.fastHardwareSkillsProgress?.EVENT_NAME) {
+            return;
+        }
+        const name = window.fastHardwareSkillsProgress.EVENT_NAME;
+        window.addEventListener(name, (ev) => {
+            this._consumeSkillsProgressFromBus(ev?.detail);
+        });
+    }
+
+    /**
+     * 消费总线事件，更新 `_skillsFlowPhaseLabel` 与 typing 行
+     * @param {Record<string, unknown>} [detail] - 来自 `fastHardwareSkillsProgress.emit`
+     * @returns {void}
+     */
+    _consumeSkillsProgressFromBus(detail) {
+        if (!detail || typeof detail !== 'object') return;
+        if (typeof detail.phase === 'string' && detail.phase.trim()) {
+            this._skillsFlowPhaseLabel = detail.phase.trim();
+        }
+        const line =
+            typeof detail.line === 'string' && detail.line.length > 0
+                ? detail.line
+                : this._buildSkillsFlowTypingLine();
+        if (this._agentTraceHeaderMessageId != null) {
+            this._setAgentTraceHeaderLine(this._agentTraceHeaderMessageId, line);
+            return;
+        }
+        const typingEl = document.getElementById('typing-indicator');
+        if (typingEl) {
+            this.setTypingIndicatorText(line);
+        }
+        // 禁止在此处调用 showTypingIndicator：emit 与 runSkillsAgentLoop 的 await showTypingIndicator 并发时，
+        // 会在 getAssetsPath 挂起期间各建一条 typing，出现双气泡且 duplicate id 导致第二条永不随计时刷新。
+    }
+
+    /**
+     * 广播 skills 进度：经 `fastHardwareSkillsProgress.emit` 统一派发（CustomEvent + IPC）
+     * @param {Record<string, unknown>} detail
+     * @returns {void}
+     */
+    _publishSkillsProgressEvent(detail) {
+        const d = { ...(detail && typeof detail === 'object' ? detail : {}) };
+        const t0 = this._skillsFlowElapsedT0 != null ? this._skillsFlowElapsedT0 : Date.now();
+        if (typeof d.line !== 'string' || !d.line.length) {
+            d.line = this._buildSkillsFlowTypingLine();
+        }
+        if (d.phase == null) d.phase = this._skillsFlowPhaseLabel;
+        d.elapsedSec = Math.floor((Date.now() - t0) / 1000);
+        d.at = Date.now();
+        if (window.fastHardwareSkillsProgress && typeof window.fastHardwareSkillsProgress.emit === 'function') {
+            window.fastHardwareSkillsProgress.emit(d);
+            return;
+        }
+        try {
+            if (window.electronAPI && typeof window.electronAPI.publishAgentSkillProgress === 'function') {
+                window.electronAPI.publishAgentSkillProgress(d);
+            }
+        } catch (e) {
+            console.warn('⚠️ publishAgentSkillProgress 失败:', e?.message || e);
+        }
+        try {
+            window.dispatchEvent(
+                new CustomEvent('fast-hardware-skills-progress', { detail: d })
+            );
+        } catch (e) {
+            console.warn('⚠️ fast-hardware-skills-progress 派发失败:', e?.message || e);
+        }
+    }
+
+    /**
+     * 更新 skills 链路阶段：仅向总线 emit，由 `_consumeSkillsProgressFromBus` 刷新 UI（无总线时降级为本地写入）
+     * @param {string} phase - 当前阶段说明
+     * @returns {void}
+     */
+    setSkillsFlowPhaseLabel(phase) {
+        const p = String(phase || '请稍候');
+        if (window.fastHardwareSkillsProgress && typeof window.fastHardwareSkillsProgress.emit === 'function') {
+            window.fastHardwareSkillsProgress.emit({ type: 'phase', phase: p, source: 'chat_manager' });
+            return;
+        }
+        this._skillsFlowPhaseLabel = p;
+        const line = this._buildSkillsFlowTypingLine();
+        if (this._agentTraceHeaderMessageId != null) {
+            this._setAgentTraceHeaderLine(this._agentTraceHeaderMessageId, line);
+        } else {
+            const typingEl = document.getElementById('typing-indicator');
+            if (typingEl) {
+                this.setTypingIndicatorText(line);
+            } else if (this._skillsFlowActive) {
+                void this.showTypingIndicator(line).then(() => {
+                    this.startSkillsFlowElapsedTimer();
+                    this.setTypingIndicatorText(this._buildSkillsFlowTypingLine());
+                });
+            }
+        }
+        this._publishSkillsProgressEvent({ type: 'phase', phase: this._skillsFlowPhaseLabel, line });
+    }
+
+    /**
+     * 将「阶段 · 用时 n S」写到指定追踪助手消息的头部（与 typing 气泡互斥）
+     * @param {number} messageId
+     * @param {string} line
+     * @returns {void}
+     */
+    _setAgentTraceHeaderLine(messageId, line) {
+        const el = document.querySelector(`[data-message-id="${messageId}"] .message-time`);
+        if (el) {
+            el.textContent = String(line || '');
+        }
+    }
+
+    /**
+     * 把当前阶段计时行写到追踪头或 typing（由 _agentTraceHeaderMessageId 决定）
+     * @returns {void}
+     */
+    _applySkillsFlowElapsedLineToUi() {
+        const line = this._buildSkillsFlowTypingLine();
+        if (this._agentTraceHeaderMessageId != null) {
+            this._setAgentTraceHeaderLine(this._agentTraceHeaderMessageId, line);
+        } else {
+            this.setTypingIndicatorText(line);
+        }
+    }
+
+    /**
+     * 启动 skills 链路计时：每秒用「当前阶段 · 用时 n S」刷新 typing（不重置已开始的时间戳）
+     * @returns {void}
+     */
+    startSkillsFlowElapsedTimer() {
+        this.stopSkillsFlowElapsedTimer();
+        if (this._skillsFlowElapsedT0 == null) {
+            this._skillsFlowElapsedT0 = Date.now();
+        }
+        const tick = () => {
+            this._applySkillsFlowElapsedLineToUi();
+        };
+        tick();
+        this._skillsFlowElapsedTimerId = setInterval(tick, 1000);
+    }
+
+    /**
+     * 停止 skills 链路用时定时器（不清理阶段与时间戳，由 hideTypingIndicator / finally 收口）
+     * @returns {void}
+     */
+    stopSkillsFlowElapsedTimer() {
+        if (this._skillsFlowElapsedTimerId != null) {
+            clearInterval(this._skillsFlowElapsedTimerId);
+            this._skillsFlowElapsedTimerId = null;
+        }
+    }
+
+    /**
+     * Skills 在进度文案中的短名称
+     * @param {string} skillName - skill 标识
+     * @returns {string}
+     */
+    getSkillChainShortName(skillName) {
+        /** @type {Record<string, string>} */
+        const map = {
+            web_search_exa: 'Web 检索',
+            scheme_design_skill: '方案设计',
+            completion_suggestion_skill: '补全建议',
+            wiring_edit_skill: '连线编辑',
+            firmware_codegen_skill: '固件编辑'
+        };
+        return map[skillName] || skillName;
+    }
+
+    /**
+     * Skills 进度行展示用英文短名（连字符），如 web-search；未知则下划线转连字符
+     * @param {string} skillName - skill 标识
+     * @returns {string}
+     */
+    getSkillProgressSlug(skillName) {
+        /** @type {Record<string, string>} */
+        const map = {
+            web_search_exa: 'web-search',
+            scheme_design_skill: 'scheme-design',
+            completion_suggestion_skill: 'completion-suggestion',
+            wiring_edit_skill: 'wiring-edit',
+            firmware_codegen_skill: 'firmware-code'
+        };
+        if (map[skillName]) return map[skillName];
+        const s = String(skillName || 'unknown').trim();
+        return s.replace(/_/g, '-');
+    }
+
+    /**
+     * 进度阶段「字数」：汉字各计 1；连续 [a-zA-Z0-9._-] 拉丁片段计 1（整块英文 token）
+     * @param {string} str
+     * @returns {number}
+     */
+    _countSkillsPhaseUnits(str) {
+        const s = String(str || '');
+        let u = 0;
+        let i = 0;
+        while (i < s.length) {
+            const c = s[i];
+            if (/[a-zA-Z]/.test(c)) {
+                while (i < s.length && /[a-zA-Z0-9._-]/.test(s[i])) i += 1;
+                u += 1;
+                continue;
+            }
+            if (/[\u4e00-\u9fff]/.test(c)) {
+                u += 1;
+                i += 1;
+                continue;
+            }
+            if (/\d/.test(c)) {
+                u += 1;
+                i += 1;
+                continue;
+            }
+            i += 1;
+        }
+        return u;
+    }
+
+    /**
+     * 将阶段说明压到不超过 maxUnits（默认 12）；超长时先尝试缩写已知 slug，再截断加省略号
+     * @param {string} phase
+     * @param {number} [maxUnits=12]
+     * @returns {string}
+     */
+    _clampSkillsPhaseLabel(phase, maxUnits = 12) {
+        let s = String(phase || '');
+        if (this._countSkillsPhaseUnits(s) <= maxUnits) return s;
+        /** @type {Record<string, string>} */
+        const slugAbbrev = {
+            'web-search': 'ws',
+            'scheme-design': 'sd',
+            'completion-suggestion': 'cs',
+            'wiring-edit': 'we',
+            'firmware-code': 'fw'
+        };
+        let t = s;
+        for (const [full, ab] of Object.entries(slugAbbrev)) {
+            t = t.split(full).join(ab);
+            if (this._countSkillsPhaseUnits(t) <= maxUnits) return t;
+        }
+        while (t.length > 0 && this._countSkillsPhaseUnits(t) > maxUnits) {
+            t = t.slice(0, -1);
+        }
+        return t ? `${t}…` : '请稍候';
+    }
+
+    /**
+     * 本批 tool_calls 的调用阶段说明：单 skill 为「正在调用 xxx skill」，多 skill 为「正在调用 首个slug 等n个skill」
+     * @param {string} firstSkillName - 本批第一个 skill 标识
+     * @param {number} total - 本批 skill 数量
+     * @returns {string}
+     */
+    getSkillBatchInvokePhaseLabel(firstSkillName, total) {
+        const firstSlug = this.getSkillProgressSlug(firstSkillName);
+        const n = Math.max(1, Math.floor(Number(total)) || 1);
+        if (n <= 1) {
+            return this._clampSkillsPhaseLabel(`正在调用 ${firstSlug} skill`);
+        }
+        return this._clampSkillsPhaseLabel(`正在调用 ${firstSlug} 等${n}个skill`);
+    }
+
+    /**
+     * Skills 进度：单次 skill 结束后的极短说明，≤12「字」，英文整块计 1，无括号
+     * @param {string} skillName
+     * @param {boolean} success
+     * @param {number} [webResultCount] - web_search_exa 成功时的结果条数
+     * @returns {string}
+     */
+    getSkillResultPhaseLabel(skillName, success, webResultCount) {
+        const slug = this.getSkillProgressSlug(skillName);
+        if (!success) {
+            return this._clampSkillsPhaseLabel(`${slug} 执行失败`);
+        }
+        if (skillName === 'web_search_exa') {
+            const c = typeof webResultCount === 'number' ? webResultCount : 0;
+            return this._clampSkillsPhaseLabel(c > 0 ? `${slug} 返回${c}条` : `${slug} 无结果`);
+        }
+        return this._clampSkillsPhaseLabel(`${slug} 已完成`);
+    }
+
+    /**
+     * 处理主进程 `skills-agent-loop-progress` 事件，刷新阶段与进度总线（与本地 `_publishSkillsProgressEvent` 同形）
+     * @param {Record<string, unknown>} detail
+     * @returns {void}
+     */
+    _handleMainAgentLoopProgress(detail) {
+        if (!detail || typeof detail !== 'object') return;
+        const t = detail.type;
+        if (t === 'phase' && typeof detail.phase === 'string') {
+            this.setSkillsFlowPhaseLabel(detail.phase);
+            return;
+        }
+        if (t === 'agent_block') {
+            const tid = this._agentTraceMessageId;
+            const msg = tid != null ? this.messages.find((m) => m.id === tid) : null;
+            if (msg && Array.isArray(msg.agentBlocks)) {
+                const bt = detail.blockType;
+                if (bt === 'reasoning' || bt === 'turn') {
+                    /* 步骤摘要 / 「模型第N轮」分隔：不进入 UI；主进程已不再发送 */
+                }
+            }
+            return;
+        }
+        if (t === 'tool_start' || t === 'tool_end') {
+            const tid = this._agentTraceMessageId;
+            const msg = tid != null ? this.messages.find((m) => m.id === tid) : null;
+            if (msg && Array.isArray(msg.agentBlocks)) {
+                if (t === 'tool_start') {
+                    msg.agentBlocks.push({
+                        blockType: 'tool',
+                        phase: 'run',
+                        toolCallId: String(detail.toolCallId || ''),
+                        skillName: String(detail.skillName || ''),
+                        shortName: String(detail.shortName || ''),
+                        argsPreview: typeof detail.argsPreview === 'string' ? detail.argsPreview : ''
+                    });
+                } else {
+                    const tcid = String(detail.toolCallId || '');
+                    const pending = [...msg.agentBlocks]
+                        .reverse()
+                        .find(
+                            (b) =>
+                                b &&
+                                b.blockType === 'tool' &&
+                                b.phase === 'run' &&
+                                String(b.toolCallId || '') === tcid
+                        );
+                    if (pending) {
+                        pending.phase = 'done';
+                        pending.success = !!detail.success;
+                        pending.resultPreview =
+                            typeof detail.resultPreview === 'string' ? detail.resultPreview : '';
+                    }
+                    if (
+                        String(detail.skillName || '') === 'firmware_codegen_skill' &&
+                        detail.firmwarePatch &&
+                        typeof detail.firmwarePatch === 'object'
+                    ) {
+                        const patch = String(detail.firmwarePatch.patch || '').trim();
+                        if (patch && window.canvasInstance?.previewFirmwarePatchInEditor) {
+                            try {
+                                window.canvasInstance.previewFirmwarePatchInEditor(patch, { autoOpen: true });
+                            } catch (e) {
+                                console.warn('[chat] 预览固件补丁失败:', e);
+                            }
+                        }
+                    }
+                }
+                void this._refreshAgentTraceBlocksDom(tid);
+            }
+            this._publishSkillsProgressEvent(detail);
+            return;
+        }
+        if (t === 'llm_round') {
+            this.setSkillsFlowPhaseLabel('解析模型回复');
+            return;
+        }
+        if (t === 'final_synthesis_start') {
+            this._skillsAgentFinalSynthesisActive = true;
+            this._skillsAgentFinalStreamBuf = '';
+            const tid = this._agentTraceMessageId;
+            const msg = tid != null ? this.messages.find((m) => m.id === tid) : null;
+            if (msg) {
+                msg.isAgentTrace = false;
+                msg.content = '';
+            }
+            this.setSkillsFlowPhaseLabel('正在生成最终回复');
+            if (tid != null) {
+                const answerEl = document.querySelector(`[data-message-id="${tid}"] .fh-agent-answer`);
+                if (answerEl) {
+                    answerEl.innerHTML =
+                        '<div class="fh-stream-preview fh-agent-answer-stream" style="white-space:pre-wrap;word-break:break-word;font-size:14px;line-height:1.55"></div>';
+                }
+            }
+            return;
+        }
+        if (t === 'final_synthesis_end') {
+            this._skillsAgentFinalSynthesisActive = false;
+            this.setSkillsFlowPhaseLabel('编排收尾');
+            return;
+        }
+    }
+
+    /**
+     * 将 agent 块列表渲染为 HTML（Anthropic 式可折叠块；不含最终 Markdown 正文）
+     * @param {Array<Record<string, unknown>>} blocks
+     * @returns {string}
+     */
+    _renderAgentBlocksHtml(blocks) {
+        if (!Array.isArray(blocks) || !blocks.length) {
+            return '<div class="fh-agent-blocks-empty">正在连接编排器…</div>';
+        }
+        const parts = [];
+        for (const b of blocks) {
+            if (!b || typeof b !== 'object') continue;
+            if (b.blockType === 'turn' || b.blockType === 'reasoning') {
+                continue;
+            }
+            if (b.blockType === 'tool') {
+                const phase = b.phase === 'run' ? 'run' : 'done';
+                const ok = !!b.success;
+                const statusLabel = phase === 'run' ? '执行中…' : ok ? '已完成' : '失败';
+                const cls = phase === 'run' ? 'is-running' : ok ? 'is-ok' : 'is-err';
+                const name = this.escapeHtml(String(b.shortName || b.skillName || 'tool'));
+                const summaryLine =
+                    typeof b.detailSummary === 'string' && b.detailSummary.trim()
+                        ? this.escapeHtml(b.detailSummary.trim())
+                        : '';
+                const argsEsc = this.escapeHtml(String(b.argsPreview || ''));
+                const resEsc =
+                    phase === 'done' ? this.escapeHtml(String(b.resultPreview ?? '')) : '';
+                const openAttr = phase === 'run' ? ' open' : '';
+                const toggleOpen = phase === 'run';
+                const ariaExp = toggleOpen ? 'true' : 'false';
+                const chevronName = toggleOpen ? 'chevron-up' : 'chevron-down';
+                const ariaLbl = toggleOpen ? '收起详情' : '展开详情';
+                const bodyHtml = summaryLine
+                    ? `<div class="fh-tool-section fh-tool-section-summary"><div class="fh-tool-prose">${summaryLine}</div></div>`
+                    : `<div class="fh-tool-section"><span class="fh-tool-label">输入要点</span><div class="fh-tool-prose">${argsEsc}</div></div>${phase === 'done' ? `<div class="fh-tool-section"><span class="fh-tool-label">执行结果</span><div class="fh-tool-prose">${resEsc}</div></div>` : ''}`;
+                parts.push(
+                    `<details class="fh-agent-block fh-agent-block-tool ${cls}"${openAttr}><summary class="fh-agent-block-summary"><span class="fh-agent-block-summary-main"><span class="fh-tool-name">${name}</span><span class="fh-tool-status">${statusLabel}</span></span><button type="button" class="fh-agent-block-toggle" aria-expanded="${ariaExp}" aria-label="${ariaLbl}"><img class="fh-agent-block-toggle-icon" src="" alt="" width="18" height="18" data-icon="${chevronName}"></button></summary>${bodyHtml}</details>`
+                );
+            }
+        }
+        return parts.join('');
+    }
+
+    /**
+     * 仅刷新追踪消息中的块区 DOM，避免整表重绘
+     * @param {number} messageId
+     * @returns {Promise<void>}
+     */
+    async _refreshAgentTraceBlocksDom(messageId) {
+        const msg = this.messages.find((m) => m.id === messageId);
+        if (!msg || !Array.isArray(msg.agentBlocks)) return;
+        const wrap = document.querySelector(`[data-message-id="${messageId}"] .fh-agent-blocks`);
+        if (wrap) {
+            wrap.innerHTML = this._renderAgentBlocksHtml(msg.agentBlocks);
+            await this._hydrateDataIconImgsIn(wrap);
+        } else {
+            await this.renderMessages();
+            if (this._agentTraceHeaderMessageId === messageId) {
+                this._setAgentTraceHeaderLine(messageId, this._buildSkillsFlowTypingLine());
+            }
+        }
+        if (
+            this._skillsAgentFinalSynthesisActive &&
+            this._agentTraceMessageId === messageId
+        ) {
+            this._applySkillsAgentFinalStreamToDom(messageId);
+        }
+        this.scrollToBottom();
+    }
+
+    /**
+     * Skills Agent 多轮循环（编排逻辑在**主进程** `run-skills-agent-loop`；此处仅负责 UI、画布快照与进度订阅）
      * @param {string} userMessage - 用户需求原文
      * @param {Object} userMessageObj - 用户消息对象
      */
-    async runSkillsWorkflow(userMessage, userMessageObj) {
+    async runSkillsAgentLoop(userMessage, userMessageObj) {
         if (!this.skillsEngine) {
             console.error('❌ skills 引擎未初始化');
             return;
@@ -1060,175 +2710,219 @@ class ChatManager {
         this.isTyping = true;
         this.isInterrupted = false;
 
-        // 贯穿本次自动链路的上下文ID（用于消息追踪/弃用语义；目前 UI 不再依赖按钮）
         const skillContextId = Date.now() + Math.floor(Math.random() * 1000);
         this.activeSkillContextId = skillContextId;
 
+        this._skillsFlowActive = true;
+        /** @type {number} 本轮 agent 追踪气泡 id（供 merge / catch 使用，避免仅依赖 _agentTraceMessageId） */
+        let traceIdForThisRun = 0;
         try {
-            const skills = this.getSkillsForAgent();
-            const toolResults = [];
-            const maxIterations = 4;
-            const needsRealtimeSearch = this.isRealtimeQuery(userMessage);
-            let webSearchCalled = false;
+            this._logSkillsChain('runSkillsAgentLoop 开始（主进程编排）', {
+                skillContextId,
+                userPreview: String(userMessage || '').slice(0, 200),
+                userChars: String(userMessage || '').length,
+                needsWebSearchPriority: this.needsWebSearchPriority(userMessage),
+                model: this.selectedModel || this.defaultChatModel
+            });
 
-            for (let iter = 0; iter < maxIterations; iter++) {
-                if (this.isInterrupted) return;
-                this.showTypingIndicator(iter === 0 ? '正在分析并决策技能...' : '正在基于工具结果继续推理...');
-                this.updateSendButton();
-
-                const prompt = [
-                    '你是 Fast Hardware 的 skills agent。你可以自主决定是否调用 tools。',
-                    needsRealtimeSearch
-                        ? '这是实时信息场景：必须先调用 web_search_exa，再给 final_message。'
-                        : '如问题涉及外部资料不足，请优先调用 web_search_exa。',
-                    '若无需工具，可直接给 final_message。',
-                    '必须输出严格 JSON，字段仅允许：reasoning_steps、tool_calls、final_message。',
-                    this.getAgentTimeContext(),
-                    '',
-                    '可用 skills：',
-                    JSON.stringify(skills, null, 2),
-                    '',
-                    '历史工具结果：',
-                    toolResults.length ? JSON.stringify(toolResults, null, 2) : '[]',
-                    '',
-                    '用户消息：',
-                    userMessage
-                ].join('\n');
-
-                const llmResp = await this.callLLMAPI({
-                    messages: [
-                        { role: 'system', content: '你是一个会调用 tools 的 agent，输出必须是 JSON。' },
-                        { role: 'user', content: prompt }
-                    ],
-                    model: this.selectedModel || this.defaultChatModel,
-                    temperature: 0.2
+            this._skillsFlowElapsedT0 = Date.now();
+            this._skillsFlowMaxElapsedSec = 0;
+            this._skillsFlowPhaseLabel = '等待模型规划';
+            if (window.fastHardwareSkillsProgress && typeof window.fastHardwareSkillsProgress.emit === 'function') {
+                window.fastHardwareSkillsProgress.emit({
+                    type: 'phase',
+                    phase: '等待模型规划',
+                    source: 'chat_manager'
                 });
-                if (this.isInterrupted) return;
-                this.setTypingIndicatorText(`第 ${iter + 1} 轮决策完成，正在解析调用计划...`);
-                const parsed = this.parseJsonLoose(llmResp?.content || '');
-                if (!parsed) {
-                    this.hideTypingIndicator();
-                    this.messages.push({
-                        id: Date.now(),
-                        type: 'assistant',
-                        content: String(llmResp?.content || '模型输出为空'),
-                        timestamp: new Date()
-                    });
-                    await this.renderMessages();
-                    this.scrollToBottom();
-                    return;
-                }
-
-                const finalMessage = typeof parsed.final_message === 'string' ? parsed.final_message : '';
-                let toolCalls = this.normalizeToolCalls(parsed.tool_calls);
-
-                // 实时场景强约束：若尚未触发 web_search，则强制补一轮 web_search
-                const containsWebSearch = toolCalls.some((tc) => tc.skillName === 'web_search_exa');
-                if (needsRealtimeSearch && !webSearchCalled && !containsWebSearch) {
-                    toolCalls = [
-                        {
-                            toolCallId: `forced_web_${iter + 1}`,
-                            skillName: 'web_search_exa',
-                            args: { query: String(userMessage || '').trim(), numResults: 5, type: 'fast' }
-                        },
-                        ...toolCalls
-                    ];
-                }
-
-                if (finalMessage && (!needsRealtimeSearch || webSearchCalled)) {
-                    this.setTypingIndicatorText('正在整理最终回复...');
-                    this.hideTypingIndicator();
-                    this.messages.push({
-                        id: Date.now(),
-                        type: 'assistant',
-                        content: finalMessage,
-                        isSkillFlow: true,
-                        skillState: this.skillsEngine.currentSkillState,
-                        timestamp: new Date()
-                    });
-                    await this.renderMessages();
-                    this.scrollToBottom();
-                    return;
-                }
-
-                if (!toolCalls.length) {
-                    this.hideTypingIndicator();
-                    this.messages.push({
-                        id: Date.now(),
-                        type: 'assistant',
-                        content: '⚠️ 当前回合未产生可执行工具调用，请你换个说法再试一次。',
-                        timestamp: new Date()
-                    });
-                    await this.renderMessages();
-                    this.scrollToBottom();
-                    return;
-                }
-
-                for (const toolCall of toolCalls) {
-                    if (this.isInterrupted) return;
-                    const skillName = toolCall.skillName;
-                    if (skillName === 'web_search_exa') {
-                        const q = String(toolCall?.args?.query || '').trim();
-                        this.setTypingIndicatorText(`正在搜索资料...${q ? `（${q.slice(0, 24)}${q.length > 24 ? '...' : ''}）` : ''}`);
-                    } else if (skillName === 'component_autocomplete_validated_skill') {
-                        this.setTypingIndicatorText('正在自动补全缺失元件...');
-                    } else {
-                        this.setTypingIndicatorText(`正在执行技能：${skillName}`);
-                    }
-
-                    // eslint-disable-next-line no-await-in-loop
-                    const result = await this.executeSkill(skillName, toolCall.args, userMessage);
-                    if (skillName === 'web_search_exa' && result?.success) {
-                        webSearchCalled = true;
-                        const count = Array.isArray(result?.results) ? result.results.length : 0;
-                        this.setTypingIndicatorText(`检索完成（${count} 条），正在继续推理...`);
-                    } else if (result?.success) {
-                        this.setTypingIndicatorText(`技能执行完成：${skillName}，正在继续推理...`);
-                    } else {
-                        this.setTypingIndicatorText(`技能执行失败：${skillName}，正在自动兜底...`);
-                    }
-                    toolResults.push({
-                        toolCallId: toolCall.toolCallId,
-                        skillName,
-                        args: toolCall.args,
-                        result
-                    });
-                }
-                this.hideTypingIndicator();
             }
 
+            traceIdForThisRun = Date.now();
+            this._skillsAgentFinalSynthesisActive = false;
+            this._agentTraceMessageId = traceIdForThisRun;
+            this._agentTraceHeaderMessageId = traceIdForThisRun;
             this.messages.push({
-                id: Date.now(),
+                id: traceIdForThisRun,
                 type: 'assistant',
-                content: '⚠️ 达到最大迭代次数仍未完成最终回复，请换个问法或缩小问题范围。',
-                timestamp: new Date()
+                content: '',
+                timestamp: new Date(),
+                isAgentTrace: true,
+                isSkillFlow: true,
+                skillState: null,
+                agentBlocks: []
             });
+            await this.renderMessages();
+            this.scrollToBottom();
+            this._setAgentTraceHeaderLine(traceIdForThisRun, this._buildSkillsFlowTypingLine());
+            this.startSkillsFlowElapsedTimer();
+            this._publishSkillsProgressEvent({
+                type: 'skills_flow_start',
+                phase: this._skillsFlowPhaseLabel,
+                line: this._buildSkillsFlowTypingLine()
+            });
+            this.updateSendButton();
+
+            if (window.electronAPI?.registerSkillsAgentLoopProgress) {
+                window.electronAPI.registerSkillsAgentLoopProgress((d) => this._handleMainAgentLoopProgress(d));
+            }
+
+            let unsubscribeFinalStream = null;
+            let res;
+            try {
+                if (typeof window.electronAPI?.onSkillsAgentLoopFinalStream === 'function') {
+                    this._skillsAgentFinalStreamBuf = '';
+                    unsubscribeFinalStream = window.electronAPI.onSkillsAgentLoopFinalStream((payload) => {
+                        const delta = typeof payload?.delta === 'string' ? payload.delta : '';
+                        if (!delta) return;
+                        this._skillsAgentFinalStreamBuf =
+                            (this._skillsAgentFinalStreamBuf || '') + delta;
+                        this._scheduleSkillsAgentFinalStreamPreview(traceIdForThisRun);
+                    });
+                }
+                res = await window.electronAPI.runSkillsAgentLoop({
+                    userMessage: String(userMessage || ''),
+                    model: this.selectedModel || this.defaultChatModel,
+                    temperature: 0.2,
+                    canvasSnapshot:
+                        typeof this.skillsEngine.getCanvasSnapshotForSkill === 'function'
+                            ? this.skillsEngine.getCanvasSnapshotForSkill()
+                            : null,
+                    projectPath:
+                        typeof window.app?.currentProject === 'string'
+                            ? String(window.app.currentProject).trim()
+                            : ''
+                });
+            } finally {
+                if (typeof unsubscribeFinalStream === 'function') {
+                    unsubscribeFinalStream();
+                }
+                if (traceIdForThisRun) {
+                    this._applySkillsAgentFinalStreamToDom(traceIdForThisRun);
+                }
+                this._cancelSkillsAgentFinalStreamRaf();
+            }
+
+            if (window.electronAPI?.registerSkillsAgentLoopProgress) {
+                window.electronAPI.registerSkillsAgentLoopProgress(null);
+            }
+
+            this.hideTypingIndicator();
+
+            this._agentTraceMessageId = null;
+            this._agentTraceHeaderMessageId = null;
+
+            if (!res || res.success === false) {
+                const errText = `❌ skills 链路失败：${String(res?.error || '未知错误')}`;
+                const tmsg = traceIdForThisRun ? this.messages.find((m) => m.id === traceIdForThisRun) : null;
+                if (tmsg) {
+                    tmsg.isAgentTrace = false;
+                    tmsg.content = errText;
+                    tmsg.isSkillFlow = true;
+                } else {
+                    this.messages.push({
+                        id: Date.now(),
+                        type: 'assistant',
+                        content: errText,
+                        timestamp: new Date()
+                    });
+                }
+                await this.renderMessages();
+                this.scrollToBottom();
+                return;
+            }
+
+            const msgs = Array.isArray(res.assistantMessages) ? res.assistantMessages : [];
+            let finalContent = '';
+            for (const m of msgs) {
+                if (m && m.type === 'assistant_message' && typeof m.content === 'string') {
+                    finalContent = m.content;
+                    break;
+                }
+            }
+            const tmsgOk = traceIdForThisRun ? this.messages.find((m) => m.id === traceIdForThisRun) : null;
+            if (tmsgOk) {
+                tmsgOk.isAgentTrace = false;
+                tmsgOk.content = finalContent;
+                tmsgOk.isSkillFlow = true;
+                tmsgOk.skillState = this.skillsEngine?.currentSkillState;
+            } else if (finalContent) {
+                this.messages.push({
+                    id: Date.now(),
+                    type: 'assistant',
+                    content: finalContent,
+                    isSkillFlow: true,
+                    skillState: this.skillsEngine?.currentSkillState,
+                    timestamp: new Date()
+                });
+            }
             await this.renderMessages();
             this.scrollToBottom();
         } catch (error) {
+            this._logSkillsChain('skills 链路异常', {
+                message: error?.message || String(error),
+                phaseAtFail: this._skillsFlowPhaseLabel
+            });
             console.error('❌ skills 链路执行失败:', error);
             this.hideTypingIndicator();
 
-            this.messages.push({
-                id: Date.now(),
-                type: 'assistant',
-                    content: `❌ skills 链路执行失败：${error?.message || String(error)}`,
-                timestamp: new Date()
-            });
+            const errLine = `❌ skills 链路执行失败：${error?.message || String(error)}`;
+            this._agentTraceMessageId = null;
+            const tmsg = traceIdForThisRun ? this.messages.find((m) => m.id === traceIdForThisRun) : null;
+            if (tmsg) {
+                tmsg.isAgentTrace = false;
+                tmsg.content = errLine;
+                tmsg.isSkillFlow = true;
+            } else {
+                this.messages.push({
+                    id: Date.now(),
+                    type: 'assistant',
+                    content: errLine,
+                    timestamp: new Date()
+                });
+            }
             await this.renderMessages();
             this.scrollToBottom();
         } finally {
+            console.log(
+                '[chat-api] 本轮 skills agent 全链路 阶段用时峰值(与 UI「用时 n S」一致):',
+                `${this._skillsFlowMaxElapsedSec ?? 0}s`
+            );
+            this._skillsFlowMaxElapsedSec = 0;
+            if (window.electronAPI?.registerSkillsAgentLoopProgress) {
+                window.electronAPI.registerSkillsAgentLoopProgress(null);
+            }
+            this._skillsFlowActive = false;
+            this.stopSkillsFlowElapsedTimer();
+            this._skillsFlowElapsedT0 = null;
+            this._skillsFlowPhaseLabel = null;
             this.isTyping = false;
             this.updateSendButton();
+            this._publishSkillsProgressEvent({ type: 'skills_flow_end' });
+            this._skillsAgentFinalSynthesisActive = false;
+            this._agentTraceMessageId = null;
+            this._agentTraceHeaderMessageId = null;
         }
     }
 
     /**
-     * 显示正在输入指示器
+     * 显示正在输入指示器（默认「等待生成回复」，与 skills 流程阶段行风格一致）
+     * @param {string} [text='等待生成回复'] - 头部时间位展示的提示文案
      */
-    async showTypingIndicator(text = '正在输入...') {
+    async showTypingIndicator(text = '等待生成回复') {
         const messagesContainer = document.getElementById('chat-messages');
         if (!messagesContainer) return;
+
+        /** 历史 bug：同一时刻多次创建会留下多条同 id 节点；只保留第一条，其余移除 */
+        const dup = messagesContainer.querySelectorAll('#typing-indicator');
+        dup.forEach((el, idx) => {
+            if (idx > 0) el.remove();
+        });
+
+        const existing = document.getElementById('typing-indicator');
+        if (existing) {
+            this.setTypingIndicatorText(text || '等待生成回复');
+            this.scrollToBottom();
+            return;
+        }
 
         // 获取正确的图标路径
         const assetsPath = await window.electronAPI.getAssetsPath();
@@ -1240,7 +2934,7 @@ class ChatManager {
         typingDiv.innerHTML = `
             <div class="message-header">
                 <div class="message-avatar"><img src="file://${botIconSrc}" alt="AI" width="20" height="20"></div>
-                <div class="message-time">${this.escapeHtml(String(text || '正在输入...'))}</div>
+                <div class="message-time">${this.escapeHtml(String(text || '等待生成回复'))}</div>
             </div>
             <div class="message-content">
                 <div class="typing-dots">
@@ -1268,12 +2962,169 @@ class ChatManager {
     }
 
     /**
+     * 将流式增量合并后通过 rAF 刷新到 typing 气泡（完成后由正式消息再做 Markdown 渲染）
+     * @param {string} delta
+     * @returns {void}
+     */
+    _scheduleTypingStreamPreviewAppend(delta) {
+        this._typingStreamPending = (this._typingStreamPending || '') + delta;
+        if (this._typingStreamRaf != null) return;
+        this._typingStreamRaf = requestAnimationFrame(() => {
+            this._typingStreamRaf = null;
+            this._applyTypingIndicatorStreamPreview(this._typingStreamPending || '');
+        });
+    }
+
+    /**
+     * 取消流式预览 rAF 并清空缓冲（请求结束或失败时）
+     * @returns {void}
+     */
+    _cancelTypingStreamPreviewRaf() {
+        if (this._typingStreamRaf != null) {
+            cancelAnimationFrame(this._typingStreamRaf);
+            this._typingStreamRaf = null;
+        }
+        this._typingStreamPending = '';
+    }
+
+    /**
+     * 保证追踪气泡内存在流式答案节点；主进程已要求最终合成仅 Markdown，故缓冲即正文（纯文本预览，收尾时再 `renderMarkdown`）。
+     * @param {number} messageId
+     * @returns {void}
+     */
+    _applySkillsAgentFinalStreamToDom(messageId) {
+        const root = document.querySelector(`[data-message-id="${messageId}"] .fh-agent-answer`);
+        if (!root) return;
+        let el = root.querySelector('.fh-agent-answer-stream');
+        if (!el) {
+            root.innerHTML =
+                '<div class="fh-stream-preview fh-agent-answer-stream" style="white-space:pre-wrap;word-break:break-word;font-size:14px;line-height:1.55"></div>';
+            el = root.querySelector('.fh-agent-answer-stream');
+        }
+        if (!el) return;
+        el.textContent = this._skillsAgentFinalStreamBuf || '';
+        this.scrollToBottom();
+    }
+
+    /**
+     * Skills Agent 最终合成：SSE 增量合并后经 rAF 刷入单气泡（真流式；与 planning 的 JSON 块无关）
+     * @param {number} messageId
+     * @returns {void}
+     */
+    _scheduleSkillsAgentFinalStreamPreview(messageId) {
+        this._skillsAgentFinalStreamPendingMsgId = messageId;
+        if (this._skillsAgentFinalStreamRaf != null) return;
+        this._skillsAgentFinalStreamRaf = requestAnimationFrame(() => {
+            this._skillsAgentFinalStreamRaf = null;
+            const mid = this._skillsAgentFinalStreamPendingMsgId;
+            this._applySkillsAgentFinalStreamToDom(mid);
+        });
+    }
+
+    /**
+     * 取消最终合成流式 rAF（invoke 结束或取消订阅时）
+     * @returns {void}
+     */
+    _cancelSkillsAgentFinalStreamRaf() {
+        if (this._skillsAgentFinalStreamRaf != null) {
+            cancelAnimationFrame(this._skillsAgentFinalStreamRaf);
+            this._skillsAgentFinalStreamRaf = null;
+        }
+    }
+
+    /**
+     * 在 typing-indicator 的 message-content 区显示流式纯文本预览
+     * @param {string} fullText
+     * @returns {void}
+     */
+    _applyTypingIndicatorStreamPreview(fullText) {
+        const el = document.getElementById('typing-indicator');
+        if (!el) return;
+        const mc = el.querySelector('.message-content');
+        if (!mc) return;
+        const safe = this.escapeHtml(String(fullText || ''));
+        mc.innerHTML = `<div class="fh-stream-preview" style="white-space:pre-wrap;word-break:break-word;font-size:14px;line-height:1.5">${safe}</div>`;
+        this.scrollToBottom();
+    }
+
+    /**
      * 隐藏正在输入指示器
      */
     hideTypingIndicator() {
+        this._cancelTypingStreamPreviewRaf();
+        this._flushSkillsFlowElapsedPeakForUi();
+        this.stopSkillsFlowElapsedTimer();
+        this._skillsFlowElapsedT0 = null;
+        this._skillsFlowPhaseLabel = null;
+        this._agentTraceHeaderMessageId = null;
         const typingIndicator = document.getElementById('typing-indicator');
         if (typingIndicator) {
             typingIndicator.remove();
+        }
+    }
+
+    /**
+     * 仅移除底部 typing 气泡 DOM（不清计时器、不清空 `_agentTraceHeaderMessageId`），用于直连工作区追踪气泡出现后消除双气泡。
+     * @returns {void}
+     */
+    _removeTypingIndicatorDomOnly() {
+        this._cancelTypingStreamPreviewRaf();
+        document.getElementById('typing-indicator')?.remove();
+    }
+
+    /**
+     * 工作区工具循环：根据缓冲首字符区分 JSON 工具输出与 Markdown 终答，将 SSE 合并结果刷入追踪气泡（`{` 起头则仅显示解析提示，避免把 JSON 闪给用户）。
+     * @param {number} messageId
+     * @returns {void}
+     */
+    _applyWorkspaceLoopStreamToDom(messageId) {
+        const buf = this._workspaceLoopStreamBuf || '';
+        const root = document.querySelector(`[data-message-id="${messageId}"] .fh-agent-answer`);
+        if (!root) return;
+        const firstNonWs = buf.search(/\S/);
+        if (firstNonWs < 0) {
+            return;
+        }
+        const first = buf.charAt(firstNonWs);
+        if (first === '{') {
+            root.innerHTML =
+                '<p class="fh-agent-placeholder">正在生成最终回复（工具结果已就绪）…</p>';
+            this.scrollToBottom();
+            return;
+        }
+        let el = root.querySelector('.fh-agent-answer-stream');
+        if (!el) {
+            root.innerHTML =
+                '<div class="fh-stream-preview fh-agent-answer-stream" style="white-space:pre-wrap;word-break:break-word;font-size:14px;line-height:1.55"></div>';
+            el = root.querySelector('.fh-agent-answer-stream');
+        }
+        if (el) {
+            el.textContent = buf;
+        }
+        this.scrollToBottom();
+    }
+
+    /**
+     * @param {number} messageId
+     * @returns {void}
+     */
+    _scheduleWorkspaceLoopStreamPreview(messageId) {
+        this._workspaceLoopStreamPendingMsgId = messageId;
+        if (this._workspaceLoopStreamRaf != null) return;
+        this._workspaceLoopStreamRaf = requestAnimationFrame(() => {
+            this._workspaceLoopStreamRaf = null;
+            const mid = this._workspaceLoopStreamPendingMsgId;
+            this._applyWorkspaceLoopStreamToDom(mid);
+        });
+    }
+
+    /**
+     * @returns {void}
+     */
+    _cancelWorkspaceLoopStreamRaf() {
+        if (this._workspaceLoopStreamRaf != null) {
+            cancelAnimationFrame(this._workspaceLoopStreamRaf);
+            this._workspaceLoopStreamRaf = null;
         }
     }
 
@@ -1306,44 +3157,45 @@ class ChatManager {
      * @returns {string} HTML字符串
      */
     renderMarkdown(text) {
-        // 清理开头和结尾的多余换行符
-        let processedText = text.trim();
+        const rawInput = String(text || '');
+        try {
+            let processedText = rawInput.trim();
 
-        // 存储代码块的数组
-        const codeBlocks = [];
+            const codeBlocks = [];
 
-        // 第一步：提取所有代码块，用占位符替换
-        processedText = processedText.replace(/```(\w+)?\n?([\s\S]*?)```/g, (match, language, code) => {
-            const lang = language || 'text';
-            const codeId = 'code-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-            // 只转义HTML特殊字符，保留换行符
-            const formattedCode = code.trim()
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#39;');
+            processedText = processedText.replace(/```(\w+)?\n?([\s\S]*?)```/g, (match, language, code) => {
+                const lang = language || 'text';
+                const codeId = 'code-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+                const formattedCode = code
+                    .trim()
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
 
-            // 动态设置复制按钮图标路径
-            const codeBlockHtml = `<div class="code-block-container"><div class="code-block-header"><span class="code-language">${lang}</span><button class="code-copy-btn" data-code-id="${codeId}" title="复制代码"><img src="" alt="复制" width="14" height="14" data-icon="copy"></button></div><pre class="code-block"><code id="${codeId}">${formattedCode}</code></pre></div>`;
+                const codeBlockHtml = `<div class="code-block-container"><div class="code-block-header"><span class="code-language">${lang}</span><button class="code-copy-btn" data-code-id="${codeId}" title="复制代码"><img src="" alt="复制" width="14" height="14" data-icon="copy"></button></div><pre class="code-block"><code id="${codeId}">${formattedCode}</code></pre></div>`;
 
-            // 存储代码块
-            codeBlocks.push(codeBlockHtml);
-            // 返回占位符
-            return `{{{CODE_BLOCK_${codeBlocks.length - 1}}}}`;
-        });
+                codeBlocks.push(codeBlockHtml);
+                return `{{{CODE_BLOCK_${codeBlocks.length - 1}}}}`;
+            });
 
-        // 第二步：使用marked渲染剩余的markdown文本
-        let result = marked.parse(processedText);
+            if (typeof marked === 'undefined' || typeof marked.parse !== 'function') {
+                return `<p>${this.escapeHtml(processedText)}</p>`;
+            }
 
-        // 第三步：将代码块插入到渲染后的文本中
-        for (let i = 0; i < codeBlocks.length; i++) {
-            result = result.replace(`{{{CODE_BLOCK_${i}}}}`, codeBlocks[i]);
+            let result = marked.parse(processedText);
+
+            for (let i = 0; i < codeBlocks.length; i++) {
+                result = result.replace(`{{{CODE_BLOCK_${i}}}}`, codeBlocks[i]);
+            }
+
+            return result;
+        } catch (e) {
+            console.warn('[chat] Markdown 渲染失败，已降级为纯文本', e);
+            return `<pre class="fh-md-fallback">${this.escapeHtml(rawInput)}</pre>`;
         }
-
-        return result;
     }
-
 
     /**
      * HTML转义函数
@@ -1465,7 +3317,31 @@ class ChatManager {
 
         // 对于 skills 链路消息，如果内容已经是HTML，直接使用；否则进行markdown渲染
         let contentHtml;
-        if (message.isSkillFlow && message.content.trim().startsWith('<div')) {
+        const hasAgentBlocks =
+            message.type === 'assistant' &&
+            ((Array.isArray(message.agentBlocks) && message.agentBlocks.length > 0) ||
+                message.isAgentTrace);
+        if (hasAgentBlocks) {
+            const blocksPart =
+                Array.isArray(message.agentBlocks) && message.agentBlocks.length > 0
+                    ? this._renderAgentBlocksHtml(message.agentBlocks)
+                    : '<div class="fh-agent-blocks-empty">正在连接编排器…</div>';
+            let ans = '';
+            const raw = String(message.content || '').trim();
+            if (message.isSkillFlow && raw.startsWith('<div')) {
+                ans = message.content;
+            } else if (raw) {
+                ans = this.renderMarkdown(message.content);
+            } else if (message.isAgentTrace) {
+                ans = message.isDirectWorkspaceTrace
+                    ? '<p class="fh-agent-placeholder">正在通过工作区工具读取项目…</p>'
+                    : '<p class="fh-agent-placeholder">编排进行中…</p>';
+            } else {
+                ans =
+                    '<div class="fh-stream-preview fh-agent-answer-stream" style="white-space:pre-wrap;word-break:break-word;font-size:14px;line-height:1.55"></div>';
+            }
+            contentHtml = `<div class="fh-agent-trace-wrap"><div class="fh-agent-blocks">${blocksPart}</div><div class="fh-agent-answer">${ans}</div></div>`;
+        } else if (message.isSkillFlow && String(message.content || '').trim().startsWith('<div')) {
             // skills 链路消息，内容已经是HTML格式，直接使用
             contentHtml = message.content;
         } else {
@@ -1515,12 +3391,7 @@ class ChatManager {
             ${userActionsHtml}
         `;
 
-        // 设置代码块中图标的正确路径
-        const codeBlockIcons = messageDiv.querySelectorAll('.code-copy-btn img[data-icon]');
-        codeBlockIcons.forEach(icon => {
-            const iconName = `icon-${icon.dataset.icon}.svg`;
-            icon.src = `file://${assetsPath}/${iconName}`;
-        });
+        await this._hydrateDataIconImgsIn(messageDiv);
 
         // 如果是短消息，允许换行并保持两端对齐
         if (isShortMessage) {
@@ -1679,6 +3550,7 @@ class ChatManager {
     async clearChat() {
         if (confirm('确定要清空所有对话记录吗？')) {
             this.messages = [];
+            this._saveCurrentSessionState();
             await this.renderMessages();
             console.log('对话已清空');
         }
@@ -1809,14 +3681,13 @@ class ChatManager {
         await this.renderMessages();
         this.scrollToBottom();
 
-        // 文本消息统一走 skills agent loop（与 sendMessage 保持一致）
         if (this.skillsEngine && (!userMessage.images || userMessage.images.length === 0)) {
             try {
-                await this.runSkillsWorkflow(message.content, userMessage);
+                await this._dispatchAfterTextUserMessage(message.content, userMessage);
                 console.log(`🔄 重新发送消息 ID: ${messageId}`);
                 return;
             } catch (error) {
-                console.error('❌ 重新发送 - skills 链路失败，回退到普通回复:', error);
+                console.error('❌ 重新发送 - 链路失败，回退到普通回复:', error);
             }
         }
 
@@ -2283,7 +4154,4 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // 导出到全局作用域
 window.ChatManager = ChatManager;
-window.chatManager = chatManager;
-
-
 

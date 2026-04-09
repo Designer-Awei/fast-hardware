@@ -10,7 +10,7 @@
 
 [🇨🇳 中文](README.md) | [🇺🇸 English](README_EN.md)
 
-[![Version](https://img.shields.io/badge/version-0.2.4-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
+[![Version](https://img.shields.io/badge/version-0.2.5-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
 [![Electron](https://img.shields.io/badge/Electron-27.0.0-47848F.svg)](https://electronjs.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-16+-339933.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -62,7 +62,7 @@
 ### 🚧 LLM智能助手 (规划中)
 自然语言交互，智能推荐硬件方案，自动生成电路设计。
 
-## ✨ 最新特性 (v0.2.4)
+## ✨ 最新特性 (v0.2.5)
 
 ### 📦 版本与发布
 - **一键同步版本号**: 修改 `package.json` 的 `version` 后执行 `npm run sync-version`，或直接 `npm run dist`（打包前会自动同步 `index.html`、`main.js`、`assets/update.txt`、中英文 README）
@@ -84,7 +84,7 @@
 - **开发版本状态提示**: 当本地版本高于远程版本时，更新区会显示“当前为开发版本”
 
 ### 📚 文档与版本同步
-- **版本升级**: 项目当前版本升级为 `0.2.4`
+- **版本升级**: 项目当前版本升级为 `0.2.5`
 - **更新日志链接修正**: README 中的更新日志入口同步指向现有的 `0-Change-Log.md`
 
 ---
@@ -94,9 +94,12 @@
 ### 🚀 项目多标签页管理系统
 - **多项目同时打开**: 支持同时打开多个项目，通过标签页快速切换
 - **新建项目功能**: 一键创建空白项目，默认画布位置统一
+- **默认项目标签**: 启动即展示 `未命名项目` 标签，作为默认会话与工作区锚点
 - **独立画布状态**: 每个项目拥有完全独立的画布数据和视图状态
+- **未保存改动恢复**: 切换标签后返回原项目时，优先恢复内存中的未保存画布改动
 - **修改状态标记**: 项目修改后显示红点，保存后自动消失
 - **智能状态保存**: 切换项目时自动保存和恢复画布状态
+- **会话与草稿隔离**: 聊天会话与固件代码编辑草稿按项目独立保存与切换
 
 ### ✨ UI/UX 体验优化
 - **项目标签栏**: 新增40px高度固定标签栏，支持横向滚动
@@ -132,7 +135,7 @@
 
 #### 🚀 LLM智能助手集成 (核心功能)
 
-- **SiliconFlow AI API**: 集成GLM-4-9B、GLM-4.1V-9B-Thinking、Qwen3-8B、Hunyuan-MT-7B等多款AI模型
+- **SiliconFlow AI API**: 默认对话模型 Qwen3.5-27B，另支持 GLM-4-9B（备选）、GLM-4.1V、Qwen3-8B 等多款模型
 - **智能对话界面**: 完整的聊天系统，支持流式消息输出和markdown渲染
 - **高级Markdown支持**: 标题自动清理序号、嵌套列表递归解析、代码块语法高亮
 - **代码块智能处理**: 提取代码块→占位符替换→marked渲染→精确插入的完整流程
@@ -188,10 +191,10 @@ fast-hardware/
 │   │   ├── 📁 standard/          # 标准元件库 (std-*)
 │   │   └── 📁 custom/            # 自定义元件库 (ctm-*)
 │   └── 📁 projects/              # 用户项目目录
-├── 📁 scripts/                   # 前端脚本
+├── 📁 scripts/                   # 前端脚本（含 chat.js、circuit-skills-engine.js、skills-progress-bus.js 等）
 ├── 📁 styles/                    # 样式文件
 ├── 📁 dist/                      # 构建输出目录 (打包后生成)
-│   ├── Fast-Hardware-Setup-0.2.4.exe    # Windows安装程序
+│   ├── Fast-Hardware-Setup-0.2.5.exe    # Windows安装程序
 │   ├── Fast Hardware-0.1.9-win.zip      # Windows绿色版
 │   └── win-unpacked/                    # 未打包版本
 ├── 📄 main.js                    # Electron主进程
@@ -203,7 +206,7 @@ fast-hardware/
 ### 📊 技术栈
 
 - **前端框架**: Electron 27.0.0 + HTML5 + CSS3 + JavaScript ES6
-- **AI集成**: SiliconFlow API (GLM-4-9B, GLM-4.1V-9B-Thinking, Qwen3-8B, Hunyuan-MT-7B)
+- **AI集成**: SiliconFlow API（默认 Qwen3.5-27B 对话；GLM / Qwen / DeepSeek 等在线列表）
 - **Markdown渲染**: marked.js (业界标准markdown解析引擎)
 - **画布渲染**: HTML5 Canvas API
 - **数据存储**: JSON文件系统 + 本地配置持久化
@@ -291,7 +294,7 @@ npm run clean:dist
 ### 分发文件说明
 
 #### 🎯 **Windows (64位专用)**
-- **`Fast-Hardware-Setup-0.2.4.exe`** (约76MB) - **专业安装程序**
+- **`Fast-Hardware-Setup-0.2.5.exe`** (约76MB) - **专业安装程序**
   - ✅ 自定义安装路径选择
   - ✅ 自动创建桌面快捷方式
   - ✅ 自动创建开始菜单快捷方式
@@ -311,7 +314,7 @@ npm run clean:dist
 - **存储空间**: 200MB 可用空间
 
 ### 🚀 安装指南
-1. 下载 `Fast-Hardware-Setup-0.2.4.exe`
+1. 下载 `Fast-Hardware-Setup-0.2.5.exe`
 2. 双击运行安装程序
 3. 选择安装位置（可自定义）
 4. 按照提示完成安装

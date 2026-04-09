@@ -14,6 +14,31 @@ Fast Hardware
 - 创客和DIY爱好者
 - 需要快速原型开发的工程师
 
+## 📎 需求子文档（`feature-prd/`）
+
+| 文档 | 说明 |
+|------|------|
+| **`0-PRD.md`** | 产品总览（本文档） |
+| **`1-edit_prd.md`** | 自定义元件 / 元件编辑器 |
+| **`2-circuit_prd.md`** | 电路画布与项目管理 |
+| **`3-skills_prd.md`** | LLM Skills 产品策略与能力边界 |
+| **`4-agent-loop_prd.md`** | 主进程 **Agent Loop**、IPC、`runSkillsAgentLoop` 与 `skills/skills` 目录落点 |
+| **`5-cli_prd.md`** | 命令行工具（CLI） |
+| **`6-project-isolation_prd.md`** | **项目级隔离**（多标签下聊天 / 画布内存 / 固件草稿按项目隔离，**已落地**） |
+
+## 🔢 版本号、变更日志与同步脚本
+
+- **产品版本（semver）** 的**唯一事实来源**：仓库根目录 **`package.json`** 的 **`version`** 字段（当前开发与安装包均以该字段为准）。
+- **变更日志**：根目录 **`0-Change-Log.md`**，按 **`v0.2.x`** 分段维护。
+  - **已发布线**：以 **`package.json`** 与 CHANGELOG 中对应 **`v0.2.5`** 小节一致为准。
+  - **在研线**：CHANGELOG 中 **`v0.2.6 (2026-03-21) — Skills 架构降级（开发中）`** 及 dated 补充（如 **2026-04-07** 项目隔离、**2026-04-09** 工作区工具真测等）描述**尚未随当前 `package.json` 版本集中发布**的能力与债务；发布下一版时需在 **`package.json`** 中 bump **`version`**，更新 CHANGELOG 表述，并执行下文 **`npm run sync-version`**。
+- **展示用版本字符串同步**：**`npm run sync-version`** → **`scripts/sync-version.js`**
+  - **读入**：**`package.json` → `version`**
+  - **写回**（有变更才写入）：**`index.html`**（关于页 `Fast Hardware v…`）、**`main.js`**（HTTP **`User-Agent`: `Fast-Hardware/<version>`**）、**`assets/update.txt`**（JSON 数组首元素的 **`version`**）、**`README.md`** / **`README_EN.md`**（徽章、最新特性标题、安装包文件名示例、版本升级段落等，规则见脚本内 **`applyReadmeVersionPatterns`**）
+  - **刻意不修改**：**`package-lock.json`**（避免触动依赖 semver 范围）；**`model_config.json`** 的 **`version`** 表示**模型清单模式版本**，与产品 **`app` semver** 无关。
+- **打包**：**`npm run dist`** 经 **`scripts/build-dist.js`** 在清理/构建前调用 **`syncVersionFromPackageJson()`**，与手动执行 **`sync-version`** 行为一致。
+- **本 PRD**：路线图与上表 **CHANGELOG `v0.2.6` 在研** 对齐，**不在正文硬编码补丁号**；需要「当前对外版本」时以 **`package.json`** 为准。
+
 ## 🎯 核心功能 (按优先级排序)
 
 ### 1. 自定义元件绘制系统 (已完成 ✅)
@@ -52,16 +77,22 @@ Fast Hardware
 
 **开发进度**: 按照2-circuit_prd.md规划中
 
-### 3. 智能对话辅助系统 (下一阶段 📋)
-- **功能描述**: LLM驱动的对话栏，支持自然语言交互
+### 3. 智能对话辅助系统 (进行中 🚀)
+- **功能描述**: LLM驱动的对话栏，支持自然语言交互；主进程 **`runSkillsAgentLoop`** 多轮编排 skills 与工作区读盘工具。
 - **核心价值**: 降低硬件选型和电路设计门槛
-- **用户场景**: 用户通过对话描述需求，LLM自动生成电路方案
+- **用户场景**: 用户通过对话描述需求，由 Agent 按需调用 scheme / 连线 / 固件等 skills
 - **关键特性**:
-  - 功能需求反推硬件选型
-  - 预设函数直接操作画布JSON
-  - 电路系统搭建示意生成
+  - 辅助型 skills 编排（非固定流水线）
+  - 已打开项目时可 **`workspace_*`** 读本地 `circuit_config.json`、`.ino` 等
+  - 与画布快照协同的 **`wiring_edit_skill`** / **`firmware_codegen_skill`**
 
-**开发进度**: 按照3-skills_prd.md规划中
+**架构与进度**:
+- **产品能力 / 策略**：**`3-skills_prd.md`**
+- **Agent Loop、IPC、目录边界**：**`4-agent-loop_prd.md`**
+
+### 3b. 多项目与会话隔离 (已完成 ✅)
+- **功能描述**: 顶部多项目标签下，**右侧聊天历史**、**技能进度展示**、**画布未保存内存态**、**固件编辑器草稿**均按 **`projectId`** 隔离；启动与「关闭最后一标签」时统一回落 **`未命名项目`**。
+- **需求细则与验收**：**`6-project-isolation_prd.md`**（文档内标注 **已落地**）
 
 ### 4. 固件代码生成 (规划中)
 - **功能描述**: 基于电路配置自动生成Arduino代码
@@ -556,15 +587,17 @@ graph TD
 - [x] **打包部署**: 完整数据打包和跨环境兼容
 
 ### 阶段三：LLM智能助手集成 (当前开发重点 🚀)
-#### 核心目标: 按照3-skills_prd.md实现完整的LLM技能工作流
-- [ ] **LLM对话栏**: 基础文本交互和智能响应
-- [ ] **需求分析流程**: 自然语言理解和硬件需求分析
-- [ ] **元件推荐算法**: 基于需求的智能硬件推荐
-- [ ] **自动连线功能**: LLM生成连线方案
-- [ ] **固件代码生成**: 基于电路配置生成Arduino代码
+#### 核心目标: 按 **`3-skills_prd.md`**（策略）与 **`4-agent-loop_prd.md`**（编排）演进 LLM 与 Skills
+- [x] **主进程 Agent Loop**: 多轮 JSON 规划 + tool 执行 + 最终流式合成（SiliconFlow 等）
+- [x] **项目级会话与状态隔离**: 多标签下聊天 / 画布内存 / 固件草稿按项目隔离（**`6-project-isolation_prd.md`**）
+- [x] **LLM对话栏**: 基础文本交互与智能响应（与上述 Agent 编排打通）
+- [ ] **需求分析流程**: 自然语言理解与硬件需求分析（随 **`scheme_design_skill`** 等持续打磨）
+- [ ] **元件推荐算法**: 基于需求的智能硬件推荐（与 **`completion_suggestion_skill`** / 库匹配协同）
+- [ ] **自动连线功能**: LLM 生成连线方案（**`wiring_edit_skill`** 等）
+- [ ] **固件代码生成**: 基于电路配置生成 Arduino 代码（**`firmware_codegen_skill`**）
 - [ ] **LLM与手动操作协调**: 增量更新和冲突处理
 - [ ] **高级LLM交互**: 语音交互、上下文理解等
-- [ ] **API集成**: 支持多种LLM服务提供商
+- [x] **API集成（一期）**: SiliconFlow Chat Completions 等已接入；多种服务商为后续项
 
 ### 阶段四：高级功能扩展 (待定)
 - [ ] 电路仿真功能
@@ -606,8 +639,10 @@ graph TD
 - [x] 双路径管理（项目文件夹 + 系统元件库）
 - [x] 完整数据打包和跨环境兼容
 
-#### LLM智能助手系统 (下一阶段)
-- [ ] LLM能够根据需求推荐合适的硬件清单
+#### LLM智能助手系统 (进行中)
+- [x] 多项目下对话与 Agent 进度**不串话**（项目级隔离）
+- [x] 主进程 **Agent Loop** 可多次调用 skills / 工作区工具并完成用户可见答复
+- [ ] LLM能够根据需求推荐合适的硬件清单（质量与覆盖持续迭代）
 - [ ] 系统能够生成正确的电路连接方案
 - [ ] 生成的固件代码能够成功编译和运行
 - [ ] LLM与手动操作能够协调配合
@@ -675,26 +710,26 @@ graph TD
    - 提供数据验证和修复工具
    - 支持增量式LLM更新
 
-## 📝 后续迭代计划
+## 📝 版本与路线图（与 `0-Change-Log.md` / `package.json` 对齐）
 
-### 版本 1.8 规划 (LLM基础集成)
-- [ ] LLM对话栏集成
-- [ ] 基础API配置管理
-- [ ] 简单需求分析功能
-- [ ] 基础元件推荐
+下文采用与仓库 **CHANGELOG** 一致的 **semver（`v0.2.x`）**；原「1.8 / 2.0 / 3.0」式版本代号已弃用，避免与真实发包版本脱节。
 
-### 版本 2.0 规划 (LLM深度集成)
-- [ ] 智能电路生成
-- [ ] 固件代码自动生成
-- [ ] LLM与手动操作协调
-- [ ] 高级对话交互
+### 当前已发布
+- **v0.2.5**（详见 **`0-Change-Log.md`**「v0.2.5」）：Skills 包与 **`skills/index.js`**、Agent 架构说明、单 skill 真测与文档等；与 **`package.json` `version`** 一致。
 
-### 版本 3.0 规划 (生态扩展)
-- [ ] 电路仿真功能
-- [ ] 协作功能
-- [ ] 云端同步
-- [ ] 社区元件库
-- [ ] AI助手语音交互
-- [ ] 实时硬件调试
-- [ ] 移动端支持
+### 进行中 — v0.2.6（开发中）
+与 **`0-Change-Log.md`** 置顶小节 **「v0.2.6 — Skills 架构降级（开发中）」** 及各期 **dated 补充**对齐，主要包括但不限于：
+- 主进程 **`runSkillsAgentLoop`**、**`skills-agent-shared`**、主进程 **`executeSkillInMain`** + 渲染进程 **`CircuitSkillsEngine`** RPC
+- **Skills 辅助型**裁剪（`wiring_edit` / `firmware_codegen` / `scheme_design` 等）与工作区 **`workspace_*`** 读盘工具
+- **项目级会话 / 画布内存 / 固件草稿隔离**（需求见 **`6-project-isolation_prd.md`**）
+- 上下文压缩、工具结果压缩、`max_tokens` 与真测脚本等（以 CHANGELOG 条目为准）
+
+**发布 Checklist**：**`package.json`** bump → **`npm run sync-version`** → 整理 **`0-Change-Log.md`** 对外说明 → **`npm run dist`**（或等价发布流程）。
+
+### 近期（0.2.x → 0.3.x 方向）
+- **LLM 与 Skills 质量**：需求分析 / BOM / 连线方案 / 固件生成可靠性与手动画布协同（参见上文「阶段三」未勾选项）
+- **API 与配置**：多厂商 LLM、观测性、设置与安全边界
+
+### 远期（滚动 backlog）
+- 电路仿真、多人协作、云端同步、社区元件库、语音交互、实时硬件调试、移动端等；纳入某次 **`v0.x` 或 `v1.x`** 时以 **CHANGELOG** 与 **`package.json`** 为准。
 

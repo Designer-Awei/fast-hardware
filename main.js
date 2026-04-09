@@ -3,11 +3,25 @@
  * 纯Electron实现，无React框架
  */
 
+/**
+ * 开发模式下关闭渲染进程控制台中的 Electron 安全提示（含「未设置 CSP / unsafe-eval」等）。
+ * 官方说明：打包后该提示默认不出现；此变量仅影响开发态日志，不删除任何 CSP 配置（本项目 HTML 未设 CSP meta）。
+ * @see https://www.electronjs.org/docs/latest/tutorial/security#checklist-security-recommendations
+ */
+process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
+
 const { app, BrowserWindow, Menu, ipcMain, screen, shell, dialog, nativeTheme } = require('electron');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const fs = require('fs').promises;
 const https = require('https');
+const { setupSkillsEngineBridge } = require('./scripts/skills/renderer-engine-bridge');
+const { executeSkillInMain } = require('./scripts/skills/main-skill-executor');
+const { runSkillsAgentLoop } = require('./scripts/agent/skills-agent-loop');
+const { clearAbort, requestAbort } = require('./scripts/agent/skills-agent-loop-abort');
+const { executeProjectWorkspaceToolCall } = require('./scripts/agent/project-workspace-tools');
+
+setupSkillsEngineBridge();
 
 let autoUpdater = null;
 try {
@@ -97,6 +111,8 @@ function getSettingsKeyMap() {
     storagePath: 'PROJECT_STORAGE_PATH=',
     componentLibPath: 'COMPONENT_LIB_PATH=',
     apiKey: 'SILICONFLOW_API_KEY=',
+    /** SiliconFlow Chat Completions：与 `resolveSiliconFlowEnableThinking` / 设置页「模型思考」一致 */
+    siliconFlowEnableThinking: 'SILICONFLOW_ENABLE_THINKING=',
     autoCheckUpdates: 'AUTO_CHECK_UPDATES='
   };
 }
@@ -109,15 +125,17 @@ function getSettingsKeyMap() {
 async function readSettingValue(key) {
   try {
     const envContent = await fs.readFile(getEnvPath(), 'utf8');
-    const lines = envContent.split('\n');
+    /** @type {string[]} */
+    const lines = envContent.split(/\r?\n/);
     const envKey = getSettingsKeyMap()[key];
     if (!envKey) {
       return undefined;
     }
 
     for (const line of lines) {
-      if (line.startsWith(envKey)) {
-        const value = line.substring(envKey.length).trim();
+      const t = line.replace(/^\uFEFF/, '').trimStart();
+      if (t.startsWith(envKey)) {
+        const value = t.substring(envKey.length).trim();
         return value || undefined;
       }
     }
@@ -126,6 +144,32 @@ async function readSettingValue(key) {
   } catch (error) {
     return undefined;
   }
+}
+
+/**
+ * 从 env.local 解析 SiliconFlow「模型思考」开关（`SILICONFLOW_ENABLE_THINKING`），与设置页「模型思考」一致。
+ * 缺省为 false；接受 true/false、1/0、yes/no（大小写不敏感）。
+ * @returns {Promise<boolean>}
+ */
+async function resolveSiliconFlowEnableThinking() {
+  const raw = await readSettingValue('siliconFlowEnableThinking');
+  if (raw === undefined || raw === null) {
+    return false;
+  }
+  const s = String(raw).trim().toLowerCase();
+  if (s === 'true' || s === '1' || s === 'yes') {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * 将当前「模型思考」偏好写入 `process.env.SILICONFLOW_ENABLE_THINKING`，便于子进程/日志与其它读取 env 的逻辑一致。
+ * @param {boolean} enabled
+ * @returns {void}
+ */
+function applySiliconFlowEnableThinkingToProcessEnv(enabled) {
+  process.env.SILICONFLOW_ENABLE_THINKING = enabled ? 'true' : 'false';
 }
 
 /**
@@ -163,7 +207,7 @@ function getDefaultModelEnhancementConfig() {
   return {
     version: '2.0.0',
     defaults: {
-      chat: 'THUDM/GLM-4-9B-0414',
+      chat: 'Qwen/Qwen3.5-27B',
       thinking: 'Qwen/Qwen3-8B',
       visual: 'Qwen/Qwen2.5-VL-32B-Instruct'
     },
@@ -185,12 +229,25 @@ function getDefaultModelEnhancementConfig() {
       maxCostLevel: 'high'
     },
     overrides: {
+      'Qwen/Qwen3.5-27B': {
+        displayName: 'Qwen3.5-27B',
+        appType: 'chat',
+        capabilities: ['text', 'code', 'long_context'],
+        description: '默认对话模型',
+        priority: 100,
+        costLevel: 'medium',
+        pricing: {
+          inputPerMillion: null,
+          outputPerMillion: null,
+          currency: 'CNY'
+        }
+      },
       'THUDM/GLM-4-9B-0414': {
         displayName: 'GLM-4-9B',
         appType: 'chat',
         capabilities: ['text', 'code'],
-        description: '默认对话模型',
-        priority: 100,
+        description: '备选小尺寸对话模型',
+        priority: 72,
         costLevel: 'low',
         pricing: {
           inputPerMillion: null,
@@ -466,7 +523,7 @@ async function fetchPublicPageText({ hostname, path: requestPath }) {
       path: requestPath,
       method: 'GET',
       headers: {
-        'User-Agent': 'Fast-Hardware/0.2.4'
+        'User-Agent': 'Fast-Hardware/0.2.5'
       }
     }, (res) => {
       let responseBody = '';
@@ -614,7 +671,7 @@ async function fetchOfficialPricingMap(rawModels) {
 }
 
 /**
- * 推断模型显示名称
+ * 推断模型显示名称（与 SiliconFlow `id` 对齐：保留 MoE 等后缀如 -A3B/-A17B，避免与同名稠密模型混淆）
  * @param {string} modelName - 原始模型名称
  * @returns {string} 显示名称
  */
@@ -623,8 +680,7 @@ function deriveDisplayName(modelName) {
   return rawName
     .replace(/-Instruct$/i, '')
     .replace(/-Chat$/i, '')
-    .replace(/-\d{4,8}$/i, '')
-    .replace(/-A\d+B$/i, '');
+    .replace(/-\d{4,8}$/i, '');
 }
 
 /**
@@ -1616,6 +1672,9 @@ AUTO_CHECK_UPDATES=true
 # SiliconFlow API 密钥 / SiliconFlow API Key
 # 请通过应用程序设置页面配置 / Please configure through application settings page
 # SILICONFLOW_API_KEY=your_api_key_here
+
+# SiliconFlow：是否在 Chat Completions 中启用 enable_thinking（与设置页「模型思考」一致，默认关）
+SILICONFLOW_ENABLE_THINKING=false
 `;
 
     // 写入默认配置文件
@@ -1866,6 +1925,8 @@ app.whenReady().then(async () => {
   // 初始化用户配置文件
   await initializeUserConfig();
 
+  applySiliconFlowEnableThinkingToProcessEnv(await resolveSiliconFlowEnableThinking());
+
   setupAutoUpdater();
   createWindow();
 
@@ -1910,6 +1971,119 @@ ipcMain.handle('get-app-version', () => {
 
 ipcMain.handle('get-platform', () => {
   return process.platform;
+});
+
+/**
+ * 主进程执行 skill（`skills/skills/<skillId>/index.js`）；`CircuitSkillsEngine` 经 `skills-engine-invoke` 在渲染进程执行。
+ * @param {import('electron').IpcMainInvokeEvent} event
+ * @param {{ skillName: string, args?: unknown, ctxPayload?: { userRequirement?: string, canvasSnapshot?: unknown } }} payload
+ * @returns {Promise<unknown>}
+ */
+ipcMain.handle('execute-skill', async (event, payload) => {
+  try {
+    return await executeSkillInMain(event.sender, payload);
+  } catch (e) {
+    console.error('[execute-skill]', e?.message || e);
+    return { success: false, error: e?.message || String(e) };
+  }
+});
+
+/**
+ * 主进程 Skills Agent 多轮循环（原渲染进程 `runSkillsAgentLoop` 编排逻辑）。
+ * 进度经 `webContents.send('skills-agent-loop-progress', detail)` 发往渲染进程。
+ * @param {import('electron').IpcMainInvokeEvent} event
+ * @param {{ userMessage?: string, model?: string, temperature?: number, canvasSnapshot?: unknown }} payload
+ * @returns {Promise<{ success: boolean, ok?: boolean, outcome?: string, assistantMessages?: Array<{type:string, content?:string}>, error?: string, errorMessage?: string }>}
+ */
+ipcMain.on('skills-agent-loop-abort', (event) => {
+  try {
+    if (!event.sender.isDestroyed()) {
+      requestAbort(event.sender.id);
+    }
+  } catch (e) {
+    console.warn('[skills-agent-loop-abort]', e?.message || e);
+  }
+});
+
+ipcMain.handle('run-skills-agent-loop', async (event, payload) => {
+  const wcId = event.sender.id;
+  clearAbort(wcId);
+
+  const p = payload && typeof payload === 'object' ? payload : {};
+  const userMessage = String(p.userMessage || '');
+  const model = String(p.model || '');
+  const temperature = typeof p.temperature === 'number' ? p.temperature : 0.2;
+  const canvasSnapshot = p.canvasSnapshot;
+  const projectPath = String(p.projectPath || '').trim();
+
+  try {
+    const result = await runSkillsAgentLoop(event.sender, {
+      userMessage,
+      model,
+      temperature,
+      canvasSnapshot,
+      projectPath,
+      callLLM: async (messages, mdl, temp, meta) => {
+        const temperature = typeof temp === 'number' ? temp : 0.2;
+        if (meta && meta.mode === 'stream_markdown') {
+          const sr = await callSiliconFlowAPIStream(event.sender, messages, mdl, {
+            temperature,
+            longOutput: true,
+            chunkChannel: 'skills-agent-loop-final-stream-chunk'
+          });
+          if (!sr.success) {
+            throw new Error(sr.error || 'LLM 流式调用失败');
+          }
+          return { content: sr.content || '' };
+        }
+        const r = await callSiliconFlowAPI(messages, mdl, {
+          temperature,
+          longOutput: true
+        });
+        if (!r.success) {
+          throw new Error(r.error || 'LLM API 调用失败');
+        }
+        return { content: r.content };
+      }
+    });
+    return { success: true, ...result };
+  } catch (e) {
+    console.error('[run-skills-agent-loop]', e?.message || e);
+    return {
+      success: false,
+      error: e?.message || String(e)
+    };
+  } finally {
+    clearAbort(wcId);
+  }
+});
+
+/**
+ * 渲染进程直连对话：执行项目工作区读盘工具（与主进程 `project-workspace-tools` 同源实现）。
+ */
+ipcMain.handle('execute-project-workspace-tool', async (event, payload) => {
+  const p = payload && typeof payload === 'object' ? payload : {};
+  const projectRoot = String(p.projectRoot || '').trim();
+  const toolName = String(p.toolName || '');
+  const args = p.args && typeof p.args === 'object' ? p.args : {};
+  try {
+    return await executeProjectWorkspaceToolCall(toolName, args, projectRoot);
+  } catch (e) {
+    return { success: false, error: e?.message || String(e) };
+  }
+});
+
+/**
+ * 渲染进程 skills / agent 进度：由 preload `publishAgentSkillProgress` 发来，原路 `agent-skill-progress` 广播回同一 webContents，
+ * 便于 `onAgentSkillProgress` 订阅（与聊天区内联进度文案同源）。
+ */
+ipcMain.on('agent-skill-progress-emit', (event, detail) => {
+  try {
+    if (event.sender.isDestroyed()) return;
+    event.sender.send('agent-skill-progress', detail == null ? {} : detail);
+  } catch (e) {
+    console.warn('[ipc] agent-skill-progress-emit failed:', e?.message || e);
+  }
 });
 
 ipcMain.handle('get-update-state', async () => {
@@ -2515,6 +2689,9 @@ process.on('unhandledRejection', (reason, promise) => {
 // 获取设置值（从env.local文件）
 ipcMain.handle('get-settings', async (event, key) => {
   try {
+    if (key === 'siliconFlowEnableThinking') {
+      return (await resolveSiliconFlowEnableThinking()) ? 'true' : 'false';
+    }
     return await readSettingValue(key);
   } catch (error) {
     console.log('读取设置失败:', error.message);
@@ -2542,6 +2719,9 @@ ipcMain.handle('save-settings', async (event, key, value) => {
 
 # SiliconFlow API Key
 SILICONFLOW_API_KEY=
+
+# SiliconFlow：是否在 Chat Completions 中启用 enable_thinking（true/false，默认 false）
+SILICONFLOW_ENABLE_THINKING=false
 
 # Project Storage Path
 PROJECT_STORAGE_PATH=
@@ -2581,6 +2761,9 @@ AUTO_CHECK_UPDATES=true`;
     await fs.writeFile(envPath, newContent, 'utf8');
 
     console.log(`${key}已保存到env.local文件`);
+    if (key === 'siliconFlowEnableThinking') {
+      applySiliconFlowEnableThinkingToProcessEnv(await resolveSiliconFlowEnableThinking());
+    }
     if (key === 'autoCheckUpdates') {
       broadcastUpdateStatus({
         autoCheckEnabled: value !== 'false'
@@ -2652,7 +2835,11 @@ ipcMain.handle('save-api-key', async (event, apiKey) => {
 # SiliconFlow API 密钥 / SiliconFlow API Key
 # 用于访问SiliconFlow AI服务的API密钥 / API key for accessing SiliconFlow AI services
 
-SILICONFLOW_API_KEY=`;
+SILICONFLOW_API_KEY=
+
+# SiliconFlow：模型思考 enable_thinking（与设置页一致，默认关）
+SILICONFLOW_ENABLE_THINKING=false
+`;
     }
 
     // 更新或添加API密钥
@@ -2725,31 +2912,374 @@ ipcMain.handle('load-api-key', async () => {
 });
 
 /**
+ * 从 SiliconFlow Chat Completions 的 choice.message 提取正文（兼容数组型 content；无 content 时回退 reasoning_content）
+ * @param {object|null|undefined} message
+ * @returns {string}
+ */
+function extractSiliconFlowChoiceMessageContent(message) {
+  if (!message || typeof message !== 'object') return '';
+  const c = message.content;
+  if (typeof c === 'string') return c;
+  if (Array.isArray(c)) {
+    return c
+      .map((part) => {
+        if (typeof part === 'string') return part;
+        if (part && typeof part === 'object') {
+          if (typeof part.text === 'string') return part.text;
+          if (part.type === 'text' && typeof part.text === 'string') return part.text;
+        }
+        return '';
+      })
+      .join('');
+  }
+  return '';
+}
+
+/**
+ * 从 Chat Completions **流式** SSE chunk 的 JSON 提取增量文本（OpenAI 兼容 `choices[0].delta`）
+ * @param {object|null|undefined} obj - `data: {...}` 解析后的对象
+ * @param {{ userFacingOnly?: boolean }} [options] - `userFacingOnly` 默认 true：不把 `reasoning_content` 混入用户可见流/最终结果，避免直连气泡先闪「未读盘/思考」再被正文覆盖。
+ * @returns {string}
+ */
+function extractSiliconFlowStreamDelta(obj, options = {}) {
+  const userFacingOnly = options.userFacingOnly !== false;
+  if (!obj || typeof obj !== 'object') return '';
+  const choice = obj.choices && obj.choices[0];
+  if (!choice || typeof choice !== 'object') return '';
+  const delta = choice.delta;
+  if (!delta || typeof delta !== 'object') return '';
+  if (typeof delta.content === 'string') return delta.content;
+  if (Array.isArray(delta.content)) {
+    return delta.content
+      .map((part) => {
+        if (typeof part === 'string') return part;
+        if (part && typeof part === 'object') {
+          if (typeof part.text === 'string') return part.text;
+          if (part.type === 'text' && typeof part.text === 'string') return part.text;
+        }
+        return '';
+      })
+      .join('');
+  }
+  if (!userFacingOnly && typeof delta.reasoning_content === 'string') return delta.reasoning_content;
+  return '';
+}
+
+/**
+ * 从 SiliconFlow HTTP 错误 JSON 提取可读说明（兼容 OpenAI 风格 `error: { message, code }` 与 SiliconCloud 顶层 `code`/`message`）
+ * @param {object|null|undefined} responseData - `JSON.parse` 后的响应体
+ * @returns {{ message: string, code: string|number|null }}
+ */
+function parseSiliconFlowErrorPayload(responseData) {
+  if (!responseData || typeof responseData !== 'object') {
+    return { message: '', code: null };
+  }
+  const nested = responseData.error;
+  if (nested && typeof nested === 'object') {
+    const m = typeof nested.message === 'string' ? nested.message.trim() : '';
+    const c = nested.code != null ? nested.code : null;
+    if (m || c != null) {
+      return { message: m || '未知错误', code: c };
+    }
+  }
+  const topMsg = typeof responseData.message === 'string' ? responseData.message.trim() : '';
+  const topCode = responseData.code != null ? responseData.code : null;
+  if (topMsg || topCode != null) {
+    return { message: topMsg || '未知错误', code: topCode };
+  }
+  return { message: '', code: null };
+}
+
+/** 普通对话默认最大生成 token（与文档示例量级一致；过大易触发服务端 500 / code 50507） */
+const SILICONFLOW_DEFAULT_CHAT_MAX_TOKENS = 8192;
+
+/** Skills Agent 等长输出场景的上限（仍须低于多数模型输出上限，避免顶满上下文） */
+const SILICONFLOW_LONG_OUTPUT_MAX_TOKENS = 32768;
+
+/** 请求体允许的单次 max_tokens 硬顶（历史上误用 100000 曾导致 SiliconFlow 返回未知错误） */
+const SILICONFLOW_MAX_TOKENS_HARD_CAP = 32768;
+
+/**
+ * 解析本次请求的 max_tokens（禁止再使用 100000 级「顶格」值）
+ * @param {{ temperature?: number, max_tokens?: number, longOutput?: boolean }} [options]
+ * @returns {number}
+ */
+function resolveSiliconFlowMaxTokens(options = {}) {
+  if (typeof options.max_tokens === 'number' && options.max_tokens > 0) {
+    return Math.min(Math.floor(options.max_tokens), SILICONFLOW_MAX_TOKENS_HARD_CAP);
+  }
+  if (options.longOutput === true) {
+    return SILICONFLOW_LONG_OUTPUT_MAX_TOKENS;
+  }
+  return SILICONFLOW_DEFAULT_CHAT_MAX_TOKENS;
+}
+
+/**
+ * 将模型 ID 中的易混 Unicode 规范为 ASCII，便于与官方 `model` 字符串匹配（避免全角「．」导致误判）。
+ * @param {string} modelName
+ * @returns {string}
+ */
+function normalizeModelIdForSiliconFlowChecks(modelName) {
+  return String(modelName || '')
+    .trim()
+    .replace(/\uFEFF/g, '')
+    .replace(/\uFF0E/g, '.');
+}
+
+/**
+ * 是否允许在请求体中带 `enable_thinking`（**仅白名单**）。
+ * SiliconFlow 仅部分模型支持该字段；未列出的模型（含 **Qwen2.5-VL** 等）带上会 **400**。
+ * 与 `docs.siliconflow.com` Chat Completions 说明一致，并包含已验证的 **Qwen3.5-27B** 文本线。
+ * @param {string} modelName - `model` 字段
+ * @returns {boolean} 仅在为 true 时写入 `enable_thinking`
+ */
+function modelAllowsSiliconFlowEnableThinkingParameter(modelName) {
+  const m = normalizeModelIdForSiliconFlowChecks(modelName);
+  if (!m) return false;
+  const lower = m.toLowerCase();
+
+  // 视觉 / Qwen-VL：一律不传（与是否发图无关，避免时序与 ID 变体问题）
+  if (lower.includes('qwen2.5-vl') || lower.includes('qwen2-vl')) return false;
+  if (lower.includes('qwen3.5-vl') || lower.includes('qwen3-vl')) return false;
+  if (lower.includes('qwen3-') && lower.includes('-vl')) return false;
+
+  /** @type {string[]} 前缀匹配（小写） */
+  const allowedPrefixes = [
+    'qwen/qwen3-8b',
+    'qwen/qwen3-14b',
+    'qwen/qwen3-32b',
+    'qwen/qwen3-30b-a3b',
+    'qwen/qwen3-235b-a22b',
+    'qwen/qwen3.5-',
+    'tencent/hunyuan-a13b-instruct',
+    'zai-org/glm-4.6v',
+    'zai-org/glm-4.5v',
+    'deepseek-ai/deepseek-v3.1',
+    'deepseek-ai/deepseek-v3.2'
+  ];
+
+  for (const p of allowedPrefixes) {
+    if (lower === p || lower.startsWith(p)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * SiliconFlow 流式 Chat Completions（SSE）；增量经 `webContents.send(chunkChannel)` 发往渲染进程（默认 `siliconflow-chat-stream-chunk`）
+ * @param {import('electron').WebContents} webContents
+ * @param {Array} messages
+ * @param {string} model
+ * @param {{ temperature?: number, max_tokens?: number, longOutput?: boolean, siliconFlowEnableThinking?: boolean, chunkChannel?: string }} [options] - `chunkChannel` 缺省为 `siliconflow-chat-stream-chunk`；Agent 最终 synthesis 用 `skills-agent-loop-final-stream-chunk`
+ * @returns {Promise<{ success: boolean, content?: string, error?: string, statusCode?: number, errorType?: string, debugInfo?: object }>}
+ */
+function callSiliconFlowAPIStream(webContents, messages, model, options = {}) {
+  return new Promise((resolve) => {
+    let settled = false;
+    /** @type {NodeJS.Timeout|null} */
+    let timeoutId = null;
+    /** @param {any} r */
+    const finish = (r) => {
+      if (settled) return;
+      settled = true;
+      if (timeoutId != null) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      resolve(r);
+    };
+
+    const temperature = typeof options.temperature === 'number' ? options.temperature : 0.7;
+    /** 不 await：在 Promise executor 内同步拉起请求 */
+    readSiliconFlowApiKey()
+      .then((apiKey) => {
+        if (!apiKey) {
+          finish({ success: false, error: '未找到SiliconFlow API密钥，请在设置中配置' });
+          return;
+        }
+        return (async () => {
+          let enableThinking = await resolveSiliconFlowEnableThinking();
+          if (typeof options.siliconFlowEnableThinking === 'boolean') {
+            enableThinking = options.siliconFlowEnableThinking;
+          }
+          const thinkingParamAllowed = modelAllowsSiliconFlowEnableThinkingParameter(model);
+          const requestData = {
+            model: model,
+            messages: messages,
+            stream: true,
+            max_tokens: resolveSiliconFlowMaxTokens(options),
+            temperature
+          };
+          if (thinkingParamAllowed) {
+            requestData.enable_thinking = enableThinking;
+          }
+          if (!thinkingParamAllowed) {
+            delete requestData.enable_thinking;
+          }
+
+          const thinkingBodySummary = thinkingParamAllowed
+            ? `已写入 enable_thinking=${requestData.enable_thinking}（${enableThinking ? '开启思考' : '关闭思考'}）`
+            : '未写入 enable_thinking（本模型不在白名单，避免无效字段/400）';
+          console.log(
+            '[chat-api] SiliconFlow 流式请求 stream=true |',
+            thinkingBodySummary,
+            '| 渲染层覆盖 siliconFlowEnableThinking:',
+            typeof options.siliconFlowEnableThinking === 'boolean' ? options.siliconFlowEnableThinking : '—',
+            '| 模型:',
+            model
+          );
+
+          const data = JSON.stringify(requestData);
+          /** @type {import('https').ClientRequest|undefined} */
+          let req;
+          timeoutId = setTimeout(() => {
+            try {
+              req?.destroy();
+            } catch {
+              /* empty */
+            }
+            finish({ success: false, error: 'API请求超时 (180秒)' });
+          }, 180000);
+
+          const httpOptions = {
+            hostname: 'api.siliconflow.cn',
+            port: 443,
+            path: '/v1/chat/completions',
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(data)
+            }
+          };
+
+          req = https.request(httpOptions, (res) => {
+            if (res.statusCode !== 200) {
+              let body = '';
+              res.setEncoding('utf8');
+              res.on('data', (chunk) => {
+                body += chunk;
+              });
+              res.on('end', () => {
+                let responseData = null;
+                try {
+                  responseData = JSON.parse(body);
+                } catch {
+                  /* empty */
+                }
+                const { message: sfErrMsg, code: sfErrCode } = parseSiliconFlowErrorPayload(responseData);
+                const friendlyErr = sfErrMsg || body.substring(0, 200) || '未知错误';
+                finish({
+                  success: false,
+                  statusCode: res.statusCode,
+                  errorType: responseData?.error?.type || '未知',
+                  error:
+                    sfErrCode != null
+                      ? `API请求失败: ${res.statusCode} - ${friendlyErr} (code: ${sfErrCode})`
+                      : `API请求失败: ${res.statusCode} - ${friendlyErr}`
+                });
+              });
+              return;
+            }
+
+            let sseBuffer = '';
+            let fullContent = '';
+            res.setEncoding('utf8');
+            res.on('data', (chunk) => {
+              sseBuffer += chunk;
+              const parts = sseBuffer.split('\n');
+              sseBuffer = parts.pop() || '';
+              for (const line of parts) {
+                const trimmed = line.trim();
+                if (!trimmed.startsWith('data:')) continue;
+                const dataStr = trimmed.slice(5).trim();
+                if (dataStr === '[DONE]') continue;
+                try {
+                  const json = JSON.parse(dataStr);
+                  const delta = extractSiliconFlowStreamDelta(json);
+                  if (delta) {
+                    fullContent += delta;
+                    try {
+                      if (webContents && !webContents.isDestroyed()) {
+                        const ch =
+                          typeof options.chunkChannel === 'string' && options.chunkChannel.trim()
+                            ? options.chunkChannel.trim()
+                            : 'siliconflow-chat-stream-chunk';
+                        webContents.send(ch, { delta });
+                      }
+                    } catch {
+                      /* empty */
+                    }
+                  }
+                } catch {
+                  /* 单行解析失败则跳过 */
+                }
+              }
+            });
+            res.on('end', () => {
+              const chunkChan =
+                typeof options.chunkChannel === 'string' && options.chunkChannel.trim()
+                  ? options.chunkChannel.trim()
+                  : 'siliconflow-chat-stream-chunk';
+              if (sseBuffer.trim()) {
+                for (const line of sseBuffer.split('\n')) {
+                  const trimmed = line.trim();
+                  if (!trimmed.startsWith('data:')) continue;
+                  const dataStr = trimmed.slice(5).trim();
+                  if (dataStr === '[DONE]') continue;
+                  try {
+                    const json = JSON.parse(dataStr);
+                    const delta = extractSiliconFlowStreamDelta(json);
+                    if (delta) {
+                      fullContent += delta;
+                      try {
+                        if (webContents && !webContents.isDestroyed()) {
+                          webContents.send(chunkChan, { delta });
+                        }
+                      } catch {
+                        /* empty */
+                      }
+                    }
+                  } catch {
+                    /* empty */
+                  }
+                }
+              }
+              const text = String(fullContent || '').trim();
+              finish({
+                success: true,
+                content: text || '无响应内容'
+              });
+            });
+          });
+
+          req.on('error', (error) => {
+            finish({ success: false, error: `网络请求失败: ${error.message}` });
+          });
+
+          req.write(data);
+          req.end();
+        })();
+      })
+      .catch((e) => {
+        finish({ success: false, error: `调用AI API失败: ${e?.message || String(e)}` });
+      });
+  });
+}
+
+/**
  * 调用SiliconFlow AI API
  * @param {Array} messages - 消息数组
  * @param {string} model - 使用的模型
+ * @param {{ temperature?: number, max_tokens?: number, longOutput?: boolean, siliconFlowEnableThinking?: boolean }} [options] - `longOutput:true` 用于 Agent 多轮等长输出；`siliconFlowEnableThinking` 若传入则覆盖设置（如寒暄强制 `false`）
  * @returns {Promise<Object>} API响应结果
  */
-async function callSiliconFlowAPI(messages, model) {
+async function callSiliconFlowAPI(messages, model, options = {}) {
   try {
     console.log('🔑 正在读取API密钥...');
 
-    // 获取API密钥
-    const envPath = app.isPackaged
-      ? path.join(app.getPath('userData'), 'env.local')
-      : path.join(__dirname, 'env.local');
-
-    const envContent = await fs.readFile(envPath, 'utf8');
-    const lines = envContent.split('\n');
-    let apiKey = '';
-
-    for (const line of lines) {
-      if (line.startsWith('SILICONFLOW_API_KEY=')) {
-        apiKey = line.substring('SILICONFLOW_API_KEY='.length).trim();
-        break;
-      }
-    }
-
+    const apiKey = await readSiliconFlowApiKey();
     if (!apiKey) {
       console.log('❌ 未找到有效的API密钥');
       throw new Error('未找到SiliconFlow API密钥，请在设置中配置');
@@ -2757,14 +3287,40 @@ async function callSiliconFlowAPI(messages, model) {
 
     console.log('✅ API密钥读取成功');
 
-    // API请求数据
+    let enableThinking = await resolveSiliconFlowEnableThinking();
+    if (typeof options.siliconFlowEnableThinking === 'boolean') {
+      enableThinking = options.siliconFlowEnableThinking;
+    }
+    const thinkingParamAllowed = modelAllowsSiliconFlowEnableThinkingParameter(model);
+    console.log('🧠 SiliconFlow enable_thinking 偏好:', enableThinking, '白名单允许带参:', thinkingParamAllowed);
+
+    const temperature = typeof options.temperature === 'number' ? options.temperature : 0.7;
+
     const requestData = {
       model: model,
       messages: messages,
       stream: false, // 先实现非流式，后续添加流式
-      max_tokens: 4096,
-      temperature: 0.7
+      max_tokens: resolveSiliconFlowMaxTokens(options),
+      temperature
     };
+    if (thinkingParamAllowed) {
+      requestData.enable_thinking = enableThinking;
+    }
+    if (!thinkingParamAllowed) {
+      delete requestData.enable_thinking;
+    }
+
+    const thinkingBodySummary = thinkingParamAllowed
+      ? `已写入 enable_thinking=${requestData.enable_thinking}（${enableThinking ? '开启思考' : '关闭思考'}）`
+      : '未写入 enable_thinking（本模型不在白名单，避免无效字段/400）';
+    console.log(
+      '[chat-api] SiliconFlow 请求体:',
+      thinkingBodySummary,
+      '| 渲染层覆盖 siliconFlowEnableThinking:',
+      typeof options.siliconFlowEnableThinking === 'boolean' ? options.siliconFlowEnableThinking : '—',
+      '| 模型:',
+      model
+    );
 
     // 发起HTTP请求
     console.log('🌐 正在发送HTTP请求到SiliconFlow API...');
@@ -2772,7 +3328,8 @@ async function callSiliconFlowAPI(messages, model) {
 
     const response = await new Promise((resolve, reject) => {
       const data = JSON.stringify(requestData);
-      const options = {
+      /** 勿命名为 `options`，避免遮蔽 `callSiliconFlowAPI` 的第三参 */
+      const httpOptions = {
         hostname: 'api.siliconflow.cn',
         port: 443,
         path: '/v1/chat/completions',
@@ -2784,7 +3341,7 @@ async function callSiliconFlowAPI(messages, model) {
         }
       };
 
-      const req = https.request(options, (res) => {
+      const req = https.request(httpOptions, (res) => {
         console.log('📡 HTTP响应状态码:', res.statusCode);
         console.log('📡 HTTP响应头:', res.headers['content-type']);
 
@@ -2802,20 +3359,30 @@ async function callSiliconFlowAPI(messages, model) {
 
             if (res.statusCode === 200) {
               console.log('✅ API响应解析成功');
+              const msg = responseData.choices[0]?.message;
+              let content = extractSiliconFlowChoiceMessageContent(msg);
+              if (!String(content || '').trim() && msg && typeof msg.reasoning_content === 'string') {
+                content = msg.reasoning_content;
+              }
+              if (!String(content || '').trim()) {
+                content = '无响应内容';
+              }
               resolve({
                 success: true,
-                content: responseData.choices[0]?.message?.content || '无响应内容',
+                content,
                 usage: responseData.usage
               });
             } else {
+              const { message: sfErrMsg, code: sfErrCode } = parseSiliconFlowErrorPayload(responseData);
+              const friendlyErr = sfErrMsg || '未知错误';
               // 详细的错误日志
               console.error('❌ API返回错误状态 - 详细信息:');
               console.error('📊 状态码:', res.statusCode);
               console.error('📊 完整响应体:', JSON.stringify(responseData, null, 2));
               console.error('📊 响应体原始内容 (前1000字符):', body.substring(0, 1000));
               console.error('📊 错误类型:', responseData.error?.type || '未知');
-              console.error('📊 错误代码:', responseData.error?.code || '未知');
-              console.error('📊 错误消息:', responseData.error?.message || '未知错误');
+              console.error('📊 错误代码:', responseData.error?.code ?? sfErrCode ?? '未知');
+              console.error('📊 错误消息:', responseData.error?.message || friendlyErr);
               console.error('📊 错误参数:', responseData.error?.param || '无');
               console.error('📊 响应头:', JSON.stringify(res.headers));
               
@@ -2864,12 +3431,17 @@ async function callSiliconFlowAPI(messages, model) {
                 };
               }
               
+              const apiErrorText =
+                sfErrCode != null
+                  ? `API请求失败: ${res.statusCode} - ${friendlyErr} (code: ${sfErrCode})`
+                  : `API请求失败: ${res.statusCode} - ${friendlyErr}`;
+
               resolve({
                 success: false,
                 statusCode: res.statusCode,
                 errorType: responseData.error?.type || '未知',
-                error: `API请求失败: ${res.statusCode} - ${responseData.error?.message || '未知错误'}`,
-                rawError: responseData.error,
+                error: apiErrorText,
+                rawError: responseData.error ?? responseData,
                 debugInfo: debugInfo // 500错误的详细调试信息
               });
             }
@@ -2912,9 +3484,17 @@ async function callSiliconFlowAPI(messages, model) {
 }
 
 // IPC通信处理
-ipcMain.handle('chatWithAI', async (event, messages, model) => {
+/**
+ * @param {import('electron').IpcMainInvokeEvent} event
+ * @param {Array<{role:string, content: unknown}>} messages
+ * @param {string} model
+ * @param {{ siliconFlowEnableThinking?: boolean, stream?: boolean }} [apiOptions] - `stream:false` 关闭 SSE（上下文压缩、内部 LLM 等）
+ */
+ipcMain.handle('chatWithAI', async (event, messages, model, apiOptions = {}) => {
   const startTime = Date.now();
-  console.log('🔄 开始调用SiliconFlow AI API...');
+  const callOpts = apiOptions && typeof apiOptions === 'object' ? apiOptions : {};
+  const useStream = callOpts.stream !== false;
+  console.log('🔄 开始调用SiliconFlow AI API...', useStream ? '(流式)' : '(非流式)');
   console.log('📝 模型:', model);
   console.log('💬 消息数量:', messages.length);
   console.log('⏱️ 开始时间:', new Date(startTime).toLocaleTimeString());
@@ -2926,7 +3506,9 @@ ipcMain.handle('chatWithAI', async (event, messages, model) => {
 
   try {
     const result = await Promise.race([
-      callSiliconFlowAPI(messages, model),
+      useStream
+        ? callSiliconFlowAPIStream(event.sender, messages, model, callOpts)
+        : callSiliconFlowAPI(messages, model, callOpts),
       timeoutPromise
     ]);
 

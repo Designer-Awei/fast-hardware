@@ -166,7 +166,7 @@
 
                                 <div class="model-selector">
                                     <button class="control-btn model-select-btn" id="model-select" title="选择AI模型">
-                                        <span class="model-name" id="current-model">Chat/GLM-4-9B</span>
+                                        <span class="model-name" id="current-model">Chat/Qwen3.5-27B</span>
                                         <span class="btn-icon"><img src="" alt="切换" width="14" height="14" data-icon="chevron-up"></span>
                                     </button>
                                 </div>
@@ -433,11 +433,27 @@
                                     <p class="status-text">需要API密钥才能使用AI功能</p>
                                 </div>
                             </div>
-                            <div class="card-actions">
-                                <button class="btn btn-secondary surface-action-btn" id="configure-api-key">
-                                    <span class="btn-icon"><img src="" alt="配置密钥" width="16" height="16" data-icon="bolt"></span>
-                                    配置密钥
-                                </button>
+                            <div class="card-actions api-card-actions">
+                                <div class="api-card-actions-row">
+                                    <button class="btn btn-secondary surface-action-btn" id="configure-api-key">
+                                        <span class="btn-icon"><img src="" alt="配置密钥" width="16" height="16" data-icon="bolt"></span>
+                                        配置密钥
+                                    </button>
+                                    <div
+                                        class="api-thinking-toggle-wrap"
+                                        title="开启后：对 SiliconFlow 上支持 enable_thinking 的模型发送思考链；关闭可显著提速。纯 Instruct 或不支持该参数的模型通常会忽略此字段（非 SiliconFlow 提供商不适用）。"
+                                    >
+                                        <span class="api-thinking-label">模型思考</span>
+                                        <label class="switch-toggle">
+                                            <input type="checkbox" id="siliconflow-enable-thinking-toggle" />
+                                            <span class="switch-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <p class="api-thinking-hint">
+                                    默认关闭。各家 API 参数不同：本应用仅对接 SiliconFlow，使用官方字段
+                                    <code>enable_thinking</code>。
+                                </p>
                             </div>
                         </div>
 
@@ -551,7 +567,7 @@
                                 </div>
                                 <div class="card-info">
                                     <h3>关于</h3>
-                                    <p id="about-version-text">Fast Hardware v0.2.4</p>
+                                    <p id="about-version-text">Fast Hardware v0.2.5</p>
                                 </div>
                             </div>
                             <div class="card-content">
@@ -560,9 +576,6 @@
                                 </p>
                                 <p class="about-description">
                                     当前版本聚焦于工作流智能分析、启动体验优化与自动更新能力接入，持续提升桌面端可用性。
-                                </p>
-                                <p class="about-description">
-                                    项目采用 Electron + 原生前端架构，集成 AI 对话、元件库管理、电路画布与固件辅助生成等能力。
                                 </p>
                             </div>
                         </div>
@@ -599,7 +612,6 @@
                                         <span class="switch-slider"></span>
                                     </label>
                                 </div>
-                                <p class="status-text" id="update-status-text">启动后将根据开关设置自动检查更新</p>
                             </div>
                             <div class="card-actions update-card-actions">
                                 <button class="btn btn-primary" id="download-update-btn" style="display: none;">
@@ -624,6 +636,15 @@
               <div class="code-editor-header">
                   <h3 id="code-editor-title">固件代码编辑器</h3>
                   <div class="code-editor-actions">
+                      <button class="code-editor-btn code-editor-review-all-btn" id="accept-all-code-review-btn" title="接受本次全部改动" style="display: none;">
+                          Accept All
+                      </button>
+                      <button class="code-editor-btn code-editor-review-all-btn" id="reject-all-code-review-btn" title="拒绝本次全部改动" style="display: none;">
+                          Reject All
+                      </button>
+                      <button class="code-editor-btn code-editor-exit-review-btn" id="exit-code-review-btn" title="退出补丁审阅" style="display: none;">
+                          退出审阅
+                      </button>
                       <button class="code-editor-btn" id="save-code-btn" title="保存 (Ctrl+S)">
                           <img src="" alt="保存" width="16" height="16" data-icon="save">
                       </button>
@@ -645,13 +666,16 @@
     <script src="scripts/floating-panel.js"></script>
     <script src="scripts/tabs.js"></script>
     <script src="scripts/canvas.js"></script>
-    <script src="scripts/workflow-circuit.js"></script>
-    <script src="scripts/chat.js"></script>
+    <script src="scripts/skills-progress-bus.js"></script>
+    <script src="scripts/canvas-snapshot-for-firmware.js"></script>
+    <script src="scripts/circuit-skills-engine.js"></script>
+    <script src="scripts/context-compact.js"></script>
     <script src="scripts/components.js"></script>
     <script src="scripts/component-designer.js"></script>
     <script src="scripts/settings.js"></script>
     <script src="scripts/resizer.js"></script>
     <script src="scripts/project-tabs.js"></script>
     <script src="scripts/main.js"></script>
+    <script type="module" src="scripts/chat.js"></script>
 </body>
 </html>

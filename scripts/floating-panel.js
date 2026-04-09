@@ -135,9 +135,7 @@ class FloatingPanel {
             const standardPath = 'data/system-components/standard/';
             const customPath = 'data/system-components/custom/';
 
-            console.log(`正在从以下路径加载元件库:`);
-            console.log(`- 标准元件: ${standardPath}`);
-            console.log(`- 自定义元件: ${customPath}`);
+            console.debug('加载元件库路径', { standardPath, customPath });
 
             const standardComponents = await this.loadFromDirectory(standardPath);
             const customComponents = await this.loadFromDirectory(customPath);
@@ -145,7 +143,7 @@ class FloatingPanel {
             this.components = [...standardComponents, ...customComponents];
             this.filteredComponents = [...this.components];
 
-            console.log(`元件库加载完成，共 ${this.components.length} 个元件`);
+            console.debug(`元件库加载完成，共 ${this.components.length} 个元件`);
 
             this.renderComponents();
         } catch (error) {

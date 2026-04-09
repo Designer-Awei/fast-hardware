@@ -1,6 +1,12 @@
 /**
  * 从 `package.json` 读取 `version`，同步到仓库内用于展示/打包说明的散落字符串。
- * 不修改 `package-lock.json` 中第三方依赖的版本范围（如 `~0.2.3`）。
+ *
+ * - **不修改** `package-lock.json` 中第三方依赖的版本范围（如 `~0.2.3`）。
+ * - **不修改** `model_config.json`（其 `version` 为模型清单模式版本，非 App semver）。
+ * - **不修改** `0-Change-Log.md`（避免误替换历史版本号段落）。
+ * - **`npm run dist`** 经 `scripts/build-dist.js` 会在打包前调用 `syncVersionFromPackageJson()`。
+ *
+ * 产品版本与 CHANGELOG 对照见 `feature-prd/0-PRD.md`「版本号、变更日志与同步脚本」。
  * @module scripts/sync-version
  */
 

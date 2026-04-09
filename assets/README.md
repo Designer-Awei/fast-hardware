@@ -40,6 +40,7 @@ assets/icon-copy.svg
 - `icon-chevron-left.svg`
 - `icon-chevron-right.svg`
 - `icon-chevron-up.svg`
+- `icon-chevron-down.svg`
 - `icon-close.svg`
 - `icon-copy.svg`
 - `icon-download.svg`

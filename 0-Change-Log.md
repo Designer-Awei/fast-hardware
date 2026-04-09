@@ -2,7 +2,107 @@
 
 ## 📝 更新日志
 
+### 🎉 v0.2.6 (2026-03-21) — Skills 架构降级（开发中）
+
+#### 🎯 2026-04-07 补充
+- **项目会话隔离（已落地）**：多项目标签切换时，右侧对话会话按项目隔离；应用启动与“最后一个标签关闭”场景统一自动补建 `未命名项目` 默认标签。
+- **未保存改动内存恢复（画布）**：项目切换恢复策略调整为“优先恢复内存快照（components/connections）”，避免已打开项目在未保存情况下切回后回退到初始磁盘状态。
+- **未保存项目代码保存策略（固件编辑器）**：在 `未命名项目`/新建未落盘项目中点击“保存”，改为仅内存级暂存代码，不再强制触发“保存项目”流程；提示文案与行为对齐，消除“取消保存项目却提示保存成功”的误导。
+
+#### 🎯 2026-04-09 补充
+- **主 Agent + 工作区工具真测（SiliconFlow）**：新增 **`test-cases/live-agent-workspace-tools-siliconflow.js`**，对 **`runSkillsAgentLoop`** 注入临时嵌套项目目录（`projectPath`），真实调用 SiliconFlow；通过 IPC 断言至少各出现一次 **`workspace_explore`** 与 **`workspace_read_file`**，并校验最终合成正文包含探针子串，验证多轮 **`tool_calls`** 下可完成目录树浏览与文件读取。**`npm run test:live-agent-workspace-tools`**；可选 **`LIVE_AGENT_WORKSPACE_TOOLS_STRICT`** / **`LIVE_AGENT_WORKSPACE_TOOLS_VERBOSE`**。
+
+#### 🎯 2026-03-10 补充
+- **SiliconFlow `max_tokens`**：主进程 `callSiliconFlowAPI` 默认 **8192**（聊天）、**`longOutput:true`** 时 **32768**（Agent）；**勿再顶格 100000**（易触发 **500 / code 50507**）。真测 **`siliconflow-client`** 默认 **8192**、硬顶 **32768**。
+- **Skills 单源**：移除 **`FH_USER_SKILLS_DIR`** / **`main.js` 创建 `%userData%/skills/skills`**；**`skill-module-loader`** 仅扫描项目 **`skills/skills/<skillId>/`**。
+- **新增 `summarize_skill`**：内置 `runSummarizeText`（引擎 + IPC 白名单 + Agent 列表）；语义参考 `reference/summarize`，实现为应用内 LLM，非 summarize CLI。
+- **`summarize_skill` 与联网**：manifest/Agent 提示词明确为 **`web_search_exa` 后续**；可选 **`urls`**（主进程 **`fetch-url-plaintext.js`** 抓取 http(s) 正文后与 `text` 合并摘要）。
+- **普通对话自动压缩上下文**：**`scripts/context-compact.js`** + **`chat.js`**：估算文本 ≥ **70k** 时先摘要早期对话，目标 **≤~10k** 纪要，保留最近 2 条历史 + 当前用户消息。
+- **Agent 工具输出压缩**：单次 execute 结果序列化 **>20k** 时：`web_search_exa` **保留 `results` 结构**下裁剪 snippet/条数；其它 skill **LLM 摘要**后再进入下一轮。**Agent 最大轮次**默认由 **4 → 15**（`FH_SKILLS_AGENT_MAX_ITERATIONS` 可调 1～40）。
+
+#### 🎯 动机
+- 当前架构与资源不足以支撑 **全自动元件 JSON 生成** 与 **全画布编辑**；降级为 **辅助型** 电路 skills，降低错误落盘风险。
+
+#### 🤖 Skills Agent 编排迁入主进程（`runSkillsAgentLoop`）
+- **`runSkillsWorkflow` 重命名为 `runSkillsAgentLoop`**（`scripts/chat.js`）：渲染侧仅 **`invoke('run-skills-agent-loop')`**、订阅 **`skills-agent-loop-progress`**、展示结果；**多轮 LLM + tool 解析 + `executeSkillInMain`** 迁至 **`scripts/agent/skills-agent-loop.js`**，经 **`callSiliconFlowAPI`** 调模型（**`temperature`** 支持可选覆盖，Agent 默认 **0.2**）
+- **共享纯函数**：**`scripts/agent/skills-agent-shared.js`**（prompt 拼装、JSON 解析、web 信源、进度文案工具）
+- **中断**：**`skills-agent-loop-abort`** IPC + **`scripts/agent/skills-agent-loop-abort.js`**；渲染 **`abortSkillsAgentLoop()`**；主进程循环内检测并返回 **`outcome: 'aborted'`**
+- **Skill 包目录**：内置 skill 迁至 **`skills/skills/<skillId>/`**（`SKILL.md` + `index.js` + `examples/`）；**`skill-module-loader.js`** 扫描子目录；删除遗留 **`skills/orchestrator.js`**、**`workflowSkills.js`** 与扁平 `*.js`
+- **废弃脚本归档**：**`scripts/build-skills-registry.js`**、**`skills/renderer-registry-entry.js`** 移至根目录 **`temp/`**
+
+#### 🔄 Skills：主进程执行 + 渲染进程引擎 RPC
+- **`ipcMain.handle('execute-skill')`**（[`main.js`](main.js)）→ [`scripts/skills/main-skill-executor.js`](scripts/skills/main-skill-executor.js)：`require('../../skills/index.js')` 并调用 **`execute(args, ctx)`**；**移除** esbuild 注册表、**`fh-generated://`**、**`scripts/skill-registry-build.js`**
+- **`ctx.skillsEngine`** 为主进程代理（[`scripts/skills/renderer-engine-bridge.js`](scripts/skills/renderer-engine-bridge.js)），经 **`skills-engine-invoke` / `skills-engine-result`** 调用渲染进程 **`CircuitSkillsEngine`**（白名单方法名）；**[`preload.js`](preload.js)** 暴露 **`registerSkillsEngineRpcHandler`**、**`executeSkill`**
+- **`scripts/circuit-skills-engine.js`** 新增 **`getCurrentSkillState()`**；**[`skills/skills/scheme_design_skill/index.js`](skills/skills/scheme_design_skill/index.js)** 兼容异步读取 skill 状态
+- **`package.json`**：去掉 **`prestart`/`predev*`**、**`esbuild`** 与 **`asarUnpack`**；**[`scripts/build-dist.js`](scripts/build-dist.js)** 不再预跑注册表；**[`scripts/build-skills-registry.js`](scripts/build-skills-registry.js)** 保留为废弃占位脚本
+
+#### 🔄 Skills 注册表（已废弃）
+- 曾：生产环境每次启动 **`buildSkillsRegistrySync`** + **`fh-generated://`** — **已由主进程执行方案替代**
+
+#### 🧩 Skills 调整
+- **保留**：`web_search_exa`
+- **保留/强化**：`scheme_design_skill`（方案 + BOM/库匹配 + **文字型**缺件建议；**不**自动创建元件）
+- **新增**：`completion_suggestion_skill`（模糊需求 → 模块级型号/常见模块名建议，可配合检索）
+- **新增（由画布编辑降级）**：`wiring_edit_skill`（仅对已有画布 **增删连线**；`add_connection` / `remove_connection`）
+- **移除 skill 文件**：`component-autocomplete-validated.js`、`structured-wiring.js`、`canvas-edit.js` 及对应引擎链路（自动补全、结构化草案、整块画布编辑）
+
+#### 🛠️ 代码与文档
+- **`scripts/circuit-skills-engine.js`**：新增 `runCompletionSuggestions`、`runWiringEditPlan`、`applyWiringEditOperations`、`getCanvasSnapshotForSkill`；删除自动补全与结构化连线/画布编辑相关实现；移除已无引用的 `_validatePinsSpec`；**修复** `CircuitSkillsEngine` 类缺少闭合 `}` 导致脚本解析失败、`web_search_exa` 等 skills 链路无法初始化的问题；**重写文件头说明**（降级为 agent 按需调用的 skills 引擎，非端到端 workflow）；**删除未再使用的 `shouldRunSkillsFlow`**（旧前置路由判别，主链路已统一 `runSkillsWorkflow`）
+- **`scripts/chat.js`**：`getSkillsForAgent` **列表顺序与文案** 体现「先 `scheme_design_skill` 对齐库与缺件，再按需 `completion_suggestion` / `web_search`」；agent 系统/用户提示词补充 **辅助型编排建议**；`executeSkill` / 短名映射对齐上述 4 项
+- **`feature-prd/3-skills_prd.md`**：列表与测试策略与降级方案一致
+- **`test-cases`**：重写 `unit/skills-workflow-execute.unit.test.js`；更新 live benchmark / integration；删除 `component-autocomplete-structure` 与 `lib/component-spec-validator`；`package.json` 移除 `test:component-spec`
+- **单 skill 真测**：新增 `live-skill-completion-suggestion-siliconflow.js`、`live-skill-scheme-design-siliconflow.js`、`live-skill-wiring-edit-siliconflow.js` 与 `lib/live-skill-node-engine.js`（真实 SiliconFlow、`npm run test:live-skill-*`）；`lib/siliconflow-client.js` 统一解析 `env.local` / `SILICONFLOW_API_KEY` 与 `siliconFlowChat`，单测不再依赖 benchmark 文件是否存在
+- **Skills 进度 UI**：恢复并打通「阶段 + 用时」typing 行；`setSkillsFlowPhaseLabel` 在 skills 流程内可补建 typing；`preload.publishAgentSkillProgress` + 主进程 `agent-skill-progress-emit` 转发，使 `onAgentSkillProgress` 与 `fast-hardware-skills-progress` 可订阅同源进度
+- **Skills 阶段文案**：阶段说明放宽至 **≤12 计字单位**（英文整块 token 计 1）；去掉大量「xxx中」语感；工具批 **`正在调用 web-search skill`**，多工具 **`正在调用 web-search 等n个skill`**（以本批**首个** skill 的展示名为准）；结果行用 **`web-search 返回k条` / `scheme-design 已完成` / `xxx 执行失败`** 等；普通 typing 默认 **`等待生成回复`**
+- **`completion_suggestion_skill` 进度**：`circuit-skills-engine.js` 的 `runCompletionSuggestions` 增加总线阶段 **`completion-suggestion 请求模型 / 已完成 / 解析失败`**
+- **`scheme_design_skill` 长耗时可观测**：`circuit-skills-engine.js` 在拟定方案 / 检索资料 / 汇总方案 / 匹配元件库 / 重试解析 等子步骤通过 **`fastHardwareSkillsProgress.emit`** 推送阶段（不再直调 ChatManager），避免长时间停在「正在调用 scheme-design skill」且修复原先 **`setTypingIndicatorText` 覆盖掉「用时 n S」** 的问题
+- **Skills 进度总线**：新增 **`scripts/skills-progress-bus.js`**（`fastHardwareSkillsProgress.emit`：`fast-hardware-skills-progress` + IPC）；`ChatManager` 订阅总线刷新 typing；`runRequirementAnalysis` 控制台输出 **注入 prompt 的 `webSearchReferenceText` 字符数**
+- **真测 SiliconFlow 客户端**：`test-cases/lib/siliconflow-client.js` 的 `siliconFlowChat` 与主进程请求对齐（UTF-8 Buffer 拼接、`extractChoiceMessageContent`、默认 **180s** 超时、HTTP 200 但无可解析正文时 **抛错**）；**`live-skill-completion-suggestion-siliconflow.js` 默认硬断言**（可用 `LIVE_SKILL_COMPLETION_NO_ASSERT=1` 跳过）
+- **BOM（`runRequirementAnalysis`）JSON 鲁棒性**：`test-cases/lib/live-skill-node-engine.js` 与 **`scripts/circuit-skills-engine.js`** 对齐 — **平衡花括号**截取首个合法对象、**包装根规整**（`data`/`result`/`analysis`/`bom`/`output` 内含 `components`）、解析成功须含 **`components` 数组**；system 提示增加「禁止复制整库列表、5～15 条、勿用代码块」等约束；重试 user 提示要求 **components ≤ 12 条**，降低 Qwen 等大模型返回超长不可解析 JSON 的概率
+- **SiliconFlow「关思考」与真测对比**：官方 Chat Completions 参数为 **`enable_thinking`**（非 `no_thinking`）；`test-cases/lib/siliconflow-client.js` 支持可选传入；`live-skill-node-engine` 的 `callLLMAPI` 读取 **`LIVE_SILICONFLOW_ENABLE_THINKING`**（默认 **`false`**；`omit`/`inherit` 表示不传参）；新增 **`test-cases/benchmark-enable-thinking-skill.js`**（`npm run test:benchmark-thinking`）对 **`completion_suggestion_skill`** 跑不传/false/true 三轮并汇总耗时与断言；可选 **`LIVE_SILICONFLOW_LOG_REASONING=1`** 观察 `reasoning_content` 长度
+- **设置页 · SiliconFlow 思考开关**：`index.html` SiliconFlow 卡片在「配置密钥」旁增加 **「模型思考」** 开关（默认关），写入 `env.local` 的 **`SILICONFLOW_ENABLE_THINKING`**；**`main.js`** `callSiliconFlowAPI` 始终携带 **`enable_thinking`**（与开关一致），并统一用 **`readSiliconFlowApiKey`** + **`extractSiliconFlowChoiceMessageContent`** 解析正文/`reasoning_content`
+- **设置页样式 / 模型配置竞态**：SiliconFlow 卡片 **「配置密钥」** 按钮增加 **`flex: 0 0 auto`**，避免与「模型思考」同行时被拉长；**`model-config.js`** 暴露 **`window.whenModelConfigLoaded`**，**`ChatManager.init`** 先 **await** 再 **`initializeModelDisplay`**，去掉 **`waitForModelConfig`** 轮询及相关 `console.warn`
+- **单 skill 真测默认关思考**：**`test-cases/lib/live-skill-node-engine.js`** 导出 **`applyLiveSkillDefaultThinkingOff()`**（未预设 env 时写 **`LIVE_SILICONFLOW_ENABLE_THINKING=0`**）；**`live-skill-completion` / `scheme` / `wiring` / `benchmark-enable-thinking`** 入口调用；`benchmark` 在保存/恢复 env 之后调用，仍可用各轮 `omit`/`1` 覆盖
+- **BOM 提示词**：`runRequirementAnalysis` 的 system 提示增加 **「不要添加需求中未出现的传感器类型」**（与 **`scripts/circuit-skills-engine.js`** / **`test-cases/lib/live-skill-node-engine.js`** 对齐），减少无关传感器条目
+- **chat.js 与 skills 单源**：**`executeSkill`** 改为委托 **`skills/skills/*.js`** 的 **`execute`**（与 Node 真测同源）；新增 **`skills/renderer-registry-entry.js`** + **`esbuild`** 生成 **`scripts/generated/fast-hardware-skills-registry.js`**，`index.html` 先于 `chat.js` 引入；**`npm run build:skills-registry`**；**`npm run dist`** 经 **`build-dist.js`** 自动重建注册表；**`package.json`** 增加 **`prestart`**、**`predev`***，在 **`npm start` / `npm run dev*`** 前自动执行注册表构建；**`web_search_exa`** 的 `query` 缺省改为 **`ctx.userRequirement`**
+- **修复双 typing 气泡**：进度总线 `_consumeSkillsProgressFromBus` 不再在「尚无 typing-indicator」时异步 `showTypingIndicator`（避免与 `runSkillsWorkflow` 内 `await showTypingIndicator` 在 `getAssetsPath` 挂起期重复建 DOM）；`showTypingIndicator` 内对重复 `#typing-indicator` 做清理
+- **可观测性**：`scripts/resizer.js` 去掉拖动分割线的 `console.log`；`chat.js` 增加 **`[skills-chain]`** 日志（用户输入预览、agent 轮次、LLM 返回长度、`executeSkill` 起止）；`circuit-skills-engine.js` 的 **`[scheme→需求分析]`** 记录 prompt 规模、LLM 返回长度，解析失败时 **`_debugLogRequirementAnalysisRaw`** 打印首/尾片段与括号位置；校验解析结果须含 **`components` 数组** 否则重试/报错
+- **`skills/` 布局**：`index.js` 聚合注册表 + `listSkillsForLLM` + 共享 JSDoc 类型；`skills/skills/` **仅**含可复用单 skill 实现；`workflowSkills.js` 通过 `require('./index')` 引用 `SKILL_MODULES`；**已移除**独立的 `registry.js`、`context.js`（并入 `index.js`）
+
+> `package.json` 版本号仍为 **0.2.5** 时，本条为 **未发布** 变更记录；发布时请 bump 版本并执行 `npm run sync-version`。
+
+---
+
+### 🎉 v0.2.5 (2026-03-21)
+
+#### 🧩 Skills 与文档
+- **可复用 skill 落地到 `skills/skills/*.js`**：单文件 `getManifest()` + `execute()`；注册表在 **`skills/index.js`**（含 `listSkillsForLLM`）；`skills/workflowSkills.js` 仅导出 `buildWorkflowSkillExecutors`（避免与 index 重复导出同名 `*Skill` 包装）
+- 新增 **`skills/README.md`**：说明根目录与 `skills/skills` 的分工及**无重复实现**关系
+- **PRD**：`feature-prd/3-skills_prd.md` —「渐进式披露」与 **全量挂载工具列表**（预期不足百级 skill）并存；补充复杂场景下 **agent loop** 行为与**最佳实践**；明确 **`web_search_exa` 非必调**及复杂任务下检索补证建议
+- **`skills/skills`（v0.2.5 阶段）**：`scheme_design_skill` **合并**原需求分析（一次调用串联 `runSchemeDesign` + `runRequirementAnalysis`，可选 `runBomAnalysis:false`）；**移除**独立 `requirement_analysis_skill` 文件；曾新增 **`canvas_edit_skill`**、**`structured_wiring_skill`**（草案落画布）等 — **已在 v0.2.6 降级移除**，详见上文
+- **`npm run test:skills-execute`**：`test-cases/unit/skills-workflow-execute.unit.test.js`（Mock 引擎，无 Electron）
+
+#### 🤖 Agent 架构与联网策略（相对 v0.2.4 的延续说明）
+- **架构**：自 **v0.2.4**（见该版本「工作流展示」约 L35–L41）起，主对话已从 **按钮分阶段 workflow** 重构为 **skill 驱动的 agent loop**：移除 UI 按钮驱动链路、`runSkillsWorkflow` 统一走多轮 JSON + tool 执行、Orchestrator **工具优先**于同轮 `final_message`；由 LLM 自主编排 skills 顺序（不再依赖固定阶段按钮）。
+- **`web_search_exa` 定位**：**不是**所有任务的必调项；适用于 **实时/外部可验证知识**。复杂任务可检索后配合 **`scheme_design_skill`**、**`completion_suggestion_skill`** 等（**v0.2.6**）；纯库内推理、只要本地方案骨架时可不强制联网。
+
+#### 🧪 test-cases
+- 新增 **`test-cases/README.md`**：区分 **live SiliconFlow 脚本** 与 **`unit/` Mock**；约定 `live-skills-siliconflow-*` 须真实 Key
+- **`live-skills-siliconflow-integration.js`** + **`npm run test:live-skills-integration`**：业务向 agent 流程（对齐 benchmark 日志）
+- **`live-skills-siliconflow-benchmark.js` 改造**：
+  - 从 **`listSkillsForLLM` + `buildWorkflowSkillExecutors`** 贯通「加载契约 → 执行 `skills/skills`」；`web_search_exa` 走真实 Exa，其余电路类 skill 走基准内 **Mock `skillsEngine`**
+  - **统一模糊需求池**（取消「明确场景」分列）；每条含 **`expectedSkills`**，断言 **预期调用的 skill 集合 ⊆ 实际 `toolResults` 中出现过的 skillName 集合**
+  - 需求池 **覆盖全部已注册 skills**（启动时校验）；涉 `web_search_exa` 的场景仍做检索与 Markdown 引用软校验
+
+> 版本号已写入 `package.json` **0.2.5**；展示用文案可执行 `npm run sync-version` 与安装包流程对齐。
+
+---
+
 ### 🎉 v0.2.4 (2026-03-12)
+
+#### 🤖 默认对话模型与进度 UX
+- **默认对话模型**改为 `Qwen/Qwen3.5-27B`（`model_config.json`、`main.js` 内置增强、`scripts/chat.js` / `scripts/model-config.js` / `index.html` 占位文案）；`THUDM/GLM-4-9B-0414` 保留为备选并降低优先级
+- **Skills agent 等待文案**：保留阶段/技能逻辑链（查询工具、解析计划、调用 xxx skill、检索完成、总结分析等），**不**再使用思考链式 `k/N` 总步数；同一行叠加「用时 n S」递增直至最终回复（`setSkillsFlowPhaseLabel` + `startSkillsFlowElapsedTimer`）；`showTypingIndicator` 复用已有 DOM
 
 #### 📦 版本与发布流程
 - **版本号全仓对齐**: 展示用版本与 `package.json`、安装包命名统一为 **0.2.4**
@@ -12,16 +112,21 @@
 #### 🎨 工作流展示
 - 📐 **匹配结果列宽**: 元件匹配结果表格列宽调整为「元件名称 25% / 匹配状态 30% / 匹配结果 45%」
 - 🧹 **移除旧按钮驱动 workflow**: `scripts/chat.js` 中旧的“按钮分阶段 workflow”方法已彻底移除，统一由 skills 自动执行链路，避免残留逻辑误导/误触发
-- 🧠 **workflow-circuit 命名收口到 skills**: `scripts/workflow-circuit.js` 已切换为 skills 叙事与命名（`CircuitSkillsEngine`、`currentSkillState`、`mapSkillTypeToSystemCategory` 等），并保留旧命名兼容别名避免现有调用中断
+- 🧠 **引擎脚本重命名**：原 `scripts/workflow-circuit.js` 已更名为 **`scripts/circuit-skills-engine.js`**（与类名 `CircuitSkillsEngine` 一致，去除 workflow 字样）；`index.html` 与文档路径已同步
 - 🧩 **chat/adapter 命名继续收口**: `scripts/chat.js` 与 `skills/workflowSkills.js` 主调用命名统一到 `skillsEngine/currentSkillState/shouldRunSkillsFlow`，旧 `workflow*` 名称仅保留兼容入口（不再作为主链路）
 - ✂️ **移除兼容别名**: 已删除 `CircuitWorkflowEngine/shouldRunWorkflow/currentWorkflowState/mapWorkflowTypeToSystemCategory/workflowEngine/isWorkflow/workflowState` 等旧命名兼容层，代码仅保留 skills 主命名，避免旧链路干扰
 - 🔀 **移除前置路由判别**: `scripts/chat.js` 文本消息改为统一进入 skills agent loop，不再先做 should-run 判别，LLM 可随时自主选择调用 skills
-- 🕒 **实时场景强制检索与校时上下文**: 在 `scripts/chat.js` 的 agent loop 中加入当前时间/时区注入（校时机制），并对“新闻/最新/实时”问题强制先执行 `web_search_exa` 后再输出最终回复
+- 🕒 **实时场景强制检索与校时上下文**: 在 `scripts/chat.js` 的 agent loop 中加入当前时间/时区注入（校时机制），并对“新闻/最新/实时”等问题强制先执行 `web_search_exa` 后再输出最终回复
+- 🌤️ **联网检索触发词扩展**: 新增 `needsWebSearchPriority`（覆盖天气/气温、显式“查下/搜一下/联网”等），避免仅问“杭州天气”却无“今天/最新”等词时漏掉强制检索，从而误报「当前回合未产生可执行工具调用」
+- 🔗 **Web 检索信源展示**: 规范化 `web_search_exa` 结果（含 `siteLabel`），提示词要求 `final_message` 用 Markdown `[文本](URL)` 引用真实链接；未写入正文的检索 URL 自动追加「参考资料」列表；聊天区内 http(s) 链接通过 `openExternal` 打开
 ---
 #### 🧪 测试与打包
 - 精简 `test-cases/`：仅保留真实链路 `live-workflow-chain-real-apis.js`，删除无用/弃用的 Electron E2E 与 mock 测试脚本
 - 更新打包忽略：`package.json` 将 `test-cases/**` 排除出安装包内容，避免打包携带测试代码
-- 新增真实 skills 链路测试 `test-cases/live-skills-agent-real-apis.js`：验证 SiliconFlow 根据问题选择工具、执行 `web_search_exa`、读取工具结果并继续到 `final_message`
+- 引入 **live-skills** 真链路基准 `npm run test:live-skills`（SiliconFlow + Exa）；细节演进见 **v0.2.5**；报告 json 等在 `.gitignore`
+- **Agent 提示词迭代**：`scripts/chat.js` / `skills/orchestrator.js` / `skills/index.js`（契约侧）强调「首轮需检索时只出 tool_calls、勿用 final_message 抢答」「JSON 勿用代码块包裹」「web_search_exa 精确 skillName」，与基准脚本 `buildBenchmarkSystemPrompt` 语义对齐
+- **模型下拉显示名**：`main.js` 的 `deriveDisplayName` 不再去掉 `-A3B`/`-A17B` 等后缀，与 SiliconFlow 控制台 `id` 一致，避免 MoE 与稠密同名混淆
+- **Orchestrator 工具优先**：`skills/orchestrator.js` 若同一轮 JSON 中同时出现 `tool_calls` 与 `final_message`，优先执行 `tool_calls` 再进入下一轮，避免模型只写空话不触发工具；仅当无 `tool_calls` 时才以 `final_message` 结束
 - 删除旧 workflow e2e 测试 `test-cases/live-workflow-chain-real-apis.js`，避免旧链路干扰
 
 #### 🧑‍💻 开发体验

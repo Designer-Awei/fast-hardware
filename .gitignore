@@ -67,6 +67,8 @@ jspm_packages/
 .env.test
 .env.production
 .env.local
+# 本仓库 SiliconFlow 等密钥实际使用项目根下 env.local（非 .env.local）；勿提交
+env.local
 
 # parcel-bundler cache
 .cache
@@ -148,3 +150,6 @@ app/dist/
 
 # User projects and data
 data/projects/
+
+# SiliconFlow / Agent 真测与单元测试目录（体积与密钥风险高；本地保留，不纳入远程）
+test-cases/
