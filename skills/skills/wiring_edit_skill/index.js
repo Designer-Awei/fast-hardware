@@ -8,6 +8,7 @@
 const NAME = 'wiring_edit_skill';
 
 const { buildSchemeFollowupInjectionFromEngine } = require('../../scheme-design-followup-context.js');
+const { normalizeWiringRulesInput } = require('../../../scripts/agent/wiring-rules-format.js');
 
 /**
  * @returns {import('../../index').SkillDefinition}
@@ -77,7 +78,7 @@ async function execute(args, ctx) {
     return { success: false, error: 'skillsEngine 不可用' };
   }
 
-  const rules = String(args?.wiringRules || '').trim();
+  const rules = normalizeWiringRulesInput(args?.wiringRules).trim();
   if (!rules) {
     return { success: false, error: 'wiringRules 不能为空' };
   }

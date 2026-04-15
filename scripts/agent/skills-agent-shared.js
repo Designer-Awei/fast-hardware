@@ -37,7 +37,7 @@ function getSkillsForAgentList() {
     {
       name: 'firmware_codegen_skill',
       description:
-        '用户明确要改固件代码时：输入 userRequirement + 可选 codeText；引擎会先读当前画布（元件与连线），再按「空画布/连线未就绪/结构完整」分支生成初步或引脚级 patch，并在结果中带 canvasGuidance 引导用户回到画布或继续 wiring_edit_skill；默认不直接写文件。'
+        '用户明确要改固件时：输入 userRequirement + 可选 codeText；引擎读画布后输出可审阅 **patch**。**已有 .ino/工程文件时视为「更新/修订」而非从零生成**；默认不直接写文件，结果含 canvasGuidance。**可单独调用**，不强制先跑方案或连线；缺件/缺线时补丁可能为通用引脚示例或过渡修改。'
     }
   ];
 }
@@ -219,6 +219,41 @@ function normalizeToolCalls(raw) {
       };
     })
     .filter((x) => !!x.skillName);
+}
+
+/**
+ * 同一轮 `tool_calls` 内若重复出现 `firmware_codegen_skill`，只保留首次，避免连续两次审阅弹窗。
+ * @param {Array<{toolCallId:string, skillName:string, args:any}>} toolCalls
+ * @returns {typeof toolCalls}
+ */
+function dedupeFirmwareCodegenToolCalls(toolCalls) {
+  if (!Array.isArray(toolCalls) || toolCalls.length <= 1) {
+    return toolCalls;
+  }
+  let seenFw = false;
+  return toolCalls.filter((tc) => {
+    if (tc.skillName === 'firmware_codegen_skill') {
+      if (seenFw) {
+        return false;
+      }
+      seenFw = true;
+    }
+    return true;
+  });
+}
+
+/**
+ * 本轮编排中是否已有**成功**的 `firmware_codegen_skill` 结果（用于禁止重复调用）。
+ * @param {Array<{skillName?: string, result?: { success?: boolean }}>} toolResults
+ * @returns {boolean}
+ */
+function hasSuccessfulFirmwareCodegenInResults(toolResults) {
+  for (const tr of toolResults || []) {
+    if (tr && tr.skillName === 'firmware_codegen_skill' && tr.result && tr.result.success) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -509,6 +544,7 @@ function getSkillResultPhaseLabel(skillName, success, webResultCount) {
 function buildSkillsAgentUserPrompt(skills, toolResults, userMessage, needsWebPriority, options = {}) {
   const workspaceTools = Array.isArray(options.workspaceTools) ? options.workspaceTools : [];
   const projectPath = String(options.projectPath || '').trim();
+  const firmwareAlreadySucceeded = hasSuccessfulFirmwareCodegenInResults(toolResults);
   const workspaceSection =
     workspaceTools.length && projectPath
       ? [
@@ -529,14 +565,28 @@ function buildSkillsAgentUserPrompt(skills, toolResults, userMessage, needsWebPr
     'reasoning_steps 若有内容，每项必须是对象：{"step":1,"summary":"一句话"}；不要输出纯字符串数组。summary 用短句描述「当前在做什么、为什么」，勿写「将输出 final_message」等元话语。',
     'final_message 只写给用户看的 Markdown 正文：不要输出 JSON、不要用 Markdown 代码块包裹全文、不要重复整段 reasoning。',
     '【核心原则】**用户描述 + 画布**足以驱动 **wiring_edit_skill** / **firmware_codegen_skill**；**scheme_design_skill** 及其结构化结果是**可选用**的选型/BOM 辅助，不是门禁。',
-    '【常见编排】（1）新需求不熟：可先 **scheme_design_skill** 再拖件 → 连线 → 固件；（2）熟手/简单电路：**跳过方案**，拖件后直接 **wiring_edit_skill**（wiringRules 写清接法意图）→ **firmware_codegen_skill**。',
+    '【常见编排】（1）新需求不熟：可先 **scheme_design_skill** 再拖件 → 连线 → 固件；（2）熟手/简单电路：**跳过方案**，拖件后 **wiring_edit_skill**；**固件仅在用户明确要代码/Arduino/烧录时再调**（见下条「连线后停步」）。',
+    '【连线后停步·默认】若用户本轮主要是**画布连线/电气连接**（如「帮忙接线」「元件摆好了接一下线」），而**未明确要求**生成/编写/修改**固件、Arduino、.ino、烧录**：则本轮内**最多做到 wiring_edit_skill 成功落线**，然后输出 **final_message** 说明连线要点并**询问是否需要继续生成固件**。**禁止**在同一用户消息的多轮编排里**主动再调 firmware_codegen_skill**，除非用户原文明确要代码或固件。',
     '【已打开项目 + 新电路需求】把本轮消息视为**在现有工程上的增量**：先用对话 + 画布理解「老电路 vs 新要求」；若缺料/拓扑不清再调 **scheme_design_skill**，**不要**默认必须先推翻重来。',
     '【可选参考】前序若跑过方案，应用**可能**向连线/固件附带 BOM 摘要，**忽略也可**；以用户当前句子和画布为准。',
-    '【推荐编排·固件】**firmware_codegen_skill** 返回中若有 **gapKind=missing_wiring** 或建议后续含 **wiring_edit_skill**：你应**先再调 wiring_edit_skill 补线**，再在后续轮次调 **firmware_codegen_skill** 生成引脚级补丁；**gapKind=missing_parts** 时引导用户先补元件上画布，勿假定未完成连线的外设引脚。',
+    '【固件·可独立调用】用户本条**仅**要求写/改固件、示例代码、Arduino、.ino、烧录前代码时：本轮 **tool_calls 里只应出现 `firmware_codegen_skill`**（可与工作区 read 等并列），**禁止**同轮追加 **`scheme_design_skill`** 或 **`wiring_edit_skill`**，除非用户**同时明确**要选型/BOM、画布接线、元件上板。支持**先代码后元件**：`gapKind=missing_parts` 或 `missing_wiring` 时工具仍会返回可审阅补丁（可能含通用引脚示例）；**禁止**在 **final_message** 以「画布空」为由宣称**无法生成**而不展示补丁要点。**可在 final_message 末尾简短询问**：是否需要帮忙做**方案设计**，或根据代码**反推元件上画布**。',
+    '【固件·与画布对齐（可选）】仅当用户**明确要求**引脚须与当前画布一致时：若工具结果 **gapKind=missing_wiring**，可在 **final_message** 说明「下一里程碑可先 **wiring_edit_skill** 补线，再在新一轮消息重调 **firmware_codegen_skill**」；**gapKind=missing_parts** 时说明补元件或接受通用示例后再迭代。**不要**在用户仅索要代码时自动串连 scheme/wiring。',
+    '【固件·措辞】若工作区工具已 **list/read** 到项目内存在 **.ino** 或非空代码，或上下文表明工程已有固件文件：在 **reasoning_steps**、**final_message** 中须向用户说明是在「**更新 / 修订当前固件**」「生成**补丁**」，**避免**「从零生成整套代码」「新建项目唯一文件」等易误解表述。技能内部名仍为 `firmware_codegen_skill`，对用户不要称「代码生成技能」，宜称「固件编辑 / 补丁审阅」。',
+    '【固件·单轮单次】`tool_calls` 内**勿重复**出现 `firmware_codegen_skill`（主进程只保留第一条）。一旦已有**成功**的固件工具结果，**禁止**再调；应 **final_message**。若首次失败，主进程可能允许**有限次数**重试（见环境 `FH_FIRMWARE_CODEGEN_MAX_PER_RUN`，默认 2）；大改动请合并进同一次 `userRequirement`。',
+    ...(firmwareAlreadySucceeded
+      ? [
+          '【硬约束·续轮】历史 **toolResults** 中已有 **success: true 的 firmware_codegen_skill**。**本轮 JSON 的 tool_calls 内不得再包含 `firmware_codegen_skill`**（主进程会丢弃，但模型侧请勿再输出以免浪费轮次）。请只输出 **final_message** 向用户总结补丁与审阅方式（可将 `tool_calls` 设为 `[]`）；若仍需其它工具（如连线），可保留非固件项。'
+        ]
+      : []),
+    '【连线编辑·次数】同一用户消息触发的本轮主进程编排中，**wiring_edit_skill 默认最多执行 5 次**（主进程计数，环境变量 `FH_WIRING_EDIT_MAX_PER_RUN` 可覆盖）；达到上限后必须输出 **final_message** 并做简短自检，**不得**再调用 wiring_edit_skill。',
+    '【连线编辑·去重】同两引脚之间在画布上**只能有一条**连线；若前一轮 wiring 已成功或快照里已有该连接，后续轮次**勿再**为同一对引脚重复下发 add_connection（除非用户明确要求更换路径）。',
+    '【连线编辑·勿空转】同一用户消息内：若**最近一次** `wiring_edit_skill` 已 **success**，且结果为**无需改线**（`plannedOperations` 为空或长度为 0、或工具结果明确「拟定连线 0 条/已满足意图」），**禁止**再调 `wiring_edit_skill`，只输出 **final_message**。若前一次已成功落线且你判断**已完整满足用户当前连线意图**，同样**禁止**为「再确认一遍」重复调用。**例外**：用户在同条消息里**追加**了新的连线要求、或明示需再改一版时，可再调。',
+    '【连线编辑·功能与对称】与 `wiring_edit_skill` 内连线规划一致：**优先**满足**系统功能可用**（供电、地、主外设信号等）；**对称性、成组被动件、逐路安全规范**在占位件未齐时可放到**后续改版**：首轮勿用少量占位件只接一支路冒充对称；可先交付一版可延续的拓扑并在 final_message 说明与理想方案的差距；用户补件后在新一轮用 `wiringRules` 要求**拆改线**（remove_connection + add_connection）落实对称与安全。',
+    '【连线编辑·画布】若上下文 **canvasSnapshot.components** 已列出 MCU、电源、RGB、按键等实例，**禁止**再声称「画布仅电阻」「缺全部器件」等与数组明显矛盾的 missing_parts 结论；缺件须与 **当前 components 列表**一致。',
     projectPath
-      ? '【已打开已有项目】已提供**本地项目根路径**与**工作区读盘工具**：若需核对落盘文件（circuit_config.json、.ino 等），应优先 **workspace_read_file / workspace_list_dir** 等工具获取内容，再调用 scheme / wiring / firmware 等 skills；画布快照仍可作为快速预览。'
+      ? '【已打开已有项目】已提供**本地项目根路径**与**工作区读盘工具**：若需核对落盘文件（circuit_config.json、.ino 等），应优先 **workspace_read_file / workspace_list_dir** 等工具获取内容；当需要多个文件时优先用 `workspace_read_file` 的 `relativePaths` 批量读取，减少轮次与 token 开销，再调用 scheme / wiring / firmware 等 skills；画布快照仍可作为快速预览。'
       : '【已打开已有项目】用户问题涉及电路/固件时，首轮应先基于**当前画布快照**（工具上下文会与 circuit_config 同源）理解现状；若需文件级核对，可请用户确认已打开代码编辑区或粘贴 **circuit_config.json** / **.ino** 关键片段再回答。',
-    '【代码编辑】用户要求改固件实现时，可调用 **firmware_codegen_skill**：传 userRequirement（可含 codeText）；skill 会结合画布 gapKind（缺件/缺连线/就绪）生成对应深度的 patch。**缺连线**时优先编排 wiring_edit_skill，再回本 skill。',
+    '【代码编辑】用户要求改固件实现时，可调用 **firmware_codegen_skill**：传 userRequirement（可含 codeText）；skill 会结合画布 gapKind 生成可审阅 **patch**。**已有项目文件时语义上是「更新固件」而非空项目从零写文件**。若用户**仅要代码**，本轮只调本 skill；若用户**同时要**与画布引脚严格一致且结果为 gapKind=missing_wiring，可在 final_message 建议**后续消息**再补线后重试，勿默认同轮强行 wiring。',
     needsWebPriority
       ? '这是实时信息场景：必须先调用 web_search_exa，再给 final_message（可与上述 scheme 顺序结合：先检索再方案，视情况多轮）。'
       : 'web_search_exa 非实时场景非必调；缺具体型号佐证、或 scheme_design 后仍模糊时再检索。',
@@ -749,6 +799,8 @@ async function maybeCompactToolResultForAgentLoop(result, opts) {
  * @param {number} max
  * @returns {string}
  */
+const { normalizeWiringRulesInput } = require('./wiring-rules-format.js');
+
 function clampPlainText(s, max) {
   const t = String(s || '').trim();
   if (t.length <= max) return t;
@@ -817,7 +869,9 @@ function toolArgsPlainTextForUi(skillName, args, maxChars = 3600) {
       break;
     }
     case 'wiring_edit_skill': {
-      lines.push(`连线意图/规则：${clampPlainText(String(a.wiringRules || ''), 1200)}`);
+      lines.push(
+        `连线意图/规则：${clampPlainText(normalizeWiringRulesInput(a.wiringRules), 1200)}`
+      );
       const exp = String(a.expectedComponentsFromAgent || '').trim();
       if (exp) lines.push(`方案所需元件摘要：${clampPlainText(exp, 900)}`);
       const add = String(a.additionalContextFromAgent || '').trim();
@@ -1076,6 +1130,8 @@ module.exports = {
   toolArgsPlainTextForUi,
   toolResultPlainTextForUi,
   normalizeToolCalls,
+  dedupeFirmwareCodegenToolCalls,
+  hasSuccessfulFirmwareCodegenInResults,
   getSiteLabelFromUrl,
   normalizeWebSearchToolResult,
   collectWebSearchSources,

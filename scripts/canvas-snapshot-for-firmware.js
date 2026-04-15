@@ -175,8 +175,9 @@ function buildFirmwareCanvasGuidanceFallback(analysis) {
 
   if (gapKind === 'missing_parts') {
     userFacingHint =
-      '判定为**缺件**（画布空或尚未摆放齐方案所需元件）。下方为基于当前信息的初步补丁，请勿为尚未上板的器件写死引脚；请先补全元件再上画布，再继续连线与固件迭代。';
-    recommendedNextSkills = ['scheme_design_skill', 'completion_suggestion_skill'];
+      '判定为**缺件**（画布空或未摆齐元件）。仍可生成**可审阅补丁**：允许含**通用可编译示例**（如 `LED_BUILTIN` 或常见板默认数字引脚），并在 notes 标明「与当前画布未绑定，可按实物改引脚」。支持**先写固件后补画布**；若需与画布一一对应引脚，可后续补元件或再选方案设计。';
+    /** 不强制同轮编排 scheme/wiring；由主 agent 按用户意图决定是否追问方案 */
+    recommendedNextSkills = [];
   } else if (gapKind === 'missing_wiring') {
     const detail = analysis.issues.length ? analysis.issues.join('；') : '连线未完成或存在无效连接';
     userFacingHint = `判定为**缺连线**（${detail}）。请由 agent **先调用 wiring_edit_skill** 按当前画布补全连线，再重新调用本 skill 生成引脚级固件。`;

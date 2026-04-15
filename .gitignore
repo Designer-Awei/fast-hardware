@@ -153,3 +153,6 @@ data/projects/
 
 # SiliconFlow / Agent 真测与单元测试目录（体积与密钥风险高；本地保留，不纳入远程）
 test-cases/
+
+# Playwright E2E（依赖 Chromium/Electron 测试产物；安装包不需要，默认不纳入远程）
+e2e/

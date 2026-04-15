@@ -81,7 +81,7 @@ Registry **不**应向模型暴露：实现源码、内部重试日志、与 UI/
 1. **新建** `skills/skills/<skillId>/`：编写 `SKILL.md` + `index.js`（`NAME`、`getManifest()`、`execute()`）；可选 `examples/`。
 2. **注册**：`skill-module-loader.js` 自动扫描子目录 `index.js`，一般**无需**改 `skills/index.js`（动态 `SKILL_MODULES`）；若需稳定枚举键，可在 `LEGACY_ENUM_KEYS` 等处补充。
 3. **渲染层**：在 `scripts/chat.js` 的 `executeSkill`、**`getSkillsForAgent()`**、以及与进度展示相关的 `getSkillChainShortName` 等处补齐**分支与文案**，并与 **`getSkillsForAgentList()`** 对齐。
-4. **测试**：`test-cases/live-skills-agent-loop-siliconflow.js`（主进程 Agent loop）；单 skill 真测如 `live-skill-scheme-design-siliconflow.js`、`live-skill-completion-suggestion-siliconflow.js`、`live-skill-wiring-edit-siliconflow.js` 等（以仓库 `test-cases/` 现有文件为准）。
+4. **测试**：单 skill SiliconFlow 真测见 `test-cases/live-skill-*-siliconflow.js` 与 `test-cases/README.md`；**端到端**（Electron + 画布）见 `e2e/`。
 
 ### 2) Skill Orchestrator（技能执行编排器）
 Orchestrator 每次用户消息触发一次 agentic loop：
@@ -204,10 +204,11 @@ UI 在失败时的兜底策略是：
 ---
 
 ## 🧪 测试用例策略
-### 1) Live
-- `test-cases/live-skills-agent-loop-siliconflow.js`：主进程多轮 Agent loop + SiliconFlow。
-- `test-cases/live-skill-*.js`：单 skill 与模型链路的集成/冒烟（以目录下文件为准）。
-- `test-cases/benchmark-enable-thinking-skill.js` 等：能力与开关相关基准（若有）。
+### 1) Live（单 skill，Node + SiliconFlow）
+- `test-cases/live-skill-*-siliconflow.js`：各 skill 与模型链路的真测模板（见 `test-cases/README.md`）。
+
+### 1b) E2E（Electron）
+- `e2e/`：Playwright 场景 JSON，见 `e2e/README.md`。
 
 ### 2) 断言要点
 - **tool 进度**：`skills-agent-loop-progress` / 总线侧可观测。
@@ -240,5 +241,5 @@ UI 在失败时的兜底策略是：
 - `scripts/agent/skills-agent-loop-abort.js` + `skills-agent-loop-abort` IPC：中断多轮循环
 - `scripts/circuit-skills-engine.js`：画布侧 `CircuitSkillsEngine` 核心逻辑
 - `main.js`、`preload.js`、`scripts/chat.js`：`run-skills-agent-loop` / `execute-skill`、UI 进度与打字
-- `test-cases/live-skills-agent-loop-siliconflow.js`、`test-cases/live-skill-*-siliconflow.js`：真测入口（以目录为准）
+- `test-cases/live-skill-*-siliconflow.js`：单 skill 真测入口；`e2e/`：端到端
 

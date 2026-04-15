@@ -30,14 +30,14 @@ Fast Hardware
 
 - **产品版本（semver）** 的**唯一事实来源**：仓库根目录 **`package.json`** 的 **`version`** 字段（当前开发与安装包均以该字段为准）。
 - **变更日志**：根目录 **`0-Change-Log.md`**，按 **`v0.2.x`** 分段维护。
-  - **已发布线**：以 **`package.json`** 与 CHANGELOG 中对应 **`v0.2.5`** 小节一致为准。
-  - **在研线**：CHANGELOG 中 **`v0.2.6 (2026-03-21) — Skills 架构降级（开发中）`** 及 dated 补充（如 **2026-04-07** 项目隔离、**2026-04-09** 工作区工具真测等）描述**尚未随当前 `package.json` 版本集中发布**的能力与债务；发布下一版时需在 **`package.json`** 中 bump **`version`**，更新 CHANGELOG 表述，并执行下文 **`npm run sync-version`**。
+  - **已发布线**：以 **`package.json`** 与 CHANGELOG 中 **`v0.2.6`** 置顶小节及 dated 补充为准；当前 **`version`** 为 **0.2.6** 且已执行 **`npm run sync-version`** 时，与对外安装包及展示文案一致。
+  - **下一版**：发布 **0.2.7+** 时在 **`package.json`** bump **`version`**，更新 **`0-Change-Log.md`** 置顶说明，并执行 **`npm run sync-version`**。
 - **展示用版本字符串同步**：**`npm run sync-version`** → **`scripts/sync-version.js`**
   - **读入**：**`package.json` → `version`**
   - **写回**（有变更才写入）：**`index.html`**（关于页 `Fast Hardware v…`）、**`main.js`**（HTTP **`User-Agent`: `Fast-Hardware/<version>`**）、**`assets/update.txt`**（JSON 数组首元素的 **`version`**）、**`README.md`** / **`README_EN.md`**（徽章、最新特性标题、安装包文件名示例、版本升级段落等，规则见脚本内 **`applyReadmeVersionPatterns`**）
   - **刻意不修改**：**`package-lock.json`**（避免触动依赖 semver 范围）；**`model_config.json`** 的 **`version`** 表示**模型清单模式版本**，与产品 **`app` semver** 无关。
 - **打包**：**`npm run dist`** 经 **`scripts/build-dist.js`** 在清理/构建前调用 **`syncVersionFromPackageJson()`**，与手动执行 **`sync-version`** 行为一致。
-- **本 PRD**：路线图与上表 **CHANGELOG `v0.2.6` 在研** 对齐，**不在正文硬编码补丁号**；需要「当前对外版本」时以 **`package.json`** 为准。
+- **本 PRD**：需要「当前对外版本」时以 **`package.json`** 与 CHANGELOG **最新已发布**小节为准；**不在正文硬编码补丁号**（示例与历史小节除外）。
 
 ## 🎯 核心功能 (按优先级排序)
 
@@ -715,16 +715,10 @@ graph TD
 下文采用与仓库 **CHANGELOG** 一致的 **semver（`v0.2.x`）**；原「1.8 / 2.0 / 3.0」式版本代号已弃用，避免与真实发包版本脱节。
 
 ### 当前已发布
-- **v0.2.5**（详见 **`0-Change-Log.md`**「v0.2.5」）：Skills 包与 **`skills/index.js`**、Agent 架构说明、单 skill 真测与文档等；与 **`package.json` `version`** 一致。
+- **v0.2.6**（详见 **`0-Change-Log.md`**「v0.2.6」）：主进程 **`runSkillsAgentLoop`**、**`skills-agent-shared`**、主进程 **`execute-skill`** + 渲染进程 **`CircuitSkillsEngine`** RPC、**Skills 辅助型**边界（含 `wiring_edit` / `scheme_design` / `completion_suggestion` 等）、**`workspace_*`** 工作区工具真测、**项目级会话 / 画布内存 / 固件草稿隔离**、上下文与工具输出压缩、`max_tokens` 与单 skill 真测 / E2E 收敛等；与 **`package.json` `version`** 一致。
+- **v0.2.5 及更早**：见 CHANGELOG **`v0.2.5`** 等历史小节。
 
-### 进行中 — v0.2.6（开发中）
-与 **`0-Change-Log.md`** 置顶小节 **「v0.2.6 — Skills 架构降级（开发中）」** 及各期 **dated 补充**对齐，主要包括但不限于：
-- 主进程 **`runSkillsAgentLoop`**、**`skills-agent-shared`**、主进程 **`executeSkillInMain`** + 渲染进程 **`CircuitSkillsEngine`** RPC
-- **Skills 辅助型**裁剪（`wiring_edit` / `firmware_codegen` / `scheme_design` 等）与工作区 **`workspace_*`** 读盘工具
-- **项目级会话 / 画布内存 / 固件草稿隔离**（需求见 **`6-project-isolation_prd.md`**）
-- 上下文压缩、工具结果压缩、`max_tokens` 与真测脚本等（以 CHANGELOG 条目为准）
-
-**发布 Checklist**：**`package.json`** bump → **`npm run sync-version`** → 整理 **`0-Change-Log.md`** 对外说明 → **`npm run dist`**（或等价发布流程）。
+**下一版发布 Checklist**：**`package.json`** bump → **`npm run sync-version`** → 整理 **`0-Change-Log.md`** 对外说明 → **`npm run dist`**（或等价发布流程）。
 
 ### 近期（0.2.x → 0.3.x 方向）
 - **LLM 与 Skills 质量**：需求分析 / BOM / 连线方案 / 固件生成可靠性与手动画布协同（参见上文「阶段三」未勾选项）

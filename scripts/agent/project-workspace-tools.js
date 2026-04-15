@@ -30,7 +30,7 @@ function getWorkspaceToolsForAgentList() {
     {
       name: 'workspace_read_file',
       description:
-        '读取项目内 UTF-8 文本。args.relativePath 必填；args.maxChars 500～64000（默认 12000）。长文件：不传行号时从文件头截断；传 startLine/endLine（1-based 含首尾）按行窗读取；传 charOffset（0-based）用字节窗衔接。返回 totalLines、lineRange、truncated、nextStartLine、nextCharOffset 供翻页。'
+        '读取项目内 UTF-8 文本。支持 args.relativePath（单文件）或 args.relativePaths（批量，数组/逗号分隔字符串）。args.maxChars 500～64000（默认 12000）。长文件：不传行号时从文件头截断；传 startLine/endLine（1-based 含首尾）按行窗读取；传 charOffset（0-based）用字节窗衔接。返回 totalLines、lineRange、truncated、nextStartLine、nextCharOffset 供翻页。'
     },
     {
       name: 'workspace_grep',
@@ -135,6 +135,7 @@ function normalizeWorkspaceToolId(raw) {
     workspace_verify: 'workspace_verify',
     list_dir: 'workspace_list_dir',
     read_file: 'workspace_read_file',
+    read_files: 'workspace_read_file',
     grep_workspace: 'workspace_grep',
     grep: 'workspace_grep',
     explore_workspace: 'workspace_explore',
@@ -188,9 +189,60 @@ async function executeWorkspaceTool(toolId, args, projectRootAbs) {
     }
 
     if (id === 'workspace_read_file') {
+      const relsFromArray = Array.isArray(a.relativePaths)
+        ? a.relativePaths.map((x) => String(x || '').trim()).filter(Boolean)
+        : [];
+      const relsFromCsv =
+        !relsFromArray.length && typeof a.relativePaths === 'string'
+          ? String(a.relativePaths)
+              .split(',')
+              .map((x) => x.trim())
+              .filter(Boolean)
+          : [];
+      const rels = [...relsFromArray, ...relsFromCsv].slice(0, 20);
+      if (rels.length) {
+        const perFileArgsBase = {
+          maxChars: a.maxChars,
+          startLine: a.startLine,
+          endLine: a.endLine,
+          charOffset: a.charOffset
+        };
+        /** @type {Array<{ relativePath: string, success: boolean, data?: any, error?: string }>} */
+        const files = [];
+        for (const p of rels) {
+          const one = await executeWorkspaceTool(
+            'workspace_read_file',
+            { ...perFileArgsBase, relativePath: p },
+            root
+          );
+          files.push({
+            relativePath: p,
+            success: !!one?.success,
+            data: one?.data,
+            error: one?.error
+          });
+        }
+        return {
+          success: true,
+          data: {
+            requested: rels,
+            files,
+            counts: {
+              requested: rels.length,
+              success: files.filter((x) => x.success).length,
+              failed: files.filter((x) => !x.success).length
+            },
+            mode: 'batch_via_workspace_read_file'
+          }
+        };
+      }
+
       const rel = String(a.relativePath || '').trim();
       if (!rel) {
-        return { success: false, error: 'workspace_read_file 需要 args.relativePath' };
+        return {
+          success: false,
+          error: 'workspace_read_file 需要 args.relativePath（单文件）或 args.relativePaths（批量）'
+        };
       }
       const r = safeResolveUnderProjectRoot(root, rel);
       if ('error' in r) return { success: false, error: r.error };

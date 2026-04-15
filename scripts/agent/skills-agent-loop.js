@@ -7,6 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const { executeSkillInMain } = require('../skills/main-skill-executor');
+const { invokeRendererEngineOp } = require('../skills/renderer-engine-bridge');
 const { isAbortRequested } = require('./skills-agent-loop-abort');
 
 const {
@@ -16,6 +17,8 @@ const {
   sanitizeAgentFinalMessage,
   extractRenderableMarkdownFromAgentSynthesis,
   normalizeToolCalls,
+  dedupeFirmwareCodegenToolCalls,
+  hasSuccessfulFirmwareCodegenInResults,
   normalizeWebSearchToolResult,
   appendWebSearchReferencesMarkdown,
   getSkillChainShortName,
@@ -34,6 +37,34 @@ const {
   isWorkspaceToolName,
   executeWorkspaceTool
 } = require('./project-workspace-tools');
+
+/**
+ * 从 `executeSkill` 返回值提取固件补丁字段，供 `tool_end.firmwarePatch` 发往渲染进程打开审阅窗。
+ * 必须在 {@link maybeCompactToolResultForAgentLoop} **之前**调用：压缩会丢弃 `data.patch`，仅保留摘要。
+ * @param {unknown} result
+ * @returns {{
+ *   summary: string,
+ *   patch: string,
+ *   targetPath: string,
+ *   language: string,
+ *   canvasAnalysis?: unknown,
+ *   canvasGuidance?: unknown
+ * } | null}
+ */
+function extractFirmwarePatchPayloadForToolEnd(result) {
+  if (!result || typeof result !== 'object') return null;
+  const r = /** @type {{ data?: Record<string, unknown>, summary?: string, patch?: string, targetPath?: string, language?: string, canvasAnalysis?: unknown, canvasGuidance?: unknown }} */ (
+    result
+  );
+  const data = r.data && typeof r.data === 'object' ? r.data : null;
+  const summary = String((data && data.summary) || r.summary || '').trim();
+  const patch = String((data && data.patch) || r.patch || '').trim();
+  const targetPath = String((data && data.targetPath) || r.targetPath || '').trim();
+  const language = String((data && data.language) || r.language || 'arduino').trim() || 'arduino';
+  const canvasAnalysis = data && 'canvasAnalysis' in data ? data.canvasAnalysis : r.canvasAnalysis;
+  const canvasGuidance = data && 'canvasGuidance' in data ? data.canvasGuidance : r.canvasGuidance;
+  return { summary, patch, targetPath, language, canvasAnalysis, canvasGuidance };
+}
 
 /** @type {Map<string, string[]>|null} */
 let skillKeywordsCache = null;
@@ -118,7 +149,7 @@ function matchKeywordTriggeredSkills(userMessage) {
  * @property {unknown} [canvasSnapshot]
  * @property {string} [projectPath] - 当前打开项目的本地根路径（绝对路径）；非空时注入工作区读盘工具并与 skills 并列 tool_calls
  * @property {(messages: Array<{role:string, content:string}>, model: string, temperature?: number, meta?: { mode?: 'stream_markdown' }) => Promise<{ content: string }>} callLLM
- * @property {(webContents: import('electron').WebContents, payload: { skillName: string, args?: unknown, ctxPayload?: { userRequirement?: string, canvasSnapshot?: unknown } }) => Promise<unknown>} [executeSkill] - 真测等场景注入，缺省走 `executeSkillInMain`
+ * @property {(webContents: import('electron').WebContents, payload: { skillName: string, args?: unknown, ctxPayload?: { userRequirement?: string, canvasSnapshot?: unknown, projectPath?: string } }) => Promise<unknown>} [executeSkill] - 真测等场景注入，缺省走 `executeSkillInMain`
  */
 
 /**
@@ -147,6 +178,25 @@ function buildAbortedResult() {
 }
 
 /**
+ * 最近一次 `wiring_edit_skill` 已成功且 `plannedOperations` 为空时，禁止再次调用（压掉空转）。
+ * @param {Array<{ skillName?: string, result?: { success?: boolean, data?: { plannedOperations?: unknown[] }, plannedOperations?: unknown[] } }>} toolResults
+ * @returns {boolean}
+ */
+function shouldBlockWiringEditAfterNoOpSuccess(toolResults) {
+  if (!Array.isArray(toolResults) || toolResults.length === 0) return false;
+  for (let i = toolResults.length - 1; i >= 0; i--) {
+    const tr = toolResults[i];
+    if (String(tr?.skillName || '') !== 'wiring_edit_skill') continue;
+    const r = tr?.result;
+    if (!r || !r.success) return false;
+    const ops = r?.data?.plannedOperations ?? r?.plannedOperations;
+    const n = Array.isArray(ops) ? ops.length : -1;
+    return n === 0;
+  }
+  return false;
+}
+
+/**
  * @param {import('electron').WebContents} webContents
  * @param {SkillsAgentLoopOptions} options
  * @returns {Promise<SkillsAgentLoopResult>}
@@ -159,12 +209,35 @@ async function runSkillsAgentLoop(webContents, options) {
   const projectPath = String(options.projectPath || '').trim();
   const workspaceTools = projectPath ? getWorkspaceToolsForAgentList() : [];
   const callLLM = options.callLLM;
-  /** @type {(wc: import('electron').WebContents, p: { skillName: string, args?: unknown, ctxPayload?: { userRequirement?: string, canvasSnapshot?: unknown } }) => Promise<unknown>} */
+  /** @type {(wc: import('electron').WebContents, p: { skillName: string, args?: unknown, ctxPayload?: { userRequirement?: string, canvasSnapshot?: unknown, projectPath?: string } }) => Promise<unknown>} */
   const executeSkillFn =
     typeof options.executeSkill === 'function'
       ? options.executeSkill
       : (wc, payload) => executeSkillInMain(wc, payload);
   const wcId = webContents.id;
+  if (process.env.FH_SKILLS_AGENT_DEBUG === '1') {
+    const snapObj =
+      canvasSnapshot && typeof canvasSnapshot === 'object' ? canvasSnapshot : {};
+    const components = Array.isArray(snapObj.components) ? snapObj.components : [];
+    const connections = Array.isArray(snapObj.connections) ? snapObj.connections : [];
+    console.log('[skills-agent-loop] recv canvasSnapshot summary:', {
+      wcId,
+      projectPath,
+      componentCount: components.length,
+      connectionCount: connections.length,
+      componentInstancePreview: components
+        .slice(0, 8)
+        .map((c) => String(c?.instanceId || c?.id || c?.componentFile || ''))
+        .filter(Boolean),
+      connectionPreview: connections.slice(0, 8).map((w) => {
+        const sid = String(w?.source?.instanceId || w?.source?.componentId || '');
+        const tid = String(w?.target?.instanceId || w?.target?.componentId || '');
+        const sp = String(w?.source?.pinId || '');
+        const tp = String(w?.target?.pinId || '');
+        return `${sid}:${sp} -> ${tid}:${tp}`;
+      })
+    });
+  }
 
   /**
    * @returns {boolean}
@@ -197,6 +270,21 @@ async function runSkillsAgentLoop(webContents, options) {
   })();
   const webPriority = needsWebSearchPriority(userMessage);
   let webSearchCalled = false;
+  /** 单次 runSkillsAgentLoop 内 wiring_edit_skill 调用上限（防模型反复编排） */
+  const maxWiringEditPerRun = (() => {
+    /** 默认 5：单条用户消息内可能「直连 RGB → 补件后再串电阻」多步改线，3 次易触顶 */
+    const raw = String(process.env.FH_WIRING_EDIT_MAX_PER_RUN || '5').trim();
+    const n = parseInt(raw, 10);
+    if (Number.isFinite(n) && n >= 1) return Math.min(n, 20);
+    return 5;
+  })();
+  let wiringEditRunCount = 0;
+  /** 默认 2：允许首次失败后再试 1 次；一旦有一次 success，仍由 hasSuccessfulFirmwareCodegenInResults 拦截重复 */
+  const maxFirmwareCodegenPerRun = Math.max(
+    1,
+    parseInt(String(process.env.FH_FIRMWARE_CODEGEN_MAX_PER_RUN || '2'), 10) || 2
+  );
+  let firmwareCodegenInvokeCount = 0;
 
   send({
     type: 'phase',
@@ -233,7 +321,7 @@ async function runSkillsAgentLoop(webContents, options) {
         {
           role: 'system',
           content:
-            '你是辅助型硬件 agent：**scheme_design_skill 可选**（不熟/要库匹配时用；熟手可跳过）。**wiring_edit_skill / firmware_codegen_skill** 主要靠**用户话 + 画布**，不要求先有方案 JSON。前序有方案时应用**可能**附带 BOM 参考，可忽略。**已打开项目又提新电路**：按增量理解，先画布+描述，不够再 scheme。**固件**：gapKind=missing_wiring 时先 wiring_edit 再继续。长文 summarize；选型 web_search/completion。每轮一个 JSON 对象；有 web 时外链来自 results。'
+            '你是辅助型硬件 agent：**scheme_design_skill 可选**。**wiring_edit_skill / firmware_codegen_skill** 以**用户话 + 画布**为主。已打开项目且工作区已读到 .ino：**对用户说「更新/修订固件、补丁」**，勿说「从零生成整套」。**固件 skill 每用户消息最多成功走 1 次**，勿在同一轮 tool_calls 里重复。**多轮编排时**：若用户消息里已附「历史工具结果」且其中 **firmware_codegen_skill 已成功**，**禁止**再在 tool_calls 里写 `firmware_codegen_skill`，应直接 **final_message** 总结。用户**仅要固件/示例代码**时：首轮**只调 firmware_codegen_skill**，勿同轮串 scheme/wiring；若用户明确要求画布对齐引脚且缺线，再建议**下一轮** wiring。长文 summarize。每轮一个 JSON。'
         },
         { role: 'user', content: prompt }
       ],
@@ -276,7 +364,7 @@ async function runSkillsAgentLoop(webContents, options) {
 
     const finalMessage =
       typeof parsed.final_message === 'string' ? sanitizeAgentFinalMessage(parsed.final_message) : '';
-    let toolCalls = normalizeToolCalls(parsed.tool_calls);
+    let toolCalls = dedupeFirmwareCodegenToolCalls(normalizeToolCalls(parsed.tool_calls));
 
     const containsWebSearch = toolCalls.some((tc) => tc.skillName === 'web_search_exa');
     if (webPriority && !webSearchCalled && !containsWebSearch) {
@@ -288,6 +376,17 @@ async function runSkillsAgentLoop(webContents, options) {
         },
         ...toolCalls
       ];
+    }
+
+    /** 续轮模型若再次输出 firmware_codegen_skill，不再执行也不展示失败块：主进程直接剔除 */
+    if (hasSuccessfulFirmwareCodegenInResults(toolResults)) {
+      const beforeN = toolCalls.length;
+      toolCalls = toolCalls.filter((tc) => tc.skillName !== 'firmware_codegen_skill');
+      if (beforeN !== toolCalls.length && process.env.FH_SKILLS_AGENT_DEBUG === '1') {
+        console.log(
+          '[skills-agent-loop] stripped redundant firmware_codegen_skill (success already in toolResults)'
+        );
+      }
     }
 
     if (finalMessage && (!webPriority || webSearchCalled)) {
@@ -306,7 +405,7 @@ async function runSkillsAgentLoop(webContents, options) {
                 '你是硬件设计助手。本轮是**面向用户的最终答复**，与前面的「规划 JSON 块」无关。\n' +
                 '**输出形态**：只输出一段**连续 Markdown**（GFM），从第一个可见字符起就是正文，可直接交给 Markdown 渲染器。可从 `# 标题` 起笔，或直接写段落/列表。\n' +
                 '**禁止**：整段 JSON 对象、整段 json 代码围栏、输出 reasoning_steps / tool_calls / final_message 等字段名、复述规划用的块结构。\n' +
-                '代码片段请用常规 Markdown 围栏（如以三个反引号加语言标记起笔）仅包住代码本身。引用外链须与工具结果一致。语言：中文。'
+                '若工具结果涉及项目内已有 .ino/固件补丁：用「**更新/修订**固件」「补丁已应用」等表述，**避免**「从零生成整个项目文件」类说法。代码片段请用常规 Markdown 围栏（如以三个反引号加语言标记起笔）仅包住代码本身。引用外链须与工具结果一致。语言：中文。'
             },
             {
               role: 'user',
@@ -351,6 +450,57 @@ async function runSkillsAgentLoop(webContents, options) {
     }
 
     if (!toolCalls.length) {
+      if (hasSuccessfulFirmwareCodegenInResults(toolResults)) {
+        send({ type: 'final_synthesis_start', source: 'skills_agent_main' });
+        let synthesized = '';
+        try {
+          const toolResultsJson = JSON.stringify(toolResults, null, 2);
+          const synResp = await callLLM(
+            [
+              {
+                role: 'system',
+                content:
+                  '你是硬件设计助手。本轮是**面向用户的最终答复**。\n' +
+                  '**输出形态**：只输出一段**连续 Markdown**（GFM）。\n' +
+                  '历史工具结果中**已有成功的 firmware_codegen_skill**：请向用户说明功能要点、引脚占位与审阅/接受补丁的方式；**不要**建议再次调用固件生成 skill。语言：中文。'
+              },
+              {
+                role: 'user',
+                content:
+                  `【用户需求】\n${userMessage}\n\n【toolResults JSON】\n${toolResultsJson}\n\n` +
+                  '【输出】仅 Markdown 正文，无 JSON。'
+              }
+            ],
+            model,
+            temperature,
+            { mode: 'stream_markdown' }
+          );
+          synthesized = extractRenderableMarkdownFromAgentSynthesis(String(synResp?.content || ''));
+        } catch (e) {
+          if (process.env.FH_SKILLS_AGENT_DEBUG === '1') {
+            console.warn('[skills-agent-loop] finalize-after-fw-only failed', e);
+          }
+          synthesized = '';
+        }
+        send({ type: 'final_synthesis_end', source: 'skills_agent_main' });
+        const base =
+          synthesized ||
+          '✅ 固件补丁已生成。请在代码区「补丁审阅模式」中查看，并可选择性接受或拒绝各段改动。';
+        const withRefs = webSearchCalled
+          ? appendWebSearchReferencesMarkdown(base, toolResults)
+          : base;
+        return {
+          ok: true,
+          outcome: 'final_message',
+          assistantMessages: [
+            {
+              type: 'assistant_message',
+              content: withRefs,
+              isSkillFlow: true
+            }
+          ]
+        };
+      }
       return {
         ok: true,
         outcome: 'no_tools',
@@ -391,9 +541,33 @@ async function runSkillsAgentLoop(webContents, options) {
         argsPreview: toolArgsPlainTextForUi(skillName, toolCall.args)
       });
 
+      /** 每步工具执行前从渲染进程拉取最新快照（连线等落盘后旧快照会仍为 0 条连线） */
+      let snapshotForTools = canvasSnapshot;
+      if (!isWorkspaceToolName(skillName)) {
+        try {
+          const fresh = await invokeRendererEngineOp(
+            webContents,
+            'getCanvasSnapshotForSkill',
+            [],
+            120000
+          );
+          if (fresh && typeof fresh === 'object') {
+            snapshotForTools = fresh;
+          }
+        } catch (e) {
+          if (process.env.FH_SKILLS_AGENT_DEBUG === '1') {
+            console.warn(
+              '[skills-agent-loop] getCanvasSnapshotForSkill IPC 失败，沿用本轮初始快照',
+              e?.message || e
+            );
+          }
+        }
+      }
+
       const ctxPayload = {
         userRequirement: userMessage,
-        canvasSnapshot
+        canvasSnapshot: snapshotForTools,
+        projectPath
       };
 
       /** @type {unknown} */
@@ -407,12 +581,43 @@ async function runSkillsAgentLoop(webContents, options) {
         } else {
           result = await executeWorkspaceTool(skillName, toolCall.args, projectPath);
         }
+      } else if (
+        skillName === 'firmware_codegen_skill' &&
+        firmwareCodegenInvokeCount >= maxFirmwareCodegenPerRun
+      ) {
+        result = {
+          success: false,
+          error: `本轮对话内 firmware_codegen_skill 调用次数已达上限（${maxFirmwareCodegenPerRun}）。请输出 final_message 总结已返回的补丁与审阅要点；勿再调用该 skill。`,
+          data: { capped: true, firmwareCodegenCap: true }
+        };
+      } else if (
+        skillName === 'wiring_edit_skill' &&
+        shouldBlockWiringEditAfterNoOpSuccess(toolResults)
+      ) {
+        result = {
+          success: false,
+          error:
+            '上一轮 wiring_edit_skill 已成功且拟定连线为 0 条（画布已满足当前意图）。请直接输出 final_message，勿再调用 wiring_edit_skill。',
+          data: { capped: true, wiringEditNoOpRepeat: true }
+        };
+      } else if (skillName === 'wiring_edit_skill' && wiringEditRunCount >= maxWiringEditPerRun) {
+        result = {
+          success: false,
+          error: `本轮对话内 wiring_edit_skill 已达上限（${maxWiringEditPerRun} 次）。请根据已返回的工具结果与画布快照输出 final_message：自检连线是否与 wiringRules 一致、components/connections 是否已反映；勿再调用 wiring_edit_skill。`,
+          data: { capped: true, wiringEditCap: true }
+        };
       } else {
         result = await executeSkillFn(webContents, {
           skillName,
           args: toolCall.args,
           ctxPayload
         });
+        if (skillName === 'wiring_edit_skill') {
+          wiringEditRunCount += 1;
+        }
+        if (skillName === 'firmware_codegen_skill') {
+          firmwareCodegenInvokeCount += 1;
+        }
       }
 
       if (shouldAbort()) {
@@ -422,6 +627,10 @@ async function runSkillsAgentLoop(webContents, options) {
       if (skillName === 'web_search_exa' && result?.success && result?.data) {
         result = normalizeWebSearchToolResult(result.data);
       }
+
+      /** 压缩前快照固件 patch；`maybeCompactToolResultForAgentLoop` 会整段替换 result，导致 `data.patch` 丢失、审阅窗不打开 */
+      const firmwarePatchSnapshot =
+        skillName === 'firmware_codegen_skill' ? extractFirmwarePatchPayloadForToolEnd(result) : null;
 
       if (estimateToolResultJsonChars(result) > TOOL_RESULT_COMPACT_THRESHOLD_CHARS) {
         send({
@@ -460,9 +669,28 @@ async function runSkillsAgentLoop(webContents, options) {
         success: !!result?.success,
         toolCallId: toolCall.toolCallId,
         resultPreview: toolResultPlainTextForUi(skillName, result),
+        wiringPlan:
+          skillName === 'wiring_edit_skill'
+            ? {
+                rationale: String(result?.data?.rationale || result?.rationale || '').trim(),
+                canvasVsScheme: String(
+                  result?.data?.canvasVsScheme || result?.canvasVsScheme || ''
+                ).trim(),
+                missingPartsSummary: Array.isArray(
+                  result?.data?.missingPartsSummary || result?.missingPartsSummary
+                )
+                  ? (result?.data?.missingPartsSummary || result?.missingPartsSummary)
+                  : [],
+                plannedOperations: Array.isArray(
+                  result?.data?.plannedOperations || result?.plannedOperations
+                )
+                  ? (result?.data?.plannedOperations || result?.plannedOperations).slice(0, 20)
+                  : []
+              }
+            : undefined,
         firmwarePatch:
           skillName === 'firmware_codegen_skill'
-            ? {
+            ? firmwarePatchSnapshot || {
                 summary: result?.data?.summary || result?.summary || '',
                 patch: result?.data?.patch || result?.patch || '',
                 targetPath: result?.data?.targetPath || result?.targetPath || '',

@@ -14,7 +14,7 @@ function getManifest() {
   return {
     name: NAME,
     description:
-      '根据当前画布与固件代码生成可审阅 patch（先结构预判：空画布/连线未就绪时骨架或初步 patch，完整时尽量引脚级）；含 canvasGuidance 引导补画布；默认不落盘。',
+      '结合画布与（可选）现有代码输出可审阅 patch；**已有工程/.ino 时语义为更新固件**（非空项目从零生成）。先结构预判：空画布/缺连线时骨架或初步 patch，就绪时尽量引脚级；含 canvasGuidance；默认不落盘。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -74,14 +74,17 @@ async function execute(args, ctx) {
       : schemeInject.textBlock;
   }
 
-  /** @type {unknown} */
+  /**
+   * 画布来源优先级：模型显式 args > 渲染进程实时快照（IPC）> 主进程 ctx（可能为对话轮初始快照，已过时）。
+   * @type {unknown}
+   */
   let canvasSnapshot =
     args?.canvasSnapshot !== undefined && args?.canvasSnapshot !== null ? args.canvasSnapshot : undefined;
-  if (canvasSnapshot === undefined && ctx?.canvasSnapshot != null) {
-    canvasSnapshot = ctx.canvasSnapshot;
-  }
   if (canvasSnapshot === undefined && typeof engine.getCanvasSnapshotForSkill === 'function') {
     canvasSnapshot = await Promise.resolve(engine.getCanvasSnapshotForSkill());
+  }
+  if (canvasSnapshot == null && ctx?.canvasSnapshot != null) {
+    canvasSnapshot = ctx.canvasSnapshot;
   }
 
   const out = await engine.runFirmwareCodePatch(userRequirement, codeText, {

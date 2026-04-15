@@ -7,6 +7,7 @@
  * @property {any} [schemeDesignResult] - 方案设计中间态
  * @property {any} [analysisResult] - BOM/库匹配结果
  * @property {any} [canvasSnapshot] - 可选：显式传入的画布 JSON（wiring_edit_skill）
+ * @property {string} [projectPath] - 可选：当前打开项目根目录（供按需读盘/补充上下文）
  * @property {any} [completionSuggestions] - completion_suggestion 写入（可选）
  * @property {any} [wiringEditPlan] - 连线计划（可选）
  * @property {any} [summarizeResult] - summarize_skill 写入（可选）

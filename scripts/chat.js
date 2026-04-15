@@ -69,50 +69,67 @@ function preferBriefAnswerFirst(text) {
 
 /**
  * 用户明确要求走完整 skills agent / 元件库编排（与默认短答区分）。
+ * 含「写程序/示例/arduino」等显式词，或 **硬件实现句 + 要写代码**（避免仅聊天被直连短答）。
  * @param {string} text
  * @returns {boolean}
  */
 function explicitFullAgentIntent(text) {
     const t = String(text || '');
-    return (
+    if (
         /「生成完整方案」|生成完整方案|「生成方案编排」|生成方案编排/.test(t) ||
         /(?:元件库|画布).{0,12}(?:匹配|方案|分析)|(?:完整|深度)(?:编排|方案).{0,8}(?:元件|库|画布)/.test(t) ||
-        /BOM\s*匹配|帮我出(?:一份)?BOM|runBomAnalysis/i.test(t) ||
-        /固件|代码补丁|改代码|改固件|生成代码|codegen|firmware/i.test(t)
-    );
-}
-
-/**
- * 默认短答路径下，是否在叙述「具体要做的事」而非纯概念问句（用于文末提示「生成完整方案」）。
- * @param {string} text
- * @returns {boolean}
- */
-function userHasExplicitHardwareRequirement(text) {
-    const t = String(text || '').trim();
-    if (t.length < 10) return false;
-    if (/^(什么是|啥是|什么叫|解释一下|介绍一下)/.test(t)) return false;
-    return (
-        /(我想|我要|帮我|需要做|做一个|做个|搭建|设计|实现|开发|装置|系统|自动|控制|监测|报警|选型|硬件)/.test(t)
-    );
-}
-
-/**
- * 用户主要在了解「当前项目/工程是做什么的」，不是要立刻做设计或走完整编排；此类不追加「生成方案编排」强提示。
- * @param {string} text
- * @returns {boolean}
- */
-function isProjectOrWorkspaceOverviewQuestion(text) {
-    const t = String(text || '').trim();
-    if (!t) return false;
-    if (explicitFullAgentIntent(t)) return false;
+        /BOM\s*匹配|帮我出(?:一份)?BOM|runBomAnalysis/i.test(t)
+    ) {
+        return true;
+    }
     if (
-        /(?:看下|看看|瞧瞧|读下|浏览).{0,8}画(?:布|板)|画(?:布|板).{0,14}(?:上有啥|里有啥|有啥|有什么|哪些|内容|情况|东西)|画(?:布|板).{0,8}(?:吗|么|嘛|空|空的|有没有)|啥(?:内容|东西).{0,6}画/i.test(
+        /固件|代码补丁|改代码|改固件|生成代码|示例代码|示例程序|写(?:个|一段)?(?:示例)?代码|\.ino|arduino|codegen|firmware|烧录|sketch|补丁/i.test(
             t
         )
     ) {
         return true;
     }
-    return /(?:这个|本|该|打开的|当前)?(?:项目|工程).{0,16}(?:是|干|做)(?:什么|啥|啥的|嘛)|(?:什么|啥)(?:项目|工程)|(?:项目|工程).{0,10}(?:干啥|干什么|做啥|用途|干嘛|介绍|啥意思|说明)|(?:看下|看看|瞧瞧|读下|浏览|了解下|说说|讲讲).{0,12}(?:项目|工程)|画布.{0,8}(?:干啥|干什么的|什么项目)|what\s*(?:'?s|is).{0,16}project|purpose\s+of.{0,12}project/i.test(
+    /** 实现向：写/生成/来一段 + 程序或代码（不要求出现「示例」二字） */
+    if (/(写|生成|给|编|出|来)(?:我|个|一)?(?:段)?(?:点)?(?:示例|示范)?(程序|代码|sketch)/i.test(t)) {
+        return true;
+    }
+    /** 硬件语境 + 明确要落地代码（如 RGB/按键灯 + 帮我写…） */
+    const hwCue = /rgb|led|灯|按键|传感器|电机|arduino|esp|stm32|pwm|gpio|供电|引脚|消抖|独立供电|三色|小灯/i.test(
+        t
+    );
+    const implCue = /(写|生成|给|编|出|实现)(?:我|个|一)?(?:段)?(?:点)?(?:示例|示范)?(程序|代码|sketch)?|上板|烧录|固件/i.test(
+        t
+    );
+    if (hwCue && implCue) {
+        return true;
+    }
+    /** 「想做一个…灯」且同句出现写/代码/程序/示例/arduino */
+    if (
+        /(想做一个|想做|我要|帮我做|能否做).{0,48}(灯|led|rgb|按键)/i.test(t) &&
+        /(写|代码|程序|示例|arduino|固件|sketch|\.ino)/i.test(t)
+    ) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * 用户需要走主进程 Agent Loop，以便模型自主调用 `wiring_edit_skill` 等（排除极短的「什么是连线」类纯概念问）。
+ * @param {string} text
+ * @returns {boolean}
+ */
+function userMessageSuggestsSkillOrchestration(text) {
+    const t = String(text || '').trim();
+    if (!t) return false;
+    /** 含显式 skill / 工具名时允许更长指令，避免被 360 字截断误判为「不走 Agent」 */
+    const explicitTool =
+        /wiring_edit_skill|firmware_codegen_skill|scheme_design_skill|summarize_skill|completion_suggestion_skill|web_search_exa|add_connection|remove_connection/i.test(
+            t
+        );
+    if (t.length > 360 && !explicitTool) return false;
+    if (t.length > 4000) return false;
+    if (/^(什么是|啥是|什么叫)\s*.{0,20}$/.test(t)) return false;
+    return /连线|接线|补线|改线|连一下|接上|连上|飞线|自动连线|帮我连|帮(?:我)?(?:在)?画(?:布|板)(?:上)?(?:把|将)?.*连|画(?:布|板)(?:上)?.*(?:连|接)|电路(?:里)?.*(?:连|接)|引脚\s*(?:怎么|如何)?\s*连|GPIO\s*\d+.*连|wiring_edit|add_connection|remove_connection/i.test(
         t
     );
 }
@@ -894,7 +911,8 @@ class ChatManager {
         const lines = [
             '【当前打开的项目（轻量摘要，不含磁盘文件全文）】',
             `- 本地路径：${meta.path}`,
-            `- 文件夹名：${meta.folderName || '（未知）'}`
+            `- 文件夹名：${meta.folderName || '（未知）'}`,
+            '- 【表述】若用户讨论项目内 Arduino/.ino 固件：宜说「**更新/修订**当前固件或补丁」，避免「从零生成整个项目代码」等表述（除非确认尚未存在 .ino）。'
         ];
         if (this.skillsEngine && typeof this.skillsEngine.getCanvasSnapshotForSkill === 'function') {
             const snap = this.skillsEngine.getCanvasSnapshotForSkill();
@@ -974,7 +992,8 @@ class ChatManager {
             '',
             '兼容旧习惯：也可输出仅含 `final_message` 的单层 JSON（`workspace_tool_calls` 为 `[]` 或省略），但**优先**使用纯 Markdown 终答。',
             '',
-            '首轮若需要了解项目用途：可先 list_dir 或 workspace_explore，再 read_file(circuit_config.json) 与相关 .ino。不要说「未收到项目文件」。'
+            '首轮若需要了解项目用途：可先 list_dir 或 workspace_explore，再 read_file(circuit_config.json) 与相关 .ino。不要说「未收到项目文件」。',
+            '若已确认目录中存在非空 `.ino`：向用户说明固件相关动作时使用「**更新/修订当前固件**」「生成**补丁**」，避免「从零生成整套代码文件」。'
         ]
             .filter((x) => x !== '')
             .join('\n');
@@ -1200,7 +1219,7 @@ class ChatManager {
             });
         }
 
-        return '（工作区工具轮次已用尽，请重试或发送「生成方案编排」获取更深入分析。）';
+        return '（工作区工具轮次已用尽，请缩短问题或新开对话重试。）';
     }
 
     /**
@@ -1294,16 +1313,6 @@ class ChatManager {
                 this._lastDirectWorkspaceTraceId = null;
                 const mergedMsg = this.messages.find((m) => m.id === tid);
                 let content = String(mergedMsg?.content || aiResponse || '');
-                if (
-                    apiOptions.directReplyStyle === 'shortDefault' &&
-                    userHasExplicitHardwareRequirement(userMessage)
-                ) {
-                    const hint =
-                        '\n\n---\n\n如果需要进入**技能编排**（当前支持：方案设计、补全建议、联网检索），请告诉我 **「生成方案编排」**（或 **「生成完整方案」**）。';
-                    if (!/生成方案编排|生成完整方案/.test(content)) {
-                        content = content.trimEnd() + hint;
-                    }
-                }
                 if (mergedMsg) {
                     mergedMsg.content = content;
                 }
@@ -1312,18 +1321,6 @@ class ChatManager {
                 await this.renderMessages();
                 this.scrollToBottom();
                 return;
-            }
-
-            if (
-                apiOptions.directReplyStyle === 'shortDefault' &&
-                userHasExplicitHardwareRequirement(userMessage) &&
-                !isProjectOrWorkspaceOverviewQuestion(userMessage)
-            ) {
-                const hint =
-                    '\n\n---\n\n如果需要进入**技能编排**（当前支持：方案设计、补全建议、联网检索），请告诉我 **「生成方案编排」**（或 **「生成完整方案」**）。';
-                if (!/生成方案编排|生成完整方案/.test(String(aiResponse || ''))) {
-                    aiResponse = String(aiResponse || '').trimEnd() + hint;
-                }
             }
 
             // 在控制台打印机器人回复原文，方便对比效果
@@ -1399,10 +1396,10 @@ class ChatManager {
                 '你是一个专业的硬件开发助手，擅长Arduino、ESP32等嵌入式开发，熟悉各种传感器、执行器和通信模块。你可以帮助用户进行电路设计、元件选型和代码编写。请用markdown格式回复，提供清晰的结构化信息。';
             if (apiOptions.directReplyStyle === 'brief') {
                 systemBase +=
-                    '\n\n【本轮模式】用户希望先得到简要说明，不要求你代表本产品拉取元件库或执行工具链。用较短篇幅 Markdown 回答要点；结尾可提示：如需进入 skills 编排，可发送「生成方案编排」。';
+                    '\n\n【本轮模式】用户希望先得到简要说明，不要求你代表本产品拉取元件库或执行工具链。用较短篇幅 Markdown 回答要点。';
             } else if (apiOptions.directReplyStyle === 'shortDefault') {
                 systemBase +=
-                    '\n\n【本轮模式】请优先**简短**作答（几段话或短列表即可）。不要假设已联网检索或查询过本产品的元件库；未经验证的型号、链接勿写死。不要承诺当前未实现的能力（如自动生成电路连接图、完整代码框架、画布自动接线执行）。若系统消息附有**画布结构化快照**，视为应用已读取当前画布，请据实作答：components/connections 为空即暂无元件/连线，**禁止**声称无法查看画布或强求用户粘贴整份 JSON。**勿主动**建议使用「生成方案编排」或「生成完整方案」，除非用户明确要做完整 BOM、深度方案或编排类操作。若系统消息要求使用「工作区工具」读盘，请先按协议输出 JSON 调用工具再作答，勿声称未收到项目文件。';
+                    '\n\n【本轮模式】请优先**简短**作答（几段话或短列表即可）。不要假设已联网检索或查询过本产品的元件库；未经验证的型号、链接勿写死。**直连模式下不会调用 skills、也不会代为在画布上执行自动补线**；可用于读画布的**文字**说明、引脚建议或指导用户手动画线。若系统消息附有**画布结构化快照**，视为已读取当前画布，请据实作答：components/connections 为空即暂无元件/连线，**禁止**声称无法查看画布或强求用户粘贴整份 JSON。**勿**在文末要求用户发送固定口令以触发「技能编排」；需要全自动画布改线时由应用侧路由接入 Agent，不依赖用户背固定话术。若系统消息要求使用「工作区工具」读盘，请先按协议输出 JSON 调用工具再作答。';
             }
 
             const projectMeta = this._getOpenProjectMeta();
@@ -1887,7 +1884,7 @@ class ChatManager {
             {
                 name: 'firmware_codegen_skill',
                 description:
-                    '用户明确要改固件代码时：输入 userRequirement + 可选 codeText；会先读画布再生成 patch，结果含 canvasGuidance（空画布/补线/引脚级）；默认不直接写文件。'
+                    '用户明确要改固件时：userRequirement + 可选 codeText；读画布后输出可审阅 patch。**已有 .ino 时视为更新当前固件**；canvasGuidance；默认不写盘。'
             }
         ];
     }
@@ -2006,12 +2003,14 @@ class ChatManager {
 
         const webPri = this.needsWebSearchPriority(messageContent);
         const fullAgent = explicitFullAgentIntent(messageContent);
-        if (webPri || fullAgent) {
+        const skillOrch = userMessageSuggestsSkillOrchestration(messageContent);
+        if (webPri || fullAgent || skillOrch) {
             this._logSkillsChain('用户发送 → runSkillsAgentLoop', {
                 contentPreview: String(messageContent || '').slice(0, 200),
                 contentChars: String(messageContent || '').length,
                 needsWebSearchPriority: webPri,
                 explicitFullAgentIntent: fullAgent,
+                skillOrchestrationHint: skillOrch,
                 model: this.selectedModel
             });
             await this.runSkillsAgentLoop(messageContent, userMessage);
@@ -2574,6 +2573,46 @@ class ChatManager {
                         pending.success = !!detail.success;
                         pending.resultPreview =
                             typeof detail.resultPreview === 'string' ? detail.resultPreview : '';
+                        if (
+                            String(detail.skillName || '') === 'wiring_edit_skill' &&
+                            detail.wiringPlan &&
+                            typeof detail.wiringPlan === 'object'
+                        ) {
+                            const wp = detail.wiringPlan;
+                            const ops = Array.isArray(wp.plannedOperations) ? wp.plannedOperations : [];
+                            const lines = [];
+                            const cvs = String(wp.canvasVsScheme || '').trim();
+                            if (cvs) lines.push(`canvasVsScheme: ${cvs}`);
+                            const missing = Array.isArray(wp.missingPartsSummary)
+                                ? wp.missingPartsSummary.map((x) => String(x || '').trim()).filter(Boolean)
+                                : [];
+                            if (missing.length) lines.push(`missingParts: ${missing.join('、')}`);
+                            const rationale = String(wp.rationale || '').trim();
+                            if (rationale) lines.push(`rationale: ${rationale}`);
+                            const addN = ops.filter((x) => String(x?.op || '').trim() === 'add_connection').length;
+                            const delN = ops.filter((x) => String(x?.op || '').trim() === 'remove_connection').length;
+                            lines.push(`diffSummary: +${addN} / -${delN}`);
+                            lines.push('diff:');
+                            if (ops.length) {
+                                for (const op of ops) {
+                                    const kind = String(op?.op || '').trim();
+                                    if (kind === 'add_connection') {
+                                        const s = op?.source || {};
+                                        const t = op?.target || {};
+                                        lines.push(
+                                            `+ ${String(s.instanceId || '?')}:${String(s.pinName || s.pinId || '?')} -> ${String(t.instanceId || '?')}:${String(t.pinName || t.pinId || '?')}`
+                                        );
+                                    } else if (kind === 'remove_connection') {
+                                        lines.push(`- ${String(op?.connectionId || '?')}`);
+                                    } else {
+                                        lines.push(`~ ${kind || 'unknown'}`);
+                                    }
+                                }
+                            } else {
+                                lines.push('(none)');
+                            }
+                            pending.wiringPlanPreview = lines.join('\n');
+                        }
                     }
                     if (
                         String(detail.skillName || '') === 'firmware_codegen_skill' &&
@@ -2653,6 +2692,10 @@ class ChatManager {
                 const argsEsc = this.escapeHtml(String(b.argsPreview || ''));
                 const resEsc =
                     phase === 'done' ? this.escapeHtml(String(b.resultPreview ?? '')) : '';
+                const wiringEsc =
+                    phase === 'done' && typeof b.wiringPlanPreview === 'string' && b.wiringPlanPreview.trim()
+                        ? this.escapeHtml(String(b.wiringPlanPreview))
+                        : '';
                 const openAttr = phase === 'run' ? ' open' : '';
                 const toggleOpen = phase === 'run';
                 const ariaExp = toggleOpen ? 'true' : 'false';
@@ -2660,7 +2703,7 @@ class ChatManager {
                 const ariaLbl = toggleOpen ? '收起详情' : '展开详情';
                 const bodyHtml = summaryLine
                     ? `<div class="fh-tool-section fh-tool-section-summary"><div class="fh-tool-prose">${summaryLine}</div></div>`
-                    : `<div class="fh-tool-section"><span class="fh-tool-label">输入要点</span><div class="fh-tool-prose">${argsEsc}</div></div>${phase === 'done' ? `<div class="fh-tool-section"><span class="fh-tool-label">执行结果</span><div class="fh-tool-prose">${resEsc}</div></div>` : ''}`;
+                    : `<div class="fh-tool-section"><span class="fh-tool-label">输入要点</span><div class="fh-tool-prose">${argsEsc}</div></div>${phase === 'done' ? `<div class="fh-tool-section"><span class="fh-tool-label">执行结果</span><div class="fh-tool-prose">${resEsc}</div></div>${wiringEsc ? `<div class="fh-tool-section"><span class="fh-tool-label">连线方案</span><div class="fh-tool-prose">${wiringEsc}</div></div>` : ''}` : ''}`;
                 parts.push(
                     `<details class="fh-agent-block fh-agent-block-tool ${cls}"${openAttr}><summary class="fh-agent-block-summary"><span class="fh-agent-block-summary-main"><span class="fh-tool-name">${name}</span><span class="fh-tool-status">${statusLabel}</span></span><button type="button" class="fh-agent-block-toggle" aria-expanded="${ariaExp}" aria-label="${ariaLbl}"><img class="fh-agent-block-toggle-icon" src="" alt="" width="18" height="18" data-icon="${chevronName}"></button></summary>${bodyHtml}</details>`
                 );
@@ -2778,14 +2821,44 @@ class ChatManager {
                         this._scheduleSkillsAgentFinalStreamPreview(traceIdForThisRun);
                     });
                 }
+                const loopCanvasSnapshot =
+                    typeof this.skillsEngine.getCanvasSnapshotForSkill === 'function'
+                        ? this.skillsEngine.getCanvasSnapshotForSkill()
+                        : null;
+                const loopComponents = Array.isArray(loopCanvasSnapshot?.components)
+                    ? loopCanvasSnapshot.components
+                    : [];
+                const loopConnections = Array.isArray(loopCanvasSnapshot?.connections)
+                    ? loopCanvasSnapshot.connections
+                    : [];
+                console.log('[skills-loop] canvasSnapshot 摘要:', {
+                    projectPath:
+                        typeof window.app?.currentProject === 'string'
+                            ? String(window.app.currentProject).trim()
+                            : '',
+                    componentCount: loopComponents.length,
+                    connectionCount: loopConnections.length,
+                    componentInstancePreview: loopComponents
+                        .slice(0, 8)
+                        .map((c) => String(c?.instanceId || c?.id || c?.componentFile || ''))
+                        .filter(Boolean),
+                    connectionPreview: loopConnections
+                        .slice(0, 8)
+                        .map((w) => {
+                            const sid = String(
+                                w?.source?.instanceId || w?.source?.componentId || ''
+                            );
+                            const tid = String(
+                                w?.target?.instanceId || w?.target?.componentId || ''
+                            );
+                            return `${sid}:${String(w?.source?.pinId || '')} -> ${tid}:${String(w?.target?.pinId || '')}`;
+                        })
+                });
                 res = await window.electronAPI.runSkillsAgentLoop({
                     userMessage: String(userMessage || ''),
                     model: this.selectedModel || this.defaultChatModel,
                     temperature: 0.2,
-                    canvasSnapshot:
-                        typeof this.skillsEngine.getCanvasSnapshotForSkill === 'function'
-                            ? this.skillsEngine.getCanvasSnapshotForSkill()
-                            : null,
+                    canvasSnapshot: loopCanvasSnapshot,
                     projectPath:
                         typeof window.app?.currentProject === 'string'
                             ? String(window.app.currentProject).trim()

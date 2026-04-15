@@ -2,15 +2,32 @@
 
 ## 📝 更新日志
 
-### 🎉 v0.2.6 (2026-03-21) — Skills 架构降级（开发中）
+### 🎉 v0.2.6 (2026-03-21) — Skills 架构降级（已发布）
+
+以下 **🎯 日期补充**按**日期降序**排列（最新在上）。
+
+#### 🎯 2026-04-11 补充
+- **固件审阅 Accept All 后自动关代码窗（`scripts/canvas.js`）**：**`saveCode()`** 返回 **`Promise<boolean>`** 表示是否完成有效保存（含无项目目录时的内存暂存）；**`acceptAllFirmwarePatchChanges()`** 在 **`saveCode()` 成功**后调用 **`closeFirmwareCodeEditor()`**，避免大层代码编辑器继续遮挡聊天输入区；有项目但无 **`currentCodePath`** 等保存失败路径**不**自动关窗。
+- **E2E 场景 03（`e2e/scenarios/03-firmware-codefirst-rgb-button.json`）**：在 **`assertPatchReviewClosed`** 之后增加 **`waitForSelector` `#code-editor-modal` `hidden`**（与 **`FH_E2E_SKIP_LLM`** 跳过策略对齐）；**`e2e/README.md`** 表格同步；**`e2e/lib/scenario-runner.js`** 中 **`sendChat`** 前 **`closeFirmwareCodeEditorModalIfBlocking`** 保留为兜底（仅手动保存等仍可能未关窗时）。
+- **连线规划紧凑快照（`circuit-skills-engine.js`）**：`buildCompactWiringSnapshotForPrompt` 改为始终纳入画布上全部元件实例（及连线端点，有数量上限），**不再**仅用 `wiringRules` 关键词子串筛掉 MCU/LED/电源等，避免第二轮规则大段写「220Ω/电阻」时模型误判「画布仅有电阻」与 `missing_parts_on_canvas`；关键词仍可用于输出顺序靠前。
+- **`runWiringEditPlan` 提示词**：以「**功能优先，对称与成组被动件后置**」泛化表述替代过细的 RGB/220Ω 细则；补充紧凑快照与缺件结论的一致性约束。
+- **Agent 与主进程（`skills-agent-shared.js` / `skills-agent-loop.js`）**：`wiring_edit_skill` 单轮默认上限由 **3 → 5**（`FH_WIRING_EDIT_MAX_PER_RUN` 仍可覆盖）；新增 **「勿空转」** 文案；主进程在**上一轮 `wiring_edit_skill` 已成功且 `plannedOperations` 为空**时**拒绝**再次执行该 skill，引导直接 `final_message`。
+- **E2E（`e2e/scenarios/`）**：场景 JSON 加序号前缀并收敛为 **`01-five-components-wiring-request.json`**（未设 `FH_E2E_SCENARIO` 时默认）、**`02-five-components-symmetry-wiring.json`**；删除原拖放冒烟与 canvas-chat 场景；**`regression-scenario.spec.js`** 默认场景路径同步；**`e2e/README.md`** 更新。
+- **test-cases 精简**：删除 Agent loop、agent 集成向脚本、思考开关基准、`unit/workspace-direct-chat-tools` 等；**仅保留**四个 **`live-skill-*-siliconflow.js`** 与 **`lib/live-skill-node-engine.js`、`lib/siliconflow-client.js`** 作为单 skill 真测模板；**`test-cases/README.md`** 重写；根目录 **`package.json`** 去掉已不存在脚本的 **`test:live-*`** 项；**`feature-prd/3-skills_prd.md`** 测试策略改为单 skill 真测 + **`e2e/`** 端到端分工。
+- **版本号**：**v0.2.6** 已发布；上述 dated 补充随 **0.2.6** 交付（以根目录 **`package.json`** 与 **`npm run sync-version`** 为准）。
+
+#### 🎯 2026-04-09 补充
+- **主 Agent + 工作区工具真测（SiliconFlow）**：新增 **`test-cases/live-agent-workspace-tools-siliconflow.js`**，对 **`runSkillsAgentLoop`** 注入临时嵌套项目目录（`projectPath`），真实调用 SiliconFlow；通过 IPC 断言至少各出现一次 **`workspace_explore`** 与 **`workspace_read_file`**，并校验最终合成正文包含探针子串，验证多轮 **`tool_calls`** 下可完成目录树浏览与文件读取。**`npm run test:live-agent-workspace-tools`**；可选 **`LIVE_AGENT_WORKSPACE_TOOLS_STRICT`** / **`LIVE_AGENT_WORKSPACE_TOOLS_VERBOSE`**。
+- **固件补丁审阅与代码浮窗（`scripts/canvas.js`、`index.html`、`styles/components.css`）**：
+  - 移除「**退出审阅**」按钮；**关闭**代码窗时**保留**内存审阅态 `firmwarePatchReviewState`（可先读聊天再回来 Accept/Reject）；`getCodeEditorStateForProject` 序列化审阅态以便多标签切换恢复。
+  - **Reject All**：仅合并内存结果、**不写磁盘**，并**自动退出审阅**回到普通编辑器。
+  - 审阅区改为**左右分栏**：左 **绿底** 显示「更改后」完整合并结果，右 **红底** 显示「合并前」基准代码；修复原先样式将合并结果 `pre` 设为 `display: none` 导致几乎全黑、难以区分增删的问题。
+  - 代码浮窗增加**右下角拖拽缩放**（最小约 **320×200**，宽高不超过浏览器视口，边界约束与标题栏拖拽一致）；`open`/`close` 时绑定与清理拖拽、缩放监听，避免重复监听。
 
 #### 🎯 2026-04-07 补充
 - **项目会话隔离（已落地）**：多项目标签切换时，右侧对话会话按项目隔离；应用启动与“最后一个标签关闭”场景统一自动补建 `未命名项目` 默认标签。
 - **未保存改动内存恢复（画布）**：项目切换恢复策略调整为“优先恢复内存快照（components/connections）”，避免已打开项目在未保存情况下切回后回退到初始磁盘状态。
 - **未保存项目代码保存策略（固件编辑器）**：在 `未命名项目`/新建未落盘项目中点击“保存”，改为仅内存级暂存代码，不再强制触发“保存项目”流程；提示文案与行为对齐，消除“取消保存项目却提示保存成功”的误导。
-
-#### 🎯 2026-04-09 补充
-- **主 Agent + 工作区工具真测（SiliconFlow）**：新增 **`test-cases/live-agent-workspace-tools-siliconflow.js`**，对 **`runSkillsAgentLoop`** 注入临时嵌套项目目录（`projectPath`），真实调用 SiliconFlow；通过 IPC 断言至少各出现一次 **`workspace_explore`** 与 **`workspace_read_file`**，并校验最终合成正文包含探针子串，验证多轮 **`tool_calls`** 下可完成目录树浏览与文件读取。**`npm run test:live-agent-workspace-tools`**；可选 **`LIVE_AGENT_WORKSPACE_TOOLS_STRICT`** / **`LIVE_AGENT_WORKSPACE_TOOLS_VERBOSE`**。
 
 #### 🎯 2026-03-10 补充
 - **SiliconFlow `max_tokens`**：主进程 `callSiliconFlowAPI` 默认 **8192**（聊天）、**`longOutput:true`** 时 **32768**（Agent）；**勿再顶格 100000**（易触发 **500 / code 50507**）。真测 **`siliconflow-client`** 默认 **8192**、硬顶 **32768**。
@@ -69,7 +86,7 @@
 - **可观测性**：`scripts/resizer.js` 去掉拖动分割线的 `console.log`；`chat.js` 增加 **`[skills-chain]`** 日志（用户输入预览、agent 轮次、LLM 返回长度、`executeSkill` 起止）；`circuit-skills-engine.js` 的 **`[scheme→需求分析]`** 记录 prompt 规模、LLM 返回长度，解析失败时 **`_debugLogRequirementAnalysisRaw`** 打印首/尾片段与括号位置；校验解析结果须含 **`components` 数组** 否则重试/报错
 - **`skills/` 布局**：`index.js` 聚合注册表 + `listSkillsForLLM` + 共享 JSDoc 类型；`skills/skills/` **仅**含可复用单 skill 实现；`workflowSkills.js` 通过 `require('./index')` 引用 `SKILL_MODULES`；**已移除**独立的 `registry.js`、`context.js`（并入 `index.js`）
 
-> `package.json` 版本号仍为 **0.2.5** 时，本条为 **未发布** 变更记录；发布时请 bump 版本并执行 `npm run sync-version`。
+> **v0.2.6 已发布**：根目录 `package.json` 的 `version` 为 **0.2.6**；展示用文案与安装包命名以 `npm run sync-version` 及构建产物为准。
 
 ---
 

@@ -567,7 +567,7 @@
                                 </div>
                                 <div class="card-info">
                                     <h3>关于</h3>
-                                    <p id="about-version-text">Fast Hardware v0.2.5</p>
+                                    <p id="about-version-text">Fast Hardware v0.2.6</p>
                                 </div>
                             </div>
                             <div class="card-content">
@@ -639,11 +639,8 @@
                       <button class="code-editor-btn code-editor-review-all-btn" id="accept-all-code-review-btn" title="接受本次全部改动" style="display: none;">
                           Accept All
                       </button>
-                      <button class="code-editor-btn code-editor-review-all-btn" id="reject-all-code-review-btn" title="拒绝本次全部改动" style="display: none;">
+                      <button class="code-editor-btn code-editor-review-all-btn" id="reject-all-code-review-btn" title="拒绝本次全部改动（仅内存，不写磁盘）" style="display: none;">
                           Reject All
-                      </button>
-                      <button class="code-editor-btn code-editor-exit-review-btn" id="exit-code-review-btn" title="退出补丁审阅" style="display: none;">
-                          退出审阅
                       </button>
                       <button class="code-editor-btn" id="save-code-btn" title="保存 (Ctrl+S)">
                           <img src="" alt="保存" width="16" height="16" data-icon="save">
@@ -657,6 +654,7 @@
                   <div class="code-editor-line-numbers" id="code-editor-line-numbers"></div>
                   <textarea id="code-editor-textarea" class="code-editor-textarea" spellcheck="false"></textarea>
               </div>
+              <div class="code-editor-resize-handle" id="code-editor-resize-handle" title="拖拽调整窗口大小" aria-hidden="true"></div>
           </div>
       </div>
 

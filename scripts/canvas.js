@@ -1896,8 +1896,9 @@ class CanvasManager {
             // 加载项目代码（如果有项目）或显示默认模板
             await this.loadProjectCode();
 
-            // 初始化拖拽功能
+            // 初始化拖拽与缩放（先清理，避免重复打开叠加监听）
             this.initCodeEditorDrag();
+            this.initCodeEditorResize();
 
             // 初始化事件监听器（移除点击背景关闭的逻辑）
             this.initCodeEditorEvents();
@@ -1905,7 +1906,10 @@ class CanvasManager {
     }
 
     /**
-     * 关闭固件代码编辑器
+     * 关闭固件代码编辑器（仅隐藏窗口）。
+     * 处于补丁审阅中时保留内存态 `firmwarePatchReviewState` 与审阅 DOM，便于用户先阅读聊天再回来接受/拒绝；落盘仍仅在「保存」或 Accept/Reject All 经 `saveCode` 完成。
+     * Accept All 在 `saveCode` 成功写入后会自动调用本方法关闭窗口。
+     * @returns {void}
      */
     closeFirmwareCodeEditor() {
         const modal = document.getElementById('code-editor-modal');
@@ -1923,16 +1927,26 @@ class CanvasManager {
 
             // 清理事件监听器
             this.cleanupCodeEditorEvents();
+            if (typeof this.cleanupCodeEditorDrag === 'function') {
+                this.cleanupCodeEditorDrag();
+            }
+            if (typeof this.cleanupCodeEditorResize === 'function') {
+                this.cleanupCodeEditorResize();
+            }
 
-            // 不清理lastSavedCodeContent，让它在编辑器重新打开时保持可用
-            // 只有在切换项目或明确需要时才清理
-            this.exitFirmwarePatchReview();
+            // 不清理 lastSavedCodeContent / firmwarePatchReviewState；再次打开时由 loadProjectCode 恢复审阅 UI
         }
     }
 
     /**
      * 导出当前项目的代码编辑器内存态（不落盘）
-     * @returns {{ currentCodePath: string, lastSavedCodeContent: string, draftCodeContent: string, isEditorOpen: boolean }}
+     * @returns {{
+     *   currentCodePath: string,
+     *   lastSavedCodeContent: string,
+     *   draftCodeContent: string,
+     *   isEditorOpen: boolean,
+     *   firmwarePatchReviewState: object | null
+     * }}
      */
     getCodeEditorStateForProject() {
         const modal = document.getElementById('code-editor-modal');
@@ -1940,23 +1954,44 @@ class CanvasManager {
         const isEditorOpen = !!(modal && modal.style.display === 'flex');
         const draftCodeContent =
             textarea && typeof textarea.value === 'string' ? textarea.value : '';
+        let firmwarePatchReviewState = null;
+        if (this.firmwarePatchReviewState && typeof this.firmwarePatchReviewState === 'object') {
+            try {
+                firmwarePatchReviewState = JSON.parse(JSON.stringify(this.firmwarePatchReviewState));
+            } catch {
+                firmwarePatchReviewState = null;
+            }
+        }
         return {
             currentCodePath: String(this.currentCodePath || ''),
             lastSavedCodeContent: String(this.lastSavedCodeContent || ''),
             draftCodeContent,
-            isEditorOpen
+            isEditorOpen,
+            firmwarePatchReviewState
         };
     }
 
     /**
      * 恢复项目级代码编辑器内存态（不自动打开窗口）
-     * @param {{ currentCodePath?: string, lastSavedCodeContent?: string, draftCodeContent?: string }} state
+     * @param {{
+     *   currentCodePath?: string,
+     *   lastSavedCodeContent?: string,
+     *   draftCodeContent?: string,
+     *   firmwarePatchReviewState?: object | null
+     * }} state
      * @returns {void}
      */
     restoreCodeEditorStateForProject(state) {
         const st = state && typeof state === 'object' ? state : {};
         this.currentCodePath = String(st.currentCodePath || '');
         this.lastSavedCodeContent = String(st.draftCodeContent || st.lastSavedCodeContent || '');
+        if (Object.prototype.hasOwnProperty.call(st, 'firmwarePatchReviewState')) {
+            const fps = st.firmwarePatchReviewState;
+            this.firmwarePatchReviewState =
+                fps && typeof fps === 'object' ? fps : null;
+        } else {
+            this.firmwarePatchReviewState = null;
+        }
     }
 
     /**
@@ -1964,6 +1999,37 @@ class CanvasManager {
      */
     async loadProjectCode() {
         try {
+            // 待审阅补丁：优先恢复 diff UI，避免被下方从磁盘/内存加载覆盖
+            if (
+                this.firmwarePatchReviewState &&
+                Array.isArray(this.firmwarePatchReviewState.rows) &&
+                this.firmwarePatchReviewState.rows.length > 0
+            ) {
+                const textarea = document.getElementById('code-editor-textarea');
+                const lineNumbers = document.getElementById('code-editor-line-numbers');
+                if (!textarea || !lineNumbers) {
+                    return;
+                }
+                const codePath = this.currentCodePath || '未命名.ino';
+                const title = document.getElementById('code-editor-title');
+                if (title) {
+                    const fileName = codePath.split('/').pop();
+                    if (window.mainApp?.currentProject) {
+                        title.textContent = `固件代码编辑器 - ${fileName}`;
+                    } else {
+                        title.textContent = `代码编辑器 - ${fileName}`;
+                    }
+                }
+                if (typeof this.firmwarePatchReviewState.originalCode !== 'string') {
+                    this.firmwarePatchReviewState.originalCode = String(
+                        this.firmwarePatchReviewState.reviewedCode || ''
+                    );
+                }
+                this.renderFirmwarePatchReview('');
+                this.refreshFirmwarePatchReviewOutput();
+                return;
+            }
+
             let codeContent = '';
             let codePath = '未命名.ino';
 
@@ -2048,12 +2114,13 @@ void loop() {
 
     /**
      * 保存代码
+     * @returns {Promise<boolean>} 是否已完成一次有效保存（含无项目目录时的内存暂存）；无法写入且未落盘时返回 false
      */
     async saveCode() {
         try {
             const textarea = document.getElementById('code-editor-textarea');
             if (!textarea) {
-                return;
+                return false;
             }
 
             let codeContent = textarea.value;
@@ -2067,7 +2134,7 @@ void loop() {
             if (window.mainApp?.currentProject) {
                 // 有项目时，直接保存到当前代码路径
                 if (!this.currentCodePath) {
-                    return;
+                    return false;
                 }
                 await window.electronAPI.saveFile(this.currentCodePath, codeContent);
                 this.lastSavedCodeContent = codeContent;
@@ -2081,9 +2148,11 @@ void loop() {
                 this.showSaveNotification('代码已暂存到当前项目会话（内存）');
             }
 
+            return true;
         } catch (error) {
             console.error('保存代码失败:', error);
             alert('保存代码失败: ' + error.message);
+            return false;
         }
     }
 
@@ -2095,6 +2164,7 @@ void loop() {
         const previousProject = window.mainApp.currentProject;
 
         try {
+            this.exitFirmwarePatchReview();
             // 先关闭代码编辑器，避免层级遮挡问题
             this.closeFirmwareCodeEditor();
 
@@ -2205,6 +2275,10 @@ void loop() {
             return;
         }
 
+        if (typeof this.cleanupCodeEditorDrag === 'function') {
+            this.cleanupCodeEditorDrag();
+        }
+
         let isDragging = false;
         let startX, startY, startLeft, startTop;
 
@@ -2264,6 +2338,98 @@ void loop() {
     }
 
     /**
+     * 初始化代码编辑器右下角缩放，宽高限制在视口内（与拖拽边界一致）。
+     * @returns {void}
+     */
+    initCodeEditorResize() {
+        const windowEl = document.querySelector('.code-editor-window');
+        const handle = document.getElementById('code-editor-resize-handle');
+        if (!windowEl || !handle) {
+            return;
+        }
+
+        if (typeof this.cleanupCodeEditorResize === 'function') {
+            this.cleanupCodeEditorResize();
+        }
+
+        const MIN_W = 320;
+        const MIN_H = 200;
+
+        /**
+         * 将窗口从 flex 居中切换为 absolute，并固定当前像素尺寸。
+         * @returns {void}
+         */
+        const ensureAbsolutePositioned = () => {
+            if (windowEl.style.position === 'absolute') {
+                return;
+            }
+            const r = windowEl.getBoundingClientRect();
+            windowEl.style.position = 'absolute';
+            windowEl.style.left = `${r.left}px`;
+            windowEl.style.top = `${r.top}px`;
+            windowEl.style.transform = 'none';
+            windowEl.style.width = `${r.width}px`;
+            windowEl.style.height = `${r.height}px`;
+        };
+
+        let isResizing = false;
+
+        /**
+         * @param {MouseEvent} e - 事件
+         * @returns {void}
+         */
+        const onMouseDown = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            ensureAbsolutePositioned();
+            isResizing = true;
+            const r = windowEl.getBoundingClientRect();
+            const startW = r.width;
+            const startH = r.height;
+            const startLeft = r.left;
+            const startTop = r.top;
+            const sx = e.clientX;
+            const sy = e.clientY;
+
+            /**
+             * @param {MouseEvent} ev - 事件
+             * @returns {void}
+             */
+            const onMove = (ev) => {
+                if (!isResizing) {
+                    return;
+                }
+                let newW = startW + (ev.clientX - sx);
+                let newH = startH + (ev.clientY - sy);
+                const maxW = window.innerWidth - startLeft;
+                const maxH = window.innerHeight - startTop;
+                newW = Math.max(MIN_W, Math.min(newW, maxW));
+                newH = Math.max(MIN_H, Math.min(newH, maxH));
+                windowEl.style.width = `${newW}px`;
+                windowEl.style.height = `${newH}px`;
+            };
+
+            /**
+             * @returns {void}
+             */
+            const onUp = () => {
+                isResizing = false;
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+            };
+
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        };
+
+        handle.addEventListener('mousedown', onMouseDown);
+
+        this.cleanupCodeEditorResize = () => {
+            handle.removeEventListener('mousedown', onMouseDown);
+        };
+    }
+
+    /**
      * 初始化代码编辑器事件监听器
      */
     initCodeEditorEvents() {
@@ -2279,10 +2445,6 @@ void loop() {
             closeBtn.addEventListener('click', () => this.closeFirmwareCodeEditor());
         }
 
-        const exitReviewBtn = document.getElementById('exit-code-review-btn');
-        if (exitReviewBtn) {
-            exitReviewBtn.addEventListener('click', () => this.exitFirmwarePatchReview());
-        }
         const acceptAllReviewBtn = document.getElementById('accept-all-code-review-btn');
         if (acceptAllReviewBtn) {
             acceptAllReviewBtn.addEventListener('click', () => this.acceptAllFirmwarePatchChanges());
@@ -2314,7 +2476,6 @@ void loop() {
         this.cleanupCodeEditorEvents = () => {
             if (saveBtn) saveBtn.removeEventListener('click', () => this.saveCode());
             if (closeBtn) closeBtn.removeEventListener('click', () => this.closeFirmwareCodeEditor());
-            if (exitReviewBtn) exitReviewBtn.removeEventListener('click', () => this.exitFirmwarePatchReview());
             if (acceptAllReviewBtn) acceptAllReviewBtn.removeEventListener('click', () => this.acceptAllFirmwarePatchChanges());
             if (rejectAllReviewBtn) rejectAllReviewBtn.removeEventListener('click', () => this.rejectAllFirmwarePatchChanges());
             if (textarea) {
@@ -2370,7 +2531,11 @@ void loop() {
         const textarea = document.getElementById('code-editor-textarea');
         if (!textarea) return;
         const baseCode = String(textarea.value || this.lastSavedCodeContent || '');
-        const rows = this.parseUnifiedPatchRows(patch);
+        let rows = this.parseUnifiedPatchRows(patch);
+        /** 模型偶发省略 @@ hunk 时严格解析为空；宽松扫描 +/- 行以便仍能进入审阅态 */
+        if (!rows.length) {
+            rows = this.parseUnifiedPatchRowsLoose(patch);
+        }
         if (!rows.length) {
             this.showSaveNotification('补丁预览失败：未识别到可审阅改动行');
             return;
@@ -2379,6 +2544,8 @@ void loop() {
             patchText: patch,
             rows,
             reviewedCode: baseCode,
+            /** 打开审阅时编辑器中的基准代码，红底区展示，供与合并结果对比 */
+            originalCode: baseCode,
             decisionSummary: { addAccepted: 0, addRejected: 0, removeAccepted: 0, removeRejected: 0 }
         };
         this.renderFirmwarePatchReview(baseCode);
@@ -2386,7 +2553,8 @@ void loop() {
     }
 
     /**
-     * 退出补丁审阅模式
+     * 退出补丁审阅模式（清空内存态并还原为普通编辑器 UI）。
+     * 在「保存」合并 `reviewedCode` 后、或「另存为新项目」进入保存向导前调用；关闭窗口不再调用。
      * @returns {void}
      */
     exitFirmwarePatchReview() {
@@ -2396,17 +2564,21 @@ void loop() {
         const lineNumbers = document.getElementById('code-editor-line-numbers');
         const review = document.getElementById('firmware-diff-review');
         const reviewedOutput = document.getElementById('firmware-reviewed-output');
+        const originalOutput = document.getElementById('firmware-original-output');
         const summary = document.getElementById('firmware-diff-summary');
-        const exitBtn = document.getElementById('exit-code-review-btn');
         const acceptAllBtn = document.getElementById('accept-all-code-review-btn');
         const rejectAllBtn = document.getElementById('reject-all-code-review-btn');
         if (review && review.parentNode) review.parentNode.removeChild(review);
         if (reviewedOutput && reviewedOutput.parentNode) reviewedOutput.parentNode.removeChild(reviewedOutput);
+        if (originalOutput && originalOutput.parentNode) originalOutput.parentNode.removeChild(originalOutput);
         if (summary && summary.parentNode) summary.parentNode.removeChild(summary);
+        const titleEl = document.getElementById('code-editor-title');
+        if (titleEl) {
+            titleEl.textContent = titleEl.textContent.replace(/（补丁审阅模式）/g, '').trim();
+        }
         if (textarea) textarea.style.display = '';
         if (lineNumbers) lineNumbers.style.display = '';
         if (content) content.classList.remove('is-diff-review');
-        if (exitBtn) exitBtn.style.display = 'none';
         if (acceptAllBtn) acceptAllBtn.style.display = 'none';
         if (rejectAllBtn) rejectAllBtn.style.display = 'none';
         this.updateCodeEditorLineNumbers();
@@ -2439,6 +2611,25 @@ void loop() {
     }
 
     /**
+     * 宽松解析：不依赖 @@ hunk，仅按行首 +/- 收集（严格解析为空时兜底，便于审阅态仍可建立）。
+     * @param {string} patchText
+     * @returns {Array<{ type: 'add'|'remove', text: string, decision: 'pending' }>}
+     */
+    parseUnifiedPatchRowsLoose(patchText) {
+        const lines = String(patchText || '').split('\n');
+        /** @type {Array<{ type: 'add'|'remove', text: string, decision: 'pending' }>} */
+        const rows = [];
+        for (const line of lines) {
+            if (line.startsWith('+') && !line.startsWith('+++')) {
+                rows.push({ type: 'add', text: line.slice(1), decision: 'pending' });
+            } else if (line.startsWith('-') && !line.startsWith('---')) {
+                rows.push({ type: 'remove', text: line.slice(1), decision: 'pending' });
+            }
+        }
+        return rows;
+    }
+
+    /**
      * @param {string} baseCode
      * @returns {void}
      */
@@ -2447,51 +2638,69 @@ void loop() {
         const textarea = document.getElementById('code-editor-textarea');
         const lineNumbers = document.getElementById('code-editor-line-numbers');
         if (!content || !textarea || !lineNumbers || !this.firmwarePatchReviewState) return;
+
+        if (typeof this.firmwarePatchReviewState.originalCode !== 'string') {
+            this.firmwarePatchReviewState.originalCode =
+                typeof baseCode === 'string'
+                    ? baseCode
+                    : String(this.firmwarePatchReviewState.reviewedCode || '');
+        }
+
         textarea.style.display = 'none';
         lineNumbers.style.display = 'none';
         content.classList.add('is-diff-review');
+        const legacySummary = document.getElementById('firmware-diff-summary');
+        if (legacySummary && legacySummary.parentNode) {
+            legacySummary.parentNode.removeChild(legacySummary);
+        }
+        const oldOrphanPre = content.querySelector('#firmware-reviewed-output');
+        if (oldOrphanPre && oldOrphanPre.parentNode === content) {
+            oldOrphanPre.parentNode.removeChild(oldOrphanPre);
+        }
+
         let review = document.getElementById('firmware-diff-review');
         if (!review) {
             review = document.createElement('div');
             review.id = 'firmware-diff-review';
-            review.className = 'firmware-diff-review';
             content.appendChild(review);
         }
+        review.className = 'firmware-diff-review firmware-patch-review-root';
         review.innerHTML = '';
-        let summary = document.getElementById('firmware-diff-summary');
-        if (!summary) {
-            summary = document.createElement('div');
-            summary.id = 'firmware-diff-summary';
-            summary.className = 'firmware-diff-summary';
-            content.appendChild(summary);
-        }
-        const rows = this.firmwarePatchReviewState.rows;
-        for (let i = 0; i < rows.length; i++) {
-            const row = rows[i];
-            const line = document.createElement('div');
-            line.className = `firmware-diff-line ${row.type} ${row.decision}`;
-            const sign = row.type === 'add' ? '+' : row.type === 'remove' ? '-' : ' ';
-            line.innerHTML = `<span class="sign">${sign}</span><code>${this.escapeHtml(row.text)}</code>`;
-            review.appendChild(line);
-        }
-        let reviewedOutput = document.getElementById('firmware-reviewed-output');
-        if (!reviewedOutput) {
-            reviewedOutput = document.createElement('pre');
-            reviewedOutput.id = 'firmware-reviewed-output';
-            reviewedOutput.className = 'firmware-reviewed-output';
-            content.appendChild(reviewedOutput);
-        }
+
+        const afterWrap = document.createElement('div');
+        afterWrap.className = 'firmware-review-after-block';
+        const afterLabel = document.createElement('div');
+        afterLabel.className = 'firmware-review-section-label';
+        afterLabel.textContent = '更改后（审阅结果，左侧）';
+        const afterPre = document.createElement('pre');
+        afterPre.id = 'firmware-reviewed-output';
+        afterPre.className = 'firmware-reviewed-output firmware-reviewed-output--panel';
+        afterWrap.appendChild(afterLabel);
+        afterWrap.appendChild(afterPre);
+
+        const beforeWrap = document.createElement('div');
+        beforeWrap.className = 'firmware-review-before-block';
+        const beforeLabel = document.createElement('div');
+        beforeLabel.className = 'firmware-review-section-label';
+        beforeLabel.textContent = '合并前原始代码（右侧对照）';
+        const beforePre = document.createElement('pre');
+        beforePre.id = 'firmware-original-output';
+        beforePre.className = 'firmware-original-output';
+        beforeWrap.appendChild(beforeLabel);
+        beforeWrap.appendChild(beforePre);
+
+        review.appendChild(afterWrap);
+        review.appendChild(beforeWrap);
+
         const title = document.getElementById('code-editor-title');
-        if (title) {
-            title.textContent = `${title.textContent.split('（')[0]}（补丁审阅模式）`;
+        if (title && !String(title.textContent || '').includes('补丁审阅模式')) {
+            const base = String(title.textContent || '').split('（')[0].trim();
+            title.textContent = `${base}（补丁审阅模式）`;
         }
-        const exitBtn = document.getElementById('exit-code-review-btn');
-        if (exitBtn) exitBtn.style.display = 'inline-flex';
         const acceptAllBtn = document.getElementById('accept-all-code-review-btn');
         if (acceptAllBtn) acceptAllBtn.style.display = 'inline-flex';
         const rejectAllBtn = document.getElementById('reject-all-code-review-btn');
         if (rejectAllBtn) rejectAllBtn.style.display = 'inline-flex';
-        void baseCode;
     }
 
     /**
@@ -2544,35 +2753,14 @@ void loop() {
         if (reviewedOutput) {
             reviewedOutput.textContent = this.firmwarePatchReviewState.reviewedCode;
         }
-        const summary = document.getElementById('firmware-diff-summary');
-        if (summary) {
-            summary.textContent =
-                `本次决策：新增 接受 ${addAccepted} / 拒绝 ${addRejected}；删除 接受 ${removeAccepted} / 拒绝 ${removeRejected}`;
-        }
-        const review = document.getElementById('firmware-diff-review');
-        if (review) {
-            review.querySelectorAll('.firmware-diff-line').forEach((el, idx) => {
-                const row = rows[idx];
-                if (!row) return;
-                el.classList.remove('pending', 'accepted', 'rejected');
-                el.classList.add(row.decision);
-            });
+        const originalOutput = document.getElementById('firmware-original-output');
+        if (originalOutput && typeof this.firmwarePatchReviewState.originalCode === 'string') {
+            originalOutput.textContent = this.firmwarePatchReviewState.originalCode;
         }
     }
 
     /**
-     * @param {string} text
-     * @returns {string}
-     */
-    escapeHtml(text) {
-        return String(text || '')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
-    }
-
-    /**
-     * 接受全部补丁并自动保存
+     * 接受全部补丁并自动保存；保存成功后自动关闭代码编辑器，避免遮挡聊天区。
      * @returns {Promise<void>}
      */
     async acceptAllFirmwarePatchChanges() {
@@ -2584,14 +2772,17 @@ void loop() {
             }
         }
         this.refreshFirmwarePatchReviewOutput();
-        await this.saveCode();
+        const saved = await this.saveCode();
+        if (saved) {
+            this.closeFirmwareCodeEditor();
+        }
     }
 
     /**
-     * 拒绝全部补丁并自动保存
-     * @returns {Promise<void>}
+     * 拒绝全部补丁：仅更新内存中的合并结果与 textarea，不写磁盘；随后自动退出审阅 UI。
+     * @returns {void}
      */
-    async rejectAllFirmwarePatchChanges() {
+    rejectAllFirmwarePatchChanges() {
         if (!this.firmwarePatchReviewState) return;
         const rows = this.firmwarePatchReviewState.rows;
         for (const row of rows) {
@@ -2600,7 +2791,8 @@ void loop() {
             }
         }
         this.refreshFirmwarePatchReviewOutput();
-        await this.saveCode();
+        this.showSaveNotification('已在内存中拒绝本次改动（未写入磁盘）');
+        this.exitFirmwarePatchReview();
     }
 
     /**
@@ -3764,13 +3956,54 @@ void loop() {
     }
 
     /**
+     * 无向引脚对键：(A,p1)-(B,p2) 与 (B,p2)-(A,p1) 等价，用于程序化去重。
+     * @param {string} compIdA
+     * @param {string} pinA
+     * @param {string} compIdB
+     * @param {string} pinB
+     * @returns {string}
+     */
+    connectionPinPairKey(compIdA, pinA, compIdB, pinB) {
+        const pa = String(pinA || '');
+        const pb = String(pinB || '');
+        const x = `${String(compIdA)}:${pa}`;
+        const y = `${String(compIdB)}:${pb}`;
+        return x < y ? `${x}||${y}` : `${y}||${x}`;
+    }
+
+    /**
+     * 若已存在连接同一对引脚的连线则返回该连线（与手动连线「同端点对仅一条」一致）。
+     * @param {Object} sourceComponent
+     * @param {Object} targetComponent
+     * @param {string} srcPin
+     * @param {string} tgtPin
+     * @returns {Object|null}
+     */
+    findDuplicatePinPairConnection(sourceComponent, targetComponent, srcPin, tgtPin) {
+        const k = this.connectionPinPairKey(
+            sourceComponent.id,
+            srcPin,
+            targetComponent.id,
+            tgtPin
+        );
+        for (const c of this.connections) {
+            const sc = c.source.componentId || c.source.instanceId;
+            const tc = c.target.componentId || c.target.instanceId;
+            const sp = c.source.pinId || c.source.pinName;
+            const tp = c.target.pinId || c.target.pinName;
+            if (!sc || !tc) continue;
+            if (this.connectionPinPairKey(sc, sp, tc, tp) === k) {
+                return c;
+            }
+        }
+        return null;
+    }
+
+    /**
      * 添加连线到画布
      * @param {Object} connectionData - 连线数据
      */
     addConnection(connectionData) {
-        // 保存状态用于撤回
-        this.saveState();
-
         // 查找源元件和目标元件
         // 支持手动创建的连线（使用componentId）和导入的连线（使用instanceId）
         const sourceId = connectionData.source.instanceId || connectionData.source.componentId;
@@ -3785,14 +4018,33 @@ void loop() {
             return null;
         }
 
+        const srcPin = connectionData.source.pinId || connectionData.source.pinName;
+        const tgtPin = connectionData.target.pinId || connectionData.target.pinName;
+
         // 计算连线端点位置
-        const sourcePos = this.calculatePinPosition(sourceComponent, connectionData.source.pinId);
-        const targetPos = this.calculatePinPosition(targetComponent, connectionData.target.pinId);
+        const sourcePos = this.calculatePinPosition(sourceComponent, srcPin);
+        const targetPos = this.calculatePinPosition(targetComponent, tgtPin);
 
         if (!sourcePos || !targetPos) {
             console.warn('无法计算连线端点位置');
             return null;
         }
+
+        const dup = this.findDuplicatePinPairConnection(sourceComponent, targetComponent, srcPin, tgtPin);
+        if (dup) {
+            console.debug(
+                '[canvas] addConnection 跳过重复引脚对，沿用已有连线',
+                dup.id,
+                sourceComponent.id,
+                srcPin,
+                targetComponent.id,
+                tgtPin
+            );
+            return dup;
+        }
+
+        // 保存状态用于撤回（仅实际新增连线时入栈，避免 skill 多轮重复 add 污染撤销栈）
+        this.saveState();
 
         // 从pinId解析side信息 (格式: side-order)
         const parseSideFromPinId = (pinId) => {
@@ -3800,8 +4052,8 @@ void loop() {
             return parts.length >= 2 ? parts[0] : 'unknown';
         };
 
-        const sourceSide = parseSideFromPinId(connectionData.source.pinId);
-        const targetSide = parseSideFromPinId(connectionData.target.pinId);
+        const sourceSide = parseSideFromPinId(srcPin);
+        const targetSide = parseSideFromPinId(tgtPin);
 
         // 创建连线实例
         const connectionInstance = {
@@ -3826,7 +4078,7 @@ void loop() {
             selected: false
         };
 
-        // 如果没有自定义路径，使用计算的端点位置
+        // 如果没有自定义路径，使用计算的端点位置（临时；正交路径见下方 updateConnectionPath）
         if (!connectionInstance.path || connectionInstance.path.length < 2) {
             connectionInstance.path = [sourcePos, targetPos];
         }
@@ -3850,6 +4102,21 @@ void loop() {
         };
 
         this.wireSpacingManager.registerWire(connectionInstance.id, wireInfo);
+
+        /**
+         * 程序化/导入仅两点路径时与手动连线一致：按引脚与正交算法重算 path（避免长期停留在「直线」直到拖动元件）。
+         * 若外部已传入多折点路径（>2 且非纯两点退化），则保留原样。
+         */
+        const rawPath = connectionData.path;
+        const shouldOrthogonalize =
+            !Array.isArray(rawPath) || rawPath.length < 2 || rawPath.length === 2;
+        if (shouldOrthogonalize) {
+            this.updateConnectionPath(connectionInstance);
+            const reg = this.wireSpacingManager.wireRegistry.get(connectionInstance.id);
+            if (reg) {
+                reg.path = connectionInstance.path;
+            }
+        }
 
         // 标记项目为已修改
         this.markProjectAsModified();

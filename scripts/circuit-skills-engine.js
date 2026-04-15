@@ -133,8 +133,8 @@ function getFirmwareCanvasSnapshotHelpers() {
         let recommendedNextSkills = [];
         if (gapKind === 'missing_parts') {
             userFacingHint =
-                '判定为**缺件**（画布空或尚未摆放齐方案所需元件）。下方为基于当前信息的初步补丁，请勿为尚未上板的器件写死引脚；请先补全元件再上画布，再继续连线与固件迭代。';
-            recommendedNextSkills = ['scheme_design_skill', 'completion_suggestion_skill'];
+                '判定为**缺件**（画布空或未摆齐元件）。仍可生成**可审阅补丁**：允许含**通用可编译示例**（如 `LED_BUILTIN` 或常见板默认数字引脚），并在 notes 标明「与当前画布未绑定，可按实物改引脚」。支持**先写固件后补画布**；若需与画布一一对应引脚，可后续补元件或再选方案设计。';
+            recommendedNextSkills = [];
         } else if (gapKind === 'missing_wiring') {
             const detail = analysis.issues.length ? analysis.issues.join('；') : '连线未完成或存在无效连接';
             userFacingHint = `判定为**缺连线**（${detail}）。请由 agent **先调用 wiring_edit_skill** 按当前画布补全连线，再重新调用本 skill 生成引脚级固件。`;
@@ -1151,9 +1151,14 @@ ${extra ? `【补充上下文】\n${extra}` : ''}`;
             const m =
                 content.match(/```json\s*([\s\S]*?)\s*```/i) || content.match(/```([\s\S]*?)```/);
             const jsonStr = m ? m[1].trim() : content;
-            const fb = jsonStr.indexOf('{');
-            const lb = jsonStr.lastIndexOf('}');
-            parsed = JSON.parse(fb >= 0 && lb > fb ? jsonStr.slice(fb, lb + 1) : jsonStr);
+            const balanced = extractBalancedJsonObject(jsonStr);
+            if (balanced) {
+                parsed = JSON.parse(balanced);
+            } else {
+                const fb = jsonStr.indexOf('{');
+                const lb = jsonStr.lastIndexOf('}');
+                parsed = JSON.parse(fb >= 0 && lb > fb ? jsonStr.slice(fb, lb + 1) : jsonStr);
+            }
         } catch (e) {
             this._notifyAgentProgressPhase('completion-suggestion 解析失败');
             return {
@@ -1293,8 +1298,8 @@ ${extra ? `【补充上下文】\n${extra}` : ''}`;
 
 【按 gapKind 的补丁策略】
 - 若补充上下文出现「可选参考 · 前序方案」类段落：**不是验收清单**。patch **以当前画布 JSON 与连线为准**；gapKind 仍以程序字段为准；notes 勿强迫用户为对齐方案表而换料——画布已能实现需求则基于画布写常量。
-- gapKind=missing_parts（缺件，含画布空）：仅输出**初步/骨架** patch，禁止为尚未出现在画布上的外设绑定具体 GPIO；notes 须提示用户先补元件再上画布。
-- gapKind=missing_wiring（缺连线）：优先由 agent 先调 **wiring_edit_skill**；本条消息中的 patch 仅作保守、可编译的过渡修改，勿强行写满与外设引脚绑定的常量；canvasGuidance 须引导「先补线再回本 skill」。
+- gapKind=missing_parts（缺件，含画布空）：仍须输出**可审阅、可编译**的 patch（禁止空 patch 或仅写「无法生成」）。若需求为**示例/教学/通用点亮 LED** 等：可使用 **LED_BUILTIN** 或 Arduino 常见默认引脚（如 UNO/Nano 数字 13 常接板载 LED），并在 **notes** 写明「与当前画布未绑定，后续可按原理图或上板后改引脚」。若需求为**必须与画布实例一致**而画布无对应器件：输出**最小骨架**（setup/loop 占位、TODO 常量），**勿编造**不存在的 instanceId 连线。**禁止**在 summary 中声称「无法生成」而不给出任何 diff 行。
+- gapKind=missing_wiring（缺连线）：本条消息中的 patch 为**保守、可编译**的过渡修改（可用占位引脚或通用示例并注明待连线对齐）；canvasGuidance.userFacingHint 可提示「若需与画布引脚一致，可先补线后再回本 skill」——**不要**假定 agent 本轮必须先调 wiring。
 - gapKind=snapshot_error：patch 极简、少假设引脚；提示检查画布加载。
 - gapKind=ready：结合画布 JSON 连线，输出**引脚级**常量（如 const int LED_PIN = 2;），canvasGuidance.pinBindings 逐项列出。
 
@@ -1415,6 +1420,126 @@ ${extra ? `\n\n【补充上下文】\n${extra}` : ''}`;
     }
 
     /**
+     * 生成紧凑且保留引脚映射的连线规划快照，避免大画布被 12k 截断后丢失 pin 信息。
+     * 结构示例：{ components:[...], connections:[...], pinCatalog:[{instanceId,pins:["side1-1:VCC", ...]}] }
+     * 元件列表包含画布上全部实例（至多 maxComponents），wiringRules 仅用于排序靠前相关件，不再按关键词剔除 MCU/LED 等。
+     * @param {any} canvasSnapshot
+     * @param {string} wiringRules
+     * @returns {{ projectName: string, components: any[], connections: any[], pinCatalog: Array<{instanceId:string, componentName:string, pins:string[]}> }}
+     */
+    buildCompactWiringSnapshotForPrompt(canvasSnapshot, wiringRules) {
+        const snap = canvasSnapshot && typeof canvasSnapshot === 'object' ? canvasSnapshot : {};
+        const components = Array.isArray(snap.components) ? snap.components : [];
+        const connections = Array.isArray(snap.connections) ? snap.connections : [];
+        const rules = String(wiringRules || '').toLowerCase();
+
+        const scoreComp = (c) => {
+            const label = String(c?.properties?.customLabel || c?.componentName || c?.instanceId || '').toLowerCase();
+            if (!label) return 0;
+            return rules.includes(label) ? 3 : 0;
+        };
+
+        const scored = components
+            .map((c) => ({ c, score: scoreComp(c) }))
+            .sort((a, b) => b.score - a.score);
+
+        /**
+         * 旧逻辑曾用「wiringRules 全文包含 label」筛 keepBase；第二轮规则常大段写 220Ω/电阻，
+         * 仅电阻标签得分，导致快照只剩电阻，模型误判 missing_parts。此处**始终纳入画布上全部实例**
+         * （及连线端点），仅用 score 决定**输出顺序**；超大画布再按上限截断。
+         */
+        const allIds = new Set();
+        for (const c of components) {
+            const iid = String(c?.instanceId || '').trim();
+            if (iid) allIds.add(iid);
+        }
+        for (const conn of connections) {
+            const sid = String(conn?.source?.instanceId || '').trim();
+            const tid = String(conn?.target?.instanceId || '').trim();
+            if (sid) allIds.add(sid);
+            if (tid) allIds.add(tid);
+        }
+
+        const maxComponents = 36;
+        const ordered = [];
+        const seen = new Set();
+        for (const { c } of scored) {
+            const iid = String(c?.instanceId || '').trim();
+            if (iid && allIds.has(iid) && !seen.has(iid)) {
+                ordered.push(c);
+                seen.add(iid);
+            }
+        }
+        for (const c of components) {
+            const iid = String(c?.instanceId || '').trim();
+            if (iid && allIds.has(iid) && !seen.has(iid)) {
+                ordered.push(c);
+                seen.add(iid);
+            }
+        }
+
+        const finalComponentObjects = ordered.slice(0, maxComponents);
+        const keepIds = new Set(finalComponentObjects.map((c) => String(c?.instanceId || '').trim()).filter(Boolean));
+
+        const finalComponents = finalComponentObjects.map((c) => ({
+            instanceId: c?.instanceId || '',
+            componentFile: c?.componentFile || '',
+            componentName: c?.componentName || '',
+            customLabel: c?.properties?.customLabel || '',
+            orientation: c?.orientation || 'up'
+        }));
+
+        const finalConnections = connections
+            .filter((conn) => {
+                const sid = String(conn?.source?.instanceId || '').trim();
+                const tid = String(conn?.target?.instanceId || '').trim();
+                return keepIds.has(sid) && keepIds.has(tid);
+            })
+            .slice(0, 80)
+            .map((conn) => ({
+                id: conn?.id || '',
+                source: {
+                    instanceId: conn?.source?.instanceId || '',
+                    pinId: conn?.source?.pinId || '',
+                    pinName: conn?.source?.pinName || ''
+                },
+                target: {
+                    instanceId: conn?.target?.instanceId || '',
+                    pinId: conn?.target?.pinId || '',
+                    pinName: conn?.target?.pinName || ''
+                }
+            }));
+
+        const pinCatalog = [];
+        for (const c of components) {
+            const iid = String(c?.instanceId || '').trim();
+            if (!iid || !keepIds.has(iid)) continue;
+            const pinsBySide = c?.pins && typeof c.pins === 'object' ? c.pins : {};
+            const pinPairs = [];
+            for (const side of ['side1', 'side2', 'side3', 'side4']) {
+                const arr = Array.isArray(pinsBySide[side]) ? pinsBySide[side] : [];
+                for (const p of arr) {
+                    const pid = String(p?.pinId || `${side}-${p?.order ?? ''}`).trim();
+                    const pname = String(p?.pinName || '').trim();
+                    if (pid || pname) pinPairs.push(`${pid}:${pname}`);
+                }
+            }
+            pinCatalog.push({
+                instanceId: iid,
+                componentName: String(c?.componentName || c?.properties?.customLabel || ''),
+                pins: pinPairs.slice(0, 80)
+            });
+        }
+
+        return {
+            projectName: String(snap?.projectName || ''),
+            components: finalComponents,
+            connections: finalConnections,
+            pinCatalog
+        };
+    }
+
+    /**
      * 根据**当前画布 JSON**与**连线规则/意图**，生成仅含连线的修改计划（承上启下：可比对方案所需元件与画布，分缺件/不缺件分支）。
      * @param {object} canvasSnapshot
      * @param {string} wiringRules
@@ -1429,16 +1554,23 @@ ${extra ? `\n\n【补充上下文】\n${extra}` : ''}`;
         const fw = getFirmwareCanvasSnapshotHelpers();
         const wa = fw.analyzeCanvasSnapshotForFirmware(canvasSnapshot);
         const schemeHint = String(options?.expectedComponentsHint || '').trim();
-        const snapStr = JSON.stringify(canvasSnapshot ?? {}, null, 2).slice(0, 12000);
+        const compactSnap = this.buildCompactWiringSnapshotForPrompt(canvasSnapshot, wiringRules);
+        const snapStr = JSON.stringify(compactSnap ?? {}, null, 2).slice(0, 12000);
         const sys = `你是电路连线助手：依据**程序画布结构预判**、**当前画布 JSON**、**连线规则/意图**工作；user 消息里可能出现的「方案/BOM 摘要」**纯属可选补充**，没有时完全正常，请勿依赖其存在。
 
 【默认路径（无方案表时）】
 - 仅凭「连线规则」与用户补充 + 画布实例推理；在器件足够完成电气功能时，**优先** canvasVsScheme=complete_on_canvas，按规则生成连线。
+- 画布上已放置的**电源/电池**（如 3.7V 锂电、5V、VCC/GND 模块等）若与当前意图相关，必须在同一次 plannedOperations 中纳入供电与地回路，**勿遗漏**；除非用户明确说只连信号线。
+- **功能优先，对称与「成组被动件」后置**：先尽量给出**一整版**在**当前画布上可落地**、且与用户意图一致的电气拓扑，使**系统级功能路径**（供电、地、主信号、外设主体等）可用；若某类**对称/成组**要求依赖的被动件数量仍不齐，**不要**把少量占位件只接在其中一支路冒充完成对称——可先做**不依赖少件占位**的部分，必要时允许**临时拓扑**（如直连、或片内上拉等策略），并在 rationale / userFollowUpHint 中说明**与理想对称方案的差距**。**后续**用户补全元件后，再用 remove_connection / add_connection **改版接线**以落实对称性与安全规范。
 
 【有方案摘要时（参考即可）】
 0) **不得**仅因与 BOM 关键词不一致而判缺件；画布功能已满足「连线规则」描述时，必须 complete_on_canvas 并正常补线。
 1) 器件已够：一次性尽量补全合理连接。
 2) **仅当**画布相对用户意图**明显少缺关键器件**时：missing_parts_on_canvas；只允许已存在 instanceId 的连线；missingPartsSummary + userFollowUpHint 提示补件。
+3) 只改与用户意图相关的必要元件；无关元件可忽略，不必强行全图连完。
+
+【紧凑快照约束】
+- user 中「当前画布紧凑快照」的 components 与 pinCatalog 已枚举本次传入的实例；若其中已含 MCU、LED、电源/地等，**禁止**再声称「画布仅有若干电阻」或 missing_parts_on_canvas，除非快照确实未列出完成意图所需的关键器件。
 
 输出严格 JSON（不要 Markdown 代码块）：
 {
@@ -1451,7 +1583,8 @@ ${extra ? `\n\n【补充上下文】\n${extra}` : ''}`;
   ],
   "userFollowUpHint": "给用户或 agent 的中文后续指引（补件/继续连线/可接 firmware_codegen_skill）"
 }
-只允许 add_connection / remove_connection；勿编造不存在的 instanceId。若无操作，plannedOperations 可为 []。`;
+只允许 add_connection / remove_connection；勿编造不存在的 instanceId。
+pinId / pinName 必须来自用户消息里的 pinCatalog 或现有 connections；禁止臆造不存在的引脚名。若无操作，plannedOperations 可为 []。`;
         const extra2 = String(additionalContext || '').trim();
         const user = `【画布结构预判（程序计算）】
 readiness=${wa.readiness}
@@ -1460,7 +1593,7 @@ componentCount=${wa.componentCount}
 connectionCount=${wa.connectionCount}
 issues=${JSON.stringify(wa.issues)}
 
-【当前画布 JSON】
+【当前画布紧凑快照（含 pinCatalog）】
 ${snapStr}
 
 【连线规则/意图】
@@ -1538,6 +1671,7 @@ ${schemeHint ? `【方案所需元件摘要（请与画布 componentFile/customL
             const kind = String(op?.op || '').trim();
             try {
                 if (kind === 'add_connection') {
+                    const nBefore = cm.connections.length;
                     const r = cm.addConnection({
                         id: op.id || `w-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
                         source: op.source,
@@ -1546,7 +1680,8 @@ ${schemeHint ? `【方案所需元件摘要（请与画布 componentFile/customL
                         path: op.path || [],
                         style: op.style || { thickness: 2, dashPattern: [] }
                     });
-                    results.push({ op: kind, ok: !!r });
+                    const duplicate = !!r && cm.connections.length === nBefore;
+                    results.push({ op: kind, ok: !!r, duplicate });
                     continue;
                 }
                 if (kind === 'remove_connection') {

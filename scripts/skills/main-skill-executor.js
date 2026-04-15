@@ -10,7 +10,7 @@ const { createSkillsEngineProxy } = require('./renderer-engine-bridge');
  * @typedef {Object} ExecuteSkillPayload
  * @property {string} skillName
  * @property {unknown} [args]
- * @property {{ userRequirement?: string, canvasSnapshot?: unknown }} [ctxPayload]
+ * @property {{ userRequirement?: string, canvasSnapshot?: unknown, projectPath?: string }} [ctxPayload]
  */
 
 /**
@@ -33,6 +33,7 @@ async function executeSkillInMain(webContents, payload) {
   const ctx = {
     userRequirement: String(ctxPayload.userRequirement || '').trim(),
     canvasSnapshot: ctxPayload.canvasSnapshot,
+    projectPath: String(ctxPayload.projectPath || '').trim(),
     skillsEngine: createSkillsEngineProxy(webContents)
   };
 

@@ -171,6 +171,18 @@ export function workspaceToolPlanningSummary(toolName, args) {
         return `准备查看项目目录「${rel}」里有哪些文件与子文件夹。`;
     }
     if (nl.includes('read') || nl.includes('read_file')) {
+        const rels = Array.isArray(a.relativePaths)
+            ? a.relativePaths.map((x) => String(x || '').trim()).filter(Boolean)
+            : typeof a.relativePaths === 'string'
+              ? String(a.relativePaths)
+                    .split(',')
+                    .map((x) => x.trim())
+                    .filter(Boolean)
+              : [];
+        if (rels.length) {
+            const show = rels.slice(0, 3);
+            return `准备批量读取 ${rels.length} 个文件${show.length ? `（如：${show.join('、')}）` : ''}。`;
+        }
         const hasSl = a.startLine != null && String(a.startLine).trim() !== '';
         const hasEl = a.endLine != null && String(a.endLine).trim() !== '';
         const co = Number(a.charOffset);
@@ -220,6 +232,12 @@ export function workspaceToolDetailSummary(toolName, args, result) {
         return `已列出「${rel}」：约 ${fs} 个文件、${ds} 个子文件夹。`;
     }
     if (nl.includes('read') || nl.includes('read_file')) {
+        const batchFiles = Array.isArray(r.files) ? r.files : null;
+        if (batchFiles && batchFiles.length > 0) {
+            const succ = batchFiles.filter((x) => x && x.success).length;
+            const fail = batchFiles.length - succ;
+            return `已批量读取 ${batchFiles.length} 个文件：成功 ${succ}，失败 ${fail}。`;
+        }
         const p = String(a.relativePath || '').trim() || rel;
         const fullLen = typeof r.length === 'number' ? r.length : null;
         const lines = typeof r.totalLines === 'number' ? r.totalLines : null;

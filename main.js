@@ -523,7 +523,7 @@ async function fetchPublicPageText({ hostname, path: requestPath }) {
       path: requestPath,
       method: 'GET',
       headers: {
-        'User-Agent': 'Fast-Hardware/0.2.5'
+        'User-Agent': 'Fast-Hardware/0.2.6'
       }
     }, (res) => {
       let responseBody = '';

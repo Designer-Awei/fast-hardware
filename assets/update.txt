@@ -1,30 +1,28 @@
 [
   {
-    "version": "0.2.5",
-    "date": "2026-03-12",
+    "version": "0.2.6",
+    "date": "2026-03-21",
     "sections": [
       {
         "title": "版本与发布",
         "items": [
-          "版本号与安装包命名与 package.json 统一为 0.2.4",
-          "新增 npm run sync-version：一键同步 index.html、main.js、README 等展示用版本字符串",
+          "当前版本 0.2.6：产品版本以 package.json 为准，展示文案与安装包命名经 npm run sync-version 对齐",
+          "Skills 主进程 Agent Loop、execute-skill 与画布 CircuitSkillsEngine RPC、辅助型 skills 与项目/工作区能力见更新日志",
           "npm run dist 打包前会自动执行版本同步（clean:dist 不触发）"
         ]
       },
       {
-        "title": "设置页与工作流展示优化",
+        "title": "设置与启动体验",
         "items": [
-          "元件匹配结果表格列宽调整为「元件名称 25% / 匹配状态 30% / 匹配结果 45%」",
-          "存储位置、SiliconFlow API、关于、应用更新卡片高度重新校准",
-          "快捷键卡片改为单滚动容器，移除内部网格滚动条",
-          "应用更新卡片补充更新日志入口，便于直接查看版本变更"
+          "设置页：匹配结果列宽、卡片高度、快捷键单滚动容器、应用更新卡片更新日志入口等（详见 0-Change-Log.md v0.2.4 / v0.2.3）",
+          "启动：Splash 前黑窗与首帧展示优化（详见更新日志）"
         ]
       },
       {
-        "title": "启动体验优化",
+        "title": "Skills 架构（v0.2.6）",
         "items": [
-          "修复 Splash 显示前短暂出现深色空窗口的问题",
-          "Splash 页面改为等待页面、Logo 与首帧渲染完成后再显示，减少黑屏闪现"
+          "主进程 runSkillsAgentLoop、技能进度与中断、主进程 execute-skill + 渲染进程引擎 RPC",
+          "辅助型 wiring / scheme / completion 等边界；连线紧凑快照与 wiring_edit 护栏；test-cases 与 e2e 场景收敛"
         ]
       }
     ]

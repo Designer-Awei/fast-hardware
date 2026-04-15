@@ -760,6 +760,35 @@ class FastHardwareApp {
     }
 
     /**
+     * 从元件库 pins 结构生成与画布连线一致的引脚表（`pinId` = `side-order`，同 `CanvasPinPositionCalculator`）。
+     * 供 circuit_config / Agent 画布快照使用，避免模型只看到 instance 却看不到真实 `pinName`。
+     * @param {Record<string, Array<{ order?: number, pinName?: string, type?: string }>>|undefined|null} pinsBySide
+     * @returns {Record<string, Array<{ pinId: string, pinName: string, type: string, order: number }>>|undefined}
+     */
+    buildPinsSnapshotForCircuitConfig(pinsBySide) {
+        if (!pinsBySide || typeof pinsBySide !== 'object') {
+            return undefined;
+        }
+        const sides = ['side1', 'side2', 'side3', 'side4'];
+        /** @type {Record<string, Array<{ pinId: string, pinName: string, type: string, order: number }>>} */
+        const out = {};
+        for (const side of sides) {
+            const arr = pinsBySide[side];
+            if (!Array.isArray(arr) || arr.length === 0) continue;
+            out[side] = arr.map((p) => {
+                const order = typeof p.order === 'number' && !Number.isNaN(p.order) ? p.order : 1;
+                return {
+                    pinId: `${side}-${order}`,
+                    pinName: p.pinName != null ? String(p.pinName) : '',
+                    type: p.type != null ? String(p.type) : '',
+                    order
+                };
+            });
+        }
+        return Object.keys(out).length ? out : undefined;
+    }
+
+    /**
      * 生成circuit_config.json内容
      * @param {Object} canvasState - 画布状态
      * @returns {Object} circuit_config.json格式的对象
@@ -774,14 +803,22 @@ class FastHardwareApp {
                 'right': 'right'
             };
             const orientation = directionToOrientation[component.direction] || 'up';
+            const data = component.data || {};
+            const pinsSnapshot = this.buildPinsSnapshotForCircuitConfig(data.pins);
 
             return {
-                componentFile: `${component.data.id}.json`,
+                componentFile: `${data.id}.json`,
                 instanceId: component.id,
                 position: [component.position.x, component.position.y],
                 orientation: orientation,
+                /** 与库元件 id 一致，便于 Agent 对照 componentFile */
+                libraryComponentId: data.id || undefined,
+                /** 展示名；properties.customLabel 仍保留画布标签习惯 */
+                componentName: data.name || undefined,
+                /** 实例级引脚（含与本应用连线相同的 pinId），避免 Agent 仅见 instanceId 而臆造引脚名 */
+                pins: pinsSnapshot,
                 properties: {
-                    customLabel: component.data.name,
+                    customLabel: data.name,
                     ...component.properties
                 }
             };

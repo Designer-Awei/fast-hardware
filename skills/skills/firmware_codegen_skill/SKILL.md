@@ -1,6 +1,6 @@
 ---
 name: firmware_codegen_skill
-description: 基于需求与现有固件代码生成可审阅的补丁计划（patchPlan + patch + notes），默认不直接落盘。
+description: 基于需求与现有固件代码生成可审阅补丁（patchPlan + patch + notes）；已有工程文件时视为更新/修订而非从零生成，默认不直接落盘。
 keywords: [固件, 代码生成, 代码编辑, patch, arduino, esp32, stm32]
 metadata:
   fasthardware:
@@ -50,9 +50,9 @@ metadata:
 ## 输出补充
 
 - **`canvasAnalysis`**：含 **`readiness`** 与 **`gapKind`**：`missing_parts`（缺元件/空板）、`missing_wiring`（缺连线）、`ready`、`snapshot_error`。
-- **`canvasGuidance`**：**`phase`**、**`gapKind`**、**`userFacingHint`**、**`pinBindings`**（`gapKind=ready` 时）、**`recommendedNextSkills`**（缺连线时优先 **`wiring_edit_skill`**；缺件时 **`scheme_design_skill`** / **`completion_suggestion_skill`**）。
+- **`canvasGuidance`**：**`phase`**、**`gapKind`**、**`userFacingHint`**、**`pinBindings`**（`gapKind=ready` 时）、**`recommendedNextSkills`**（缺连线时**可**建议后续 **`wiring_edit_skill`**；缺件时**不强制**同轮 scheme——由用户决定是否补画布）。
 
 ## Tips
 
 - 先让本 skill 生成补丁建议，再由 CLI 的 `firmware:patch` 或 UI 二次确认写入，可降低误改风险。
-- 画布空或连线未就绪时模型会偏**保守/骨架** patch，并提示先补画布；主 agent 可接着编排 `wiring_edit_skill`。
+- 画布空或连线未就绪时仍可给出**通用可编译示例**或过渡 patch（notes 注明与画布对齐方式）；支持**先固件后元件**；主 agent 仅在用户需要时再编排 `scheme_design_skill` / `wiring_edit_skill`。
