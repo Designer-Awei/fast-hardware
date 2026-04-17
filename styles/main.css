@@ -7,6 +7,12 @@
     box-sizing: border-box;
 }
 
+:root,
+html,
+body {
+    color-scheme: light;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     font-size: 14px;
@@ -400,7 +406,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 18px;
+    padding: 12px 18px;
     border-bottom: 1px solid #e0e0e0;
     background: linear-gradient(180deg, #fcfcfd 0%, #f6f7fb 100%);
 }
@@ -1091,6 +1097,14 @@ body {
     background: #f2f5ff;
     border-color: #bcc8ee;
     color: #334266;
+}
+
+.model-refresh-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+    background: #f3f4f7;
+    color: #8d93a6;
+    border-color: #e0e3ea;
 }
 
 
@@ -1880,10 +1894,11 @@ body {
 .settings-page {
     min-height: 100%;
     max-height: 100vh;
+    width: 100%;
+    box-sizing: border-box;
     background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
     padding: 20px;
     overflow-y: auto;
-    box-sizing: border-box;
 }
 
 /* 设置页面滚动条样式 */
@@ -1905,12 +1920,25 @@ body {
     background: rgba(0, 0, 0, 0.3);
 }
 
+/**
+ * 设置卡片区：flex 换行，卡片 `flex:1` 与 `minmax` 式基础宽度，撑满 `.settings-page` 可用宽度（不再居中限宽 1200px）。
+ */
 .settings-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    display: flex;
+    flex-wrap: wrap;
     gap: 20px;
-    max-width: 1200px;
-    margin: 0 auto;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    box-sizing: border-box;
+    align-items: stretch;
+}
+
+.settings-grid > .setting-card {
+    flex: 1 1 calc(50% - 10px);
+    min-width: min(100%, 360px);
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 /* 设置卡片样式 */
@@ -2597,8 +2625,12 @@ body {
 
 
     .settings-grid {
-        grid-template-columns: 1fr;
         gap: 16px;
+    }
+
+    .settings-grid > .setting-card {
+        flex: 1 1 100%;
+        min-width: 0;
     }
 
     .setting-card {

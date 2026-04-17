@@ -354,7 +354,7 @@ class SettingsManager {
                     </div>
                 </div>
                 <div class="settings-modal-footer">
-                    <button class="settings-btn secondary" id="api-key-modal-cancel">取消</button>
+                    <button class="settings-btn secondary" id="api-key-modal-clear">清空密钥</button>
                     <button class="settings-btn primary" id="api-key-modal-save">保存</button>
                 </div>
             </div>
@@ -362,7 +362,7 @@ class SettingsManager {
 
         // 绑定模态框事件
         const closeBtn = modal.querySelector('#api-key-modal-close');
-        const cancelBtn = modal.querySelector('#api-key-modal-cancel');
+        const clearBtn = modal.querySelector('#api-key-modal-clear');
         const saveBtn = modal.querySelector('#api-key-modal-save');
         const backdrop = modal.querySelector('.settings-modal-backdrop');
         const getApiKeyLink = modal.querySelector('#get-api-key-link');
@@ -380,8 +380,35 @@ class SettingsManager {
         };
 
         closeBtn.addEventListener('click', closeModal);
-        cancelBtn.addEventListener('click', closeModal);
         backdrop.addEventListener('click', closeModal);
+
+        clearBtn?.addEventListener('click', async () => {
+            const confirmed = window.confirm('确认要清空本地保存的 SiliconFlow API 密钥吗？此操作不会影响您在 SiliconFlow 官网的账号。');
+            if (!confirmed) {
+                return;
+            }
+
+            clearBtn.disabled = true;
+            clearBtn.textContent = '清空中...';
+            try {
+                const result = await this.clearApiKey();
+                apiKeyInput.value = '';
+                apiKeyInput.type = 'password';
+                if (visibilityToggle) {
+                    this.updateVisibilityToggleIcon(visibilityToggle, 'eye-off');
+                    visibilityToggle.setAttribute('aria-label', '显示API密钥');
+                    visibilityToggle.setAttribute('title', '显示API密钥');
+                }
+                this.updateApiKeyStatus(false);
+                this.showNotification(`API密钥已清空${result?.path ? `：${result.path}` : ''}`, 'success');
+                closeModal();
+            } catch (error) {
+                console.error('清空API密钥失败:', error);
+                this.showNotification('清空API密钥失败，请重试', 'error');
+                clearBtn.disabled = false;
+                clearBtn.textContent = '清空密钥';
+            }
+        });
 
         getApiKeyLink.addEventListener('click', (e) => {
             e.preventDefault();
@@ -901,6 +928,29 @@ class SettingsManager {
         } else {
             return Promise.reject(new Error('保存API不可用'));
         }
+    }
+
+    /**
+     * 清空本地保存的API密钥
+     * @returns {Promise<{ success: boolean, path?: string }>}
+     */
+    clearApiKey() {
+        if (window.electronAPI && window.electronAPI.clearApiKey) {
+            return window.electronAPI.clearApiKey()
+                .then(result => {
+                    if (result.success) {
+                        console.log('API密钥已清空');
+                        return result;
+                    }
+                    console.error('清空API密钥失败:', result.error);
+                    throw new Error(result.error);
+                })
+                .catch(error => {
+                    console.error('清空API密钥失败:', error);
+                    throw error;
+                });
+        }
+        return Promise.reject(new Error('清空API不可用'));
     }
 
     /**

@@ -904,54 +904,7 @@
     color: #333;
 }
 
-/* 暗色主题支持 */
-@media (prefers-color-scheme: dark) {
-    body {
-        background-color: #1a1a1a;
-        color: #e0e0e0;
-    }
-
-    .canvas-section,
-    .chat-section,
-    .component-card {
-        background: #2a2a2a;
-        border-color: #404040;
-    }
-
-    .canvas-header,
-    .chat-header {
-        background: #333;
-        border-color: #404040;
-    }
-
-    .message-content {
-        background: #333;
-        color: #e0e0e0;
-    }
-
-    .chat-input-area {
-        background: #333;
-        border-color: #404040;
-    }
-
-    #chat-input {
-        background: #2a2a2a;
-        border-color: #404040;
-        color: #e0e0e0;
-    }
-
-    .tool-btn,
-    .chat-tool-btn {
-        background: #404040;
-        border-color: #555;
-        color: #e0e0e0;
-    }
-
-    .tool-btn:hover,
-    .chat-tool-btn:hover {
-        background: #555;
-    }
-}
+/* 统一浅色主题：关键页面组件颜色不跟随系统深浅色自动切换 */
 
 /* ========== 元件设计器样式 ========== */
 

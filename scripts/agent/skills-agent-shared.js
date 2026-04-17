@@ -51,7 +51,8 @@ function isRealtimeQuery(userMessage) {
   if (!text) return false;
   const keywords = [
     '新闻', '最新', '今日', '今天', '实时', '刚刚', '近期', '最近',
-    'hot', 'headline', 'breaking', 'news', 'current'
+    '天气', '气象', '气温', '下雨', '降雨', '空气质量', '雾霾', '台风', '降雪',
+    'hot', 'headline', 'breaking', 'news', 'current', 'weather', 'forecast'
   ];
   return keywords.some((kw) => text.includes(kw));
 }
@@ -538,12 +539,13 @@ function getSkillResultPhaseLabel(skillName, success, webResultCount) {
  * @param {Array<{toolCallId?:string, skillName:string, args?:any, result?:any}>} toolResults
  * @param {string} userMessage
  * @param {boolean} needsWebPriority
- * @param {{ workspaceTools?: Array<{name:string, description:string}>, projectPath?: string }} [options]
+ * @param {{ workspaceTools?: Array<{name:string, description:string}>, projectPath?: string, webSearchCapReached?: boolean }} [options]
  * @returns {string}
  */
 function buildSkillsAgentUserPrompt(skills, toolResults, userMessage, needsWebPriority, options = {}) {
   const workspaceTools = Array.isArray(options.workspaceTools) ? options.workspaceTools : [];
   const projectPath = String(options.projectPath || '').trim();
+  const webSearchCapReached = !!options.webSearchCapReached;
   const firmwareAlreadySucceeded = hasSuccessfulFirmwareCodegenInResults(toolResults);
   const workspaceSection =
     workspaceTools.length && projectPath
@@ -587,9 +589,11 @@ function buildSkillsAgentUserPrompt(skills, toolResults, userMessage, needsWebPr
       ? '【已打开已有项目】已提供**本地项目根路径**与**工作区读盘工具**：若需核对落盘文件（circuit_config.json、.ino 等），应优先 **workspace_read_file / workspace_list_dir** 等工具获取内容；当需要多个文件时优先用 `workspace_read_file` 的 `relativePaths` 批量读取，减少轮次与 token 开销，再调用 scheme / wiring / firmware 等 skills；画布快照仍可作为快速预览。'
       : '【已打开已有项目】用户问题涉及电路/固件时，首轮应先基于**当前画布快照**（工具上下文会与 circuit_config 同源）理解现状；若需文件级核对，可请用户确认已打开代码编辑区或粘贴 **circuit_config.json** / **.ino** 关键片段再回答。',
     '【代码编辑】用户要求改固件实现时，可调用 **firmware_codegen_skill**：传 userRequirement（可含 codeText）；skill 会结合画布 gapKind 生成可审阅 **patch**。**已有项目文件时语义上是「更新固件」而非空项目从零写文件**。若用户**仅要代码**，本轮只调本 skill；若用户**同时要**与画布引脚严格一致且结果为 gapKind=missing_wiring，可在 final_message 建议**后续消息**再补线后重试，勿默认同轮强行 wiring。',
-    needsWebPriority
-      ? '这是实时信息场景：必须先调用 web_search_exa，再给 final_message（可与上述 scheme 顺序结合：先检索再方案，视情况多轮）。'
-      : 'web_search_exa 非实时场景非必调；缺具体型号佐证、或 scheme_design 后仍模糊时再检索。',
+    needsWebPriority && webSearchCapReached
+      ? '【联网检索·本轮上限】主进程已多次执行 web_search_exa 仍未成功或已达本轮调用上限。**禁止**再在 tool_calls 中使用 web_search_exa。请只输出 **final_message**：诚实说明检索失败（可概括 toolResults 中的 error）、建议检查网络与 Exa/API 相关配置或用手动搜索；**禁止**以「直连模式禁止联网」等与应用行为矛盾的借口推脱。可补充硬件向建议（如设备侧调用公开天气 API）。'
+      : needsWebPriority
+        ? '这是实时信息场景：须先调用 web_search_exa 并取得可用结果后再给 final_message；若连续失败，主进程会在有限次数后停止继续注入，届时只输出 final_message 说明原因（可与上述 scheme 顺序结合：先检索再方案，视情况多轮）。'
+        : 'web_search_exa 非实时场景非必调；缺具体型号佐证、或 scheme_design 后仍模糊时再检索。',
     '【首轮】若确定需要检索或外部事实：第一轮只输出 tool_calls，final_message 请省略或设为 ""，勿在同一轮用 final_message 代替工具调用。',
     '若确定无需任何工具（含无需联网），可直接给 final_message。',
     '每轮必须输出一个 JSON 对象，顶层键仅允许：reasoning_steps、tool_calls、final_message（其中仅 tool_calls[].args 与整体外层为协议用 JSON，其余文字字段均为人类可读文本）。',

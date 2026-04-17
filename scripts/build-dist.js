@@ -35,6 +35,26 @@ async function cleanOutputDirectory() {
 }
 
 /**
+ * electron-builder 会在 `directories.output` 下写入调试用 YAML，不应作为交付物保留。
+ * @param {string} outputDirectory - 输出目录绝对路径
+ * @returns {Promise<void>}
+ */
+async function removeBuilderDebugArtifacts(outputDirectory) {
+  const names = ['builder-effective-config.yaml', 'builder-debug.yml'];
+  for (const name of names) {
+    const filePath = path.join(outputDirectory, name);
+    try {
+      await fs.unlink(filePath);
+      console.log(`[dist] 已移除调试产物: ${name}`);
+    } catch (err) {
+      if (err && err.code !== 'ENOENT') {
+        console.warn(`[dist] 移除 ${name} 时出错（已忽略）:`, err.message || err);
+      }
+    }
+  }
+}
+
+/**
  * 执行 electron-builder 打包
  * @returns {Promise<void>} 打包完成
  */
@@ -72,13 +92,14 @@ async function main() {
     syncVersionFromPackageJson();
   }
 
-  await cleanOutputDirectory();
+  const outputDirectory = await cleanOutputDirectory();
 
   if (cleanOnly) {
     return;
   }
 
   await runElectronBuilder();
+  await removeBuilderDebugArtifacts(outputDirectory);
 }
 
 main().catch((error) => {

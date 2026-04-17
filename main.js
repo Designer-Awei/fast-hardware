@@ -89,7 +89,8 @@ let modelSyncState = {
   fetchedAt: null,
   lastAttemptAt: null,
   error: null,
-  modelCount: 0
+  modelCount: 0,
+  hasApiKey: false
 };
 
 /**
@@ -115,6 +116,29 @@ function getSettingsKeyMap() {
     siliconFlowEnableThinking: 'SILICONFLOW_ENABLE_THINKING=',
     autoCheckUpdates: 'AUTO_CHECK_UPDATES='
   };
+}
+
+/**
+ * 获取设置项的默认路径（主要用于首次安装/历史空值迁移兜底）
+ * @param {'storagePath'|'componentLibPath'} key
+ * @returns {string|undefined}
+ */
+function getDefaultPathForSettingKey(key) {
+  if (app.isPackaged) {
+    if (key === 'storagePath') {
+      return path.join(process.resourcesPath, 'data', 'projects').replace(/\\/g, '/');
+    }
+    if (key === 'componentLibPath') {
+      return path.join(process.resourcesPath, 'data', 'system-components').replace(/\\/g, '/');
+    }
+  }
+  if (key === 'storagePath') {
+    return path.join(userDataPath, 'projects').replace(/\\/g, '/');
+  }
+  if (key === 'componentLibPath') {
+    return undefined;
+  }
+  return undefined;
 }
 
 /**
@@ -523,7 +547,7 @@ async function fetchPublicPageText({ hostname, path: requestPath }) {
       path: requestPath,
       method: 'GET',
       headers: {
-        'User-Agent': 'Fast-Hardware/0.2.6'
+        'User-Agent': 'Fast-Hardware/0.2.7'
       }
     }, (res) => {
       let responseBody = '';
@@ -1079,6 +1103,9 @@ async function resolveModelCatalog(options = {}) {
   let officialPricingMap = new Map();
 
   const apiKey = await readSiliconFlowApiKey();
+  updateModelSyncState({
+    hasApiKey: Boolean(apiKey)
+  });
   if (apiKey) {
     try {
       const remoteModels = await fetchRemoteModelCatalog(apiKey);
@@ -1107,17 +1134,20 @@ async function resolveModelCatalog(options = {}) {
       }
     }
   } else {
+    /** 无密钥时允许直接回退缓存/内置模型；这不是“错误”，否则首次安装会给人一种模型列表被阻塞的感觉 */
     updateModelSyncState({
-      error: '未配置 SiliconFlow API Key'
+      error: null
     });
   }
 
   const cachedCatalog = await readRemoteModelCache();
   if (cachedCatalog) {
-    try {
-      officialPricingMap = await fetchOfficialPricingMap(cachedCatalog.rawModels);
-    } catch (pricingError) {
-      console.warn('⚠️ 缓存模型价格补全失败，继续使用本地价格兜底:', pricingError.message);
+    if (apiKey) {
+      try {
+        officialPricingMap = await fetchOfficialPricingMap(cachedCatalog.rawModels);
+      } catch (pricingError) {
+        console.warn('⚠️ 缓存模型价格补全失败，继续使用本地价格兜底:', pricingError.message);
+      }
     }
     const resolvedConfig = buildResolvedModelConfig(cachedCatalog.rawModels, enhancementConfig, 'cache', cachedCatalog.fetchedAt, officialPricingMap);
     updateModelSyncState({
@@ -1129,10 +1159,12 @@ async function resolveModelCatalog(options = {}) {
   }
 
   const builtinModels = buildBuiltinRawModels(enhancementConfig);
-  try {
-    officialPricingMap = await fetchOfficialPricingMap(builtinModels);
-  } catch (pricingError) {
-    console.warn('⚠️ 内置模型价格补全失败，继续使用本地价格兜底:', pricingError.message);
+  if (apiKey) {
+    try {
+      officialPricingMap = await fetchOfficialPricingMap(builtinModels);
+    } catch (pricingError) {
+      console.warn('⚠️ 内置模型价格补全失败，继续使用本地价格兜底:', pricingError.message);
+    }
   }
   const resolvedConfig = buildResolvedModelConfig(builtinModels, enhancementConfig, 'builtin', null, officialPricingMap);
   updateModelSyncState({
@@ -2179,7 +2211,10 @@ ipcMain.handle('refresh-model-list', async () => {
  * 获取模型同步状态
  */
 ipcMain.handle('get-model-sync-status', async () => {
-  return modelSyncState;
+  return {
+    ...modelSyncState,
+    hasApiKey: Boolean(await readSiliconFlowApiKey())
+  };
 });
 
 // 文件操作IPC
@@ -2692,7 +2727,16 @@ ipcMain.handle('get-settings', async (event, key) => {
     if (key === 'siliconFlowEnableThinking') {
       return (await resolveSiliconFlowEnableThinking()) ? 'true' : 'false';
     }
-    return await readSettingValue(key);
+    const value = await readSettingValue(key);
+    if (value !== undefined && String(value).trim() !== '') {
+      return value;
+    }
+
+    if (key === 'storagePath' || key === 'componentLibPath') {
+      const fallback = getDefaultPathForSettingKey(key);
+      if (fallback && String(fallback).trim() !== '') return fallback;
+    }
+    return value;
   } catch (error) {
     console.log('读取设置失败:', error.message);
     return undefined;
@@ -2713,6 +2757,8 @@ ipcMain.handle('save-settings', async (event, key, value) => {
       envContent = await fs.readFile(envPath, 'utf8');
     } catch {
       // 如果文件不存在，使用默认内容
+      const defaultStoragePath = getDefaultPathForSettingKey('storagePath') || '';
+      const defaultComponentLibPath = getDefaultPathForSettingKey('componentLibPath') || '';
       envContent = `# Fast Hardware Environment Configuration
 # This file contains sensitive configuration data
 # DO NOT commit this file to version control
@@ -2724,10 +2770,10 @@ SILICONFLOW_API_KEY=
 SILICONFLOW_ENABLE_THINKING=false
 
 # Project Storage Path
-PROJECT_STORAGE_PATH=
+PROJECT_STORAGE_PATH=${defaultStoragePath}
 
 # Component Library Path
-COMPONENT_LIB_PATH=
+COMPONENT_LIB_PATH=${defaultComponentLibPath}
 
 # Auto update check
 AUTO_CHECK_UPDATES=true`;
@@ -2803,23 +2849,21 @@ ipcMain.handle('open-external', async (event, url) => {
   }
 });
 
-// 保存API密钥到env.local文件
-ipcMain.handle('save-api-key', async (event, apiKey) => {
+/**
+ * 将 SiliconFlow API 密钥写入 `env.local`；传入空串时表示清空。
+ * 路径按运行环境自动区分：开发环境写项目根目录，生产环境写用户数据目录。
+ * @param {string} apiKey
+ * @returns {Promise<{ success: boolean, path?: string, error?: string }>}
+ */
+async function persistSiliconFlowApiKey(apiKey) {
   try {
-    // 区分开发环境和生产环境
+    const envPath = getEnvPath();
     const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
-    let envPath;
-    
-    if (isDev) {
-      // 开发环境：写入项目根目录的 env.local
-      envPath = path.join(__dirname, 'env.local');
-      console.log('📝 开发环境：保存API密钥到项目根目录:', envPath);
-    } else {
-      // 生产环境：写入 AppData 的 env.local
-      envPath = path.join(app.getPath('userData'), 'env.local');
-      console.log('📝 生产环境：保存API密钥到用户数据目录:', envPath);
-    }
-    
+    console.log(
+      `📝 ${isDev ? '开发' : '生产'}环境：${apiKey ? '保存' : '清空'}API密钥 ->`,
+      envPath
+    );
+
     let envContent = '';
 
     // 尝试读取现有文件内容
@@ -2848,7 +2892,7 @@ SILICONFLOW_ENABLE_THINKING=false
 
     for (let i = 0; i < lines.length; i++) {
       if (lines[i].startsWith('SILICONFLOW_API_KEY=')) {
-        lines[i] = `SILICONFLOW_API_KEY=${apiKey}`;
+        lines[i] = `SILICONFLOW_API_KEY=${String(apiKey || '').trim()}`;
         found = true;
         break;
       }
@@ -2856,7 +2900,7 @@ SILICONFLOW_ENABLE_THINKING=false
 
     // 如果没找到，添加新行
     if (!found) {
-      lines.push(`SILICONFLOW_API_KEY=${apiKey}`);
+      lines.push(`SILICONFLOW_API_KEY=${String(apiKey || '').trim()}`);
     }
 
     const newContent = lines.join('\n');
@@ -2864,12 +2908,22 @@ SILICONFLOW_ENABLE_THINKING=false
     // 写入文件
     await fs.writeFile(envPath, newContent, 'utf8');
 
-    console.log('✅ API密钥已保存到env.local文件');
+    console.log(`✅ API密钥已${apiKey ? '保存' : '清空'}到env.local文件`);
     return { success: true, path: envPath };
   } catch (error) {
-    console.error('❌ 保存API密钥失败:', error);
+    console.error(`❌ ${apiKey ? '保存' : '清空'}API密钥失败:`, error);
     return { success: false, error: error.message };
   }
+}
+
+// 保存API密钥到env.local文件
+ipcMain.handle('save-api-key', async (event, apiKey) => {
+  return persistSiliconFlowApiKey(String(apiKey || '').trim());
+});
+
+// 清空API密钥（开发/生产环境路径与 save-api-key 同源）
+ipcMain.handle('clear-api-key', async () => {
+  return persistSiliconFlowApiKey('');
 });
 
 // 从env.local文件读取API密钥

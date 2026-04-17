@@ -10,7 +10,8 @@ class ModelConfigManager {
             source: 'builtin',
             fetchedAt: null,
             error: null,
-            modelCount: 0
+            modelCount: 0,
+            hasApiKey: false
         };
         this.isRefreshing = false;
         this.dropdownBound = false;
@@ -354,6 +355,10 @@ class ModelConfigManager {
      * @returns {string} 同步时间文案
      */
     getSyncTimeText() {
+        if (!this.syncStatus.hasApiKey) {
+            return '未配置 API 密钥，当前仅显示缓存或内置列表';
+        }
+
         if (!this.syncStatus.fetchedAt) {
             return this.syncStatus.error || '当前未获取到在线模型时间';
         }
@@ -391,6 +396,10 @@ class ModelConfigManager {
 
         dropdown.innerHTML = '';
 
+        const canRefreshRemote = this.syncStatus.hasApiKey !== false;
+        const refreshTitle = canRefreshRemote
+            ? '刷新在线模型列表'
+            : '需先配置 API 密钥，才能刷新在线模型列表';
         const header = document.createElement('div');
         header.className = 'model-dropdown-header';
         header.innerHTML = `
@@ -398,7 +407,7 @@ class ModelConfigManager {
                 <span class="model-sync-source">${this.getSyncStatusText()}</span>
                 <span class="model-sync-time">${this.getSyncTimeText()}</span>
             </div>
-            <button class="model-refresh-btn" type="button" data-action="refresh-models">
+            <button class="model-refresh-btn" type="button" data-action="refresh-models" ${this.isRefreshing || !canRefreshRemote ? 'disabled' : ''} title="${refreshTitle}">
                 ${this.isRefreshing ? '刷新中...' : '刷新'}
             </button>
         `;
@@ -486,6 +495,9 @@ class ModelConfigManager {
                 if (refreshButton) {
                     event.preventDefault();
                     event.stopPropagation();
+                    if (refreshButton instanceof HTMLButtonElement && refreshButton.disabled) {
+                        return;
+                    }
                     this.refreshConfig();
                     return;
                 }
@@ -524,6 +536,13 @@ class ModelConfigManager {
      */
     async refreshConfig() {
         if (this.isRefreshing) {
+            return;
+        }
+
+        if (this.syncStatus.hasApiKey === false) {
+            if (window.showNotification) {
+                window.showNotification('未配置 API 密钥，无法刷新在线模型列表', 'warning');
+            }
             return;
         }
 

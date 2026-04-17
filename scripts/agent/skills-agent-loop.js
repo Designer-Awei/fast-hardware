@@ -270,6 +270,15 @@ async function runSkillsAgentLoop(webContents, options) {
   })();
   const webPriority = needsWebSearchPriority(userMessage);
   let webSearchCalled = false;
+  /** 实时/优先联网场景下，本轮内已执行 web_search_exa 的次数（含失败），用于封顶避免无限强注 */
+  let webSearchExaInvokeCount = 0;
+  /** 默认 3；环境变量 FH_WEB_SEARCH_MAX_PER_RUN 可覆盖（1～10） */
+  const maxWebSearchExaPerRun = (() => {
+    const raw = String(process.env.FH_WEB_SEARCH_MAX_PER_RUN || '3').trim();
+    const n = parseInt(raw, 10);
+    if (Number.isFinite(n) && n >= 1) return Math.min(n, 10);
+    return 3;
+  })();
   /** 单次 runSkillsAgentLoop 内 wiring_edit_skill 调用上限（防模型反复编排） */
   const maxWiringEditPerRun = (() => {
     /** 默认 5：单条用户消息内可能「直连 RGB → 补件后再串电阻」多步改线，3 次易触顶 */
@@ -301,6 +310,9 @@ async function runSkillsAgentLoop(webContents, options) {
       send({ type: 'phase', phase: '结合上下文续问', source: 'skills_agent_main' });
     }
 
+    const webSearchCapReached =
+      webPriority && webSearchExaInvokeCount >= maxWebSearchExaPerRun && !webSearchCalled;
+
     const triggeredSkills = iter === 0 ? matchKeywordTriggeredSkills(userMessage) : [];
     const keywordHint =
       triggeredSkills.length > 0
@@ -308,7 +320,8 @@ async function runSkillsAgentLoop(webContents, options) {
         : '';
     const prompt = `${buildSkillsAgentUserPrompt(skills, toolResults, userMessage, webPriority, {
       workspaceTools,
-      projectPath
+      projectPath,
+      webSearchCapReached
     })}${keywordHint}`;
 
     if (shouldAbort()) {
@@ -366,8 +379,12 @@ async function runSkillsAgentLoop(webContents, options) {
       typeof parsed.final_message === 'string' ? sanitizeAgentFinalMessage(parsed.final_message) : '';
     let toolCalls = dedupeFirmwareCodegenToolCalls(normalizeToolCalls(parsed.tool_calls));
 
+    if (webSearchCapReached) {
+      toolCalls = toolCalls.filter((tc) => tc.skillName !== 'web_search_exa');
+    }
+
     const containsWebSearch = toolCalls.some((tc) => tc.skillName === 'web_search_exa');
-    if (webPriority && !webSearchCalled && !containsWebSearch) {
+    if (webPriority && !webSearchCalled && !webSearchCapReached && !containsWebSearch) {
       toolCalls = [
         {
           toolCallId: `forced_web_${iter + 1}`,
@@ -389,7 +406,7 @@ async function runSkillsAgentLoop(webContents, options) {
       }
     }
 
-    if (finalMessage && (!webPriority || webSearchCalled)) {
+    if (finalMessage && (!webPriority || webSearchCalled || webSearchCapReached)) {
       send({ type: 'final_synthesis_start', source: 'skills_agent_main' });
       let synthesized = '';
       try {
@@ -450,6 +467,12 @@ async function runSkillsAgentLoop(webContents, options) {
     }
 
     if (!toolCalls.length) {
+      if (webPriority && webSearchCapReached && !finalMessage && iter + 1 < maxIterations) {
+        if (process.env.FH_SKILLS_AGENT_DEBUG === '1') {
+          console.log('[skills-agent-loop] web_search cap: empty tool_calls, continue for final_message');
+        }
+        continue;
+      }
       if (hasSuccessfulFirmwareCodegenInResults(toolResults)) {
         send({ type: 'final_synthesis_start', source: 'skills_agent_main' });
         let synthesized = '';
@@ -618,6 +641,10 @@ async function runSkillsAgentLoop(webContents, options) {
         if (skillName === 'firmware_codegen_skill') {
           firmwareCodegenInvokeCount += 1;
         }
+      }
+
+      if (skillName === 'web_search_exa' && webPriority) {
+        webSearchExaInvokeCount += 1;
       }
 
       if (shouldAbort()) {

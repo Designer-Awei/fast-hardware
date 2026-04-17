@@ -153,6 +153,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loadApiKey: () => ipcRenderer.invoke('load-api-key'),
 
   /**
+   * 清空本地存储的API密钥
+   */
+  clearApiKey: () => ipcRenderer.invoke('clear-api-key'),
+
+  /**
    * 与AI对话
    * @param {Array<{role:string, content: unknown}>} messages
    * @param {string} model

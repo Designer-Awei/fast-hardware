@@ -30,8 +30,8 @@ Fast Hardware
 
 - **产品版本（semver）** 的**唯一事实来源**：仓库根目录 **`package.json`** 的 **`version`** 字段（当前开发与安装包均以该字段为准）。
 - **变更日志**：根目录 **`0-Change-Log.md`**，按 **`v0.2.x`** 分段维护。
-  - **已发布线**：以 **`package.json`** 与 CHANGELOG 中 **`v0.2.6`** 置顶小节及 dated 补充为准；当前 **`version`** 为 **0.2.6** 且已执行 **`npm run sync-version`** 时，与对外安装包及展示文案一致。
-  - **下一版**：发布 **0.2.7+** 时在 **`package.json`** bump **`version`**，更新 **`0-Change-Log.md`** 置顶说明，并执行 **`npm run sync-version`**。
+  - **已发布线**：以 **`package.json`** 与 CHANGELOG 中 **`v0.2.7`** 置顶小节及 dated 补充为准；当前 **`version`** 为 **0.2.7** 且已执行 **`npm run sync-version`** 时，与对外安装包及展示文案一致。
+  - **下一版**：发布 **0.2.8+** 时在 **`package.json`** bump **`version`**，更新 **`0-Change-Log.md`** 置顶说明，并执行 **`npm run sync-version`**。
 - **展示用版本字符串同步**：**`npm run sync-version`** → **`scripts/sync-version.js`**
   - **读入**：**`package.json` → `version`**
   - **写回**（有变更才写入）：**`index.html`**（关于页 `Fast Hardware v…`）、**`main.js`**（HTTP **`User-Agent`: `Fast-Hardware/<version>`**）、**`assets/update.txt`**（JSON 数组首元素的 **`version`**）、**`README.md`** / **`README_EN.md`**（徽章、最新特性标题、安装包文件名示例、版本升级段落等，规则见脚本内 **`applyReadmeVersionPatterns`**）

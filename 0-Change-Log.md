@@ -2,6 +2,16 @@
 
 ## 📝 更新日志
 
+### 🎉 v0.2.7 (2026-04-18) — 联网与设置体验
+
+- **联网检索封顶与直连提示（`scripts/agent/skills-agent-loop.js` / `scripts/agent/skills-agent-shared.js` / `scripts/chat.js`）**：实时/优先联网场景下 `web_search_exa` 连续失败后不再无限强注，默认**每用户消息最多执行 3 次**（`FH_WEB_SEARCH_MAX_PER_RUN` 可调 1～10）；达上限后允许 **final_message** 诚实说明失败原因。**直连短答**系统提示不再笼统写「绝不调用 skills」，避免模型向用户误称「直连禁止联网」；**`isRealtimeQuery`**（渲染侧与主进程）补充天气/气象等关键词，便于「杭州天气」类句走 Agent 检索路由。
+- **首装无密钥场景的模型刷新 UX（`main.js` / `scripts/model-config.js` / `styles/main.css`）**：无密钥时回退缓存/内置列表；模型下拉「刷新」在无 Key 时为**禁用态**并提示，避免误导。
+- **密钥弹窗「清空密钥」（`scripts/settings.js` / `preload.js` / `main.js`）**：弹窗将「取消」改为「清空密钥」；主进程 **`clear-api-key`** IPC 与 `env.local` / `userData` 路径策略对齐。
+- **系统设置页布局（`styles/main.css`）**：**`.settings-grid`** 改为 **flex** 换行，卡片 **`flex: 1 1`** 撑满可用宽度，去掉 **1200px** 居中限宽；**`.settings-page`** 设 **`width: 100%`**。
+- **打包输出（`scripts/build-dist.js`）**：**`npm run dist`** 在 electron-builder 成功后删除 **`dist/builder-effective-config.yaml`** 与 **`dist/builder-debug.yml`**，避免调试 YAML 残留在产物目录。
+
+> **v0.2.7 已发布**：根目录 `package.json` 的 `version` 为 **0.2.7**；展示用文案与安装包命名以 `npm run sync-version` 及构建产物为准。
+
 ### 🎉 v0.2.6 (2026-03-21) — Skills 架构降级（已发布）
 
 以下 **🎯 日期补充**按**日期降序**排列（最新在上）。
