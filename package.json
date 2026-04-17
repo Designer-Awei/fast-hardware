@@ -57,6 +57,10 @@
       "zh-CN",
       "en-US"
     ],
+    "asarUnpack": [
+      "**/node_modules/mcporter/**/*",
+      "**/node_modules/@modelcontextprotocol/**/*"
+    ],
     "files": [
       "**/*",
       "!data",

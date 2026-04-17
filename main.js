@@ -21,6 +21,16 @@ const { runSkillsAgentLoop } = require('./scripts/agent/skills-agent-loop');
 const { clearAbort, requestAbort } = require('./scripts/agent/skills-agent-loop-abort');
 const { executeProjectWorkspaceToolCall } = require('./scripts/agent/project-workspace-tools');
 
+/**
+ * `web-search-exa` IPC 使用动态 `import('mcporter')`；electron-builder 若不追踪则安装包内会缺包。
+ * 启动时做一次 `require.resolve`，将 `mcporter`（及可解析到的包路径）纳入依赖图，并与 `build.asarUnpack` 配合保证运行时可加载。
+ */
+try {
+    require.resolve('mcporter/package.json');
+} catch (e) {
+    console.warn('[main] mcporter 未安装或无法解析，Web 检索（Exa MCP）将不可用:', e?.message || e);
+}
+
 setupSkillsEngineBridge();
 
 let autoUpdater = null;

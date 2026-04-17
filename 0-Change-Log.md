@@ -9,6 +9,7 @@
 - **密钥弹窗「清空密钥」（`scripts/settings.js` / `preload.js` / `main.js`）**：弹窗将「取消」改为「清空密钥」；主进程 **`clear-api-key`** IPC 与 `env.local` / `userData` 路径策略对齐。
 - **系统设置页布局（`styles/main.css`）**：**`.settings-grid`** 改为 **flex** 换行，卡片 **`flex: 1 1`** 撑满可用宽度，去掉 **1200px** 居中限宽；**`.settings-page`** 设 **`width: 100%`**。
 - **打包输出（`scripts/build-dist.js`）**：**`npm run dist`** 在 electron-builder 成功后删除 **`dist/builder-effective-config.yaml`** 与 **`dist/builder-debug.yml`**，避免调试 YAML 残留在产物目录。
+- **Web 检索依赖 `mcporter` 随安装包分发（`package.json` `build.asarUnpack` + `main.js`）**：主进程 **`web-search-exa`** 通过动态 **`import('mcporter')`** 连接 Exa MCP；仅声明在 **`dependencies`** 时，部分环境打包后仍缺模块。增加 **`asarUnpack`** 解压 **`mcporter`** 与 **`@modelcontextprotocol`** 目录；启动时对 **`mcporter/package.json`** 执行 **`require.resolve`**，便于打包器纳入依赖追踪。
 
 > **v0.2.7 已发布**：根目录 `package.json` 的 `version` 为 **0.2.7**；展示用文案与安装包命名以 `npm run sync-version` 及构建产物为准。
 
