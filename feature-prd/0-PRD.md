@@ -6,7 +6,8 @@
 Fast Hardware
 
 ### 项目愿景
-开发一个桌面端应用，旨在帮助硬件项目新手解决选型、电路搭建和固件编写等问题。通过集成LLM API，为用户提供智能化的硬件开发辅助工具。
+开发一个桌面端应用，旨在帮助硬件项目新手解决选型、电路搭建和固件编写等问题。通过集成LLM API，为用户提供智能化的硬件开发辅助工具。  
+**演进方向**：在保留「本地工作台 + AI 辅助」核心的前提下，逐步强化 **教育与创客向** 的 **内容创作与分享**：**方案分享/导出**（**`7-project-share_prd.md`**）与 **在线创客集市**（**`8-maker-marketplace_prd.md`**，OSS + Supabase + OAuth + 审核），产品心智可参考 **专业工具 + 内容社区**。
 
 ### 目标用户
 - 硬件开发新手
@@ -25,6 +26,8 @@ Fast Hardware
 | **`4-agent-loop_prd.md`** | 主进程 **Agent Loop**、IPC、`runSkillsAgentLoop` 与 `skills/skills` 目录落点 |
 | **`5-cli_prd.md`** | 命令行工具（CLI） |
 | **`6-project-isolation_prd.md`** | **项目级隔离**（多标签下聊天 / 画布内存 / 固件草稿按项目隔离，**已落地**） |
+| **`7-project-share_prd.md`** | **方案分享与导出**（画布分享入口、分享预览、长图/方案包；**规划中**） |
+| **`8-maker-marketplace_prd.md`** | **创客集市（在线社区）**（Supabase + 阿里云 OSS、OAuth、审核、社区管理页；**规划中**） |
 
 ## 🔢 版本号、变更日志与同步脚本
 

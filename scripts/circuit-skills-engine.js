@@ -1155,9 +1155,9 @@ ${extra ? `【补充上下文】\n${extra}` : ''}`;
             if (balanced) {
                 parsed = JSON.parse(balanced);
             } else {
-                const fb = jsonStr.indexOf('{');
-                const lb = jsonStr.lastIndexOf('}');
-                parsed = JSON.parse(fb >= 0 && lb > fb ? jsonStr.slice(fb, lb + 1) : jsonStr);
+            const fb = jsonStr.indexOf('{');
+            const lb = jsonStr.lastIndexOf('}');
+            parsed = JSON.parse(fb >= 0 && lb > fb ? jsonStr.slice(fb, lb + 1) : jsonStr);
             }
         } catch (e) {
             this._notifyAgentProgressPhase('completion-suggestion 解析失败');
