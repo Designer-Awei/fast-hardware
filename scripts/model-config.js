@@ -73,7 +73,7 @@ class ModelConfigManager {
             defaults: {
                 chat: 'Qwen/Qwen3.5-27B',
                 thinking: 'Qwen/Qwen3-8B',
-                visual: 'Qwen/Qwen2.5-VL-32B-Instruct'
+                visual: 'Qwen/Qwen3.5-27B'
             },
             models: [
                 {
@@ -83,8 +83,8 @@ class ModelConfigManager {
                     providerType: 'text',
                     appType: 'chat',
                     type: 'chat',
-                    capabilities: ['text', 'code', 'long_context'],
-                    description: '默认对话模型',
+                    capabilities: ['text', 'image', 'code', 'long_context'],
+                    description: '默认对话模型（支持多模态）',
                     enabled: true,
                     costLevel: 'medium',
                     score: 100

@@ -157,7 +157,8 @@ class ChatManager {
         this.selectedModel = 'Qwen/Qwen3.5-27B';
         this.defaultChatModel = 'Qwen/Qwen3.5-27B';
         this.defaultThinkingModel = 'Qwen/Qwen3-8B';
-        this.defaultVisualModel = 'Qwen/Qwen2.5-VL-32B-Instruct';
+        /** 与默认对话模型一致：Qwen3.5-27B 已支持多模态，仅作配置回退与「defaults.visual」对齐 */
+        this.defaultVisualModel = 'Qwen/Qwen3.5-27B';
         this.uploadedImages = []; // 支持多图上传
         this.currentImageIndex = 0; // 当前显示的图片索引
         this.hidePreviewTimeout = null; // 延迟隐藏定时器
@@ -1260,33 +1261,17 @@ class ChatManager {
             // 使用实际的API模型名称，而不是UI显示文本
             let currentModel = this.selectedModel || this.defaultChatModel;
             
-            // 🔄 智能模型切换逻辑
+            // 🔄 智能模型切换：有图时不再改模型（默认 Qwen3.5-27B 等多模态对话模型直接看图；思考开关由主进程按全局设置处理）。
             if (window.modelConfigManager) {
                 const modelInfo = window.modelConfigManager.getModelByName(currentModel);
-                
-                if (images && images.length > 0) {
-                    // 场景1: 有图片输入 - 切换到视觉模型
-                    if (modelInfo && (modelInfo.appType || modelInfo.type) !== 'visual') {
-                        currentModel = this.defaultVisualModel;
-                        console.log(`🔄 检测到图片输入，自动从 ${modelInfo.displayName} 切换到视觉模型`);
-                        
-                        // 更新UI显示
-                        const visualModelInfo = window.modelConfigManager.getModelByName(currentModel);
-                        if (visualModelInfo) {
-                            this.updateModelDisplay(visualModelInfo);
-                            if (window.showNotification) {
-                                window.showNotification(`已自动切换到视觉模型 ${visualModelInfo.displayName}`, 'info');
-                            }
-                        }
-                    }
-                } else {
-                    // 场景2: 纯文本输入 - 切换回对话模型
+
+                if (!images || images.length === 0) {
+                    // 纯文本：若当前仍是专用「视觉」模型（旧习惯选 VL），自动切回默认对话模型
                     const currentAppType = modelInfo ? (modelInfo.appType || modelInfo.type) : '';
                     if (modelInfo && currentAppType !== 'chat' && currentAppType !== 'thinking') {
                         currentModel = this.defaultChatModel;
                         console.log(`🔄 检测到纯文本输入，自动从 ${modelInfo.displayName} 切换到对话模型`);
-                        
-                        // 更新UI显示
+
                         const chatModelInfo = window.modelConfigManager.getModelByName(currentModel);
                         if (chatModelInfo) {
                             this.updateModelDisplay(chatModelInfo);

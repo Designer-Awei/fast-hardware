@@ -2,8 +2,8 @@
   "projectName": "SEBT-从机",
   "description": "通过Fast Hardware创建的电路设计",
   "version": "1.0.0",
-  "createdAt": "2025-11-16T07:10:02.025Z",
-  "lastModified": "2025-11-16T07:10:02.025Z",
+  "createdAt": "2026-04-18T08:08:03.063Z",
+  "lastModified": "2026-04-18T08:08:03.063Z",
   "components": [
     {
       "componentFile": "std-fsr402-压力传感器-115646.json",
@@ -13,6 +13,26 @@
         -177.0500306495278
       ],
       "orientation": "down",
+      "libraryComponentId": "std-fsr402-压力传感器-115646",
+      "componentName": "FSR402  压力传感器",
+      "pins": {
+        "side1": [
+          {
+            "pinId": "side1-1",
+            "pinName": "端子1",
+            "type": "digital_io",
+            "order": 1
+          }
+        ],
+        "side3": [
+          {
+            "pinId": "side3-1",
+            "pinName": "端子2",
+            "type": "digital_io",
+            "order": 1
+          }
+        ]
+      },
       "properties": {
         "customLabel": "FSR402  压力传感器"
       }
@@ -25,6 +45,110 @@
         -362.7699034045613
       ],
       "orientation": "down",
+      "libraryComponentId": "std-esp32c3-supermi-114213",
+      "componentName": "ESP32-C3 SuperMini",
+      "pins": {
+        "side1": [
+          {
+            "pinId": "side1-1",
+            "pinName": "5V",
+            "type": "power",
+            "order": 1
+          },
+          {
+            "pinId": "side1-2",
+            "pinName": "GND",
+            "type": "ground",
+            "order": 2
+          },
+          {
+            "pinId": "side1-3",
+            "pinName": "3V3",
+            "type": "power",
+            "order": 3
+          },
+          {
+            "pinId": "side1-4",
+            "pinName": "GP4",
+            "type": "digital_io",
+            "order": 4
+          },
+          {
+            "pinId": "side1-5",
+            "pinName": "GP3",
+            "type": "digital_io",
+            "order": 5
+          },
+          {
+            "pinId": "side1-6",
+            "pinName": "GP2",
+            "type": "digital_io",
+            "order": 6
+          },
+          {
+            "pinId": "side1-7",
+            "pinName": "GP1",
+            "type": "digital_io",
+            "order": 7
+          },
+          {
+            "pinId": "side1-8",
+            "pinName": "GP0",
+            "type": "digital_io",
+            "order": 8
+          }
+        ],
+        "side3": [
+          {
+            "pinId": "side3-1",
+            "pinName": "GP5",
+            "type": "digital_io",
+            "order": 1
+          },
+          {
+            "pinId": "side3-2",
+            "pinName": "GP6",
+            "type": "digital_io",
+            "order": 2
+          },
+          {
+            "pinId": "side3-3",
+            "pinName": "GP7",
+            "type": "digital_io",
+            "order": 3
+          },
+          {
+            "pinId": "side3-4",
+            "pinName": "GP8",
+            "type": "digital_io",
+            "order": 4
+          },
+          {
+            "pinId": "side3-5",
+            "pinName": "GP9",
+            "type": "digital_io",
+            "order": 5
+          },
+          {
+            "pinId": "side3-6",
+            "pinName": "GP10",
+            "type": "digital_io",
+            "order": 6
+          },
+          {
+            "pinId": "side3-7",
+            "pinName": "GP20",
+            "type": "digital_io",
+            "order": 7
+          },
+          {
+            "pinId": "side3-8",
+            "pinName": "GP21",
+            "type": "digital_io",
+            "order": 8
+          }
+        ]
+      },
       "properties": {
         "customLabel": "ESP32-C3 SuperMini"
       }
@@ -37,6 +161,24 @@
         -82.35683319776967
       ],
       "orientation": "up",
+      "libraryComponentId": "std-37v-602035锂电池-132510",
+      "componentName": "3.7V 602035锂电池",
+      "pins": {
+        "side1": [
+          {
+            "pinId": "side1-1",
+            "pinName": "3.7V",
+            "type": "power",
+            "order": 1
+          },
+          {
+            "pinId": "side1-2",
+            "pinName": "GND",
+            "type": "ground",
+            "order": 2
+          }
+        ]
+      },
       "properties": {
         "customLabel": "3.7V 602035锂电池"
       }
@@ -49,6 +191,26 @@
         -257.9220414363145
       ],
       "orientation": "up",
+      "libraryComponentId": "std-1100-电阻-202320",
+      "componentName": "1100Ω 电阻",
+      "pins": {
+        "side1": [
+          {
+            "pinId": "side1-1",
+            "pinName": "端子1",
+            "type": "special",
+            "order": 1
+          }
+        ],
+        "side3": [
+          {
+            "pinId": "side3-1",
+            "pinName": "端子2",
+            "type": "special",
+            "order": 1
+          }
+        ]
+      },
       "properties": {
         "customLabel": "1100Ω 电阻"
       }
@@ -61,6 +223,24 @@
         -225.88685694730327
       ],
       "orientation": "left",
+      "libraryComponentId": "ctm-dc电源开关模块-132914",
+      "componentName": "DC电源开关模块",
+      "pins": {
+        "side1": [
+          {
+            "pinId": "side1-1",
+            "pinName": "V+",
+            "type": "power",
+            "order": 1
+          },
+          {
+            "pinId": "side1-2",
+            "pinName": "GND",
+            "type": "ground",
+            "order": 2
+          }
+        ]
+      },
       "properties": {
         "customLabel": "DC电源开关模块"
       }
@@ -73,6 +253,24 @@
         -147.33217746798573
       ],
       "orientation": "down",
+      "libraryComponentId": "ctm-led-094919",
+      "componentName": "LED",
+      "pins": {
+        "side3": [
+          {
+            "pinId": "side3-1",
+            "pinName": "V+",
+            "type": "power",
+            "order": 1
+          },
+          {
+            "pinId": "side3-2",
+            "pinName": "V-",
+            "type": "ground",
+            "order": 2
+          }
+        ]
+      },
       "properties": {
         "customLabel": "LED"
       }
@@ -122,7 +320,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-11-16T07:10:02.023Z"
+        "createdAt": "2026-04-18T08:08:03.063Z"
       }
     },
     {
@@ -168,7 +366,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-11-16T07:10:02.025Z"
+        "createdAt": "2026-04-18T08:08:03.063Z"
       }
     },
     {
@@ -214,7 +412,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-11-16T07:10:02.025Z"
+        "createdAt": "2026-04-18T08:08:03.063Z"
       }
     },
     {
@@ -260,7 +458,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-11-16T07:10:02.025Z"
+        "createdAt": "2026-04-18T08:08:03.063Z"
       }
     },
     {
@@ -306,7 +504,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-11-16T07:10:02.025Z"
+        "createdAt": "2026-04-18T08:08:03.063Z"
       }
     },
     {
@@ -352,7 +550,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-11-16T07:10:02.025Z"
+        "createdAt": "2026-04-18T08:08:03.063Z"
       }
     },
     {
@@ -398,7 +596,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-11-16T07:10:02.025Z"
+        "createdAt": "2026-04-18T08:08:03.063Z"
       }
     },
     {
@@ -444,7 +642,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-11-16T07:10:02.025Z"
+        "createdAt": "2026-04-18T08:08:03.063Z"
       }
     },
     {
@@ -490,14 +688,14 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2025-11-16T07:10:02.025Z"
+        "createdAt": "2026-04-18T08:08:03.063Z"
       }
     }
   ],
   "canvas": {
-    "zoom": 1.478392033748282,
-    "panX": -33.315545926452046,
-    "panY": 626.4529003568641,
+    "zoom": 1.2531100788527323,
+    "panX": 48.877640598466996,
+    "panY": 626.3174725878955,
     "gridSize": 10,
     "showGrid": true
   }
