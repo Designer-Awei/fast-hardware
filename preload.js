@@ -143,6 +143,36 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveSettings: (key, value) => ipcRenderer.invoke('save-settings', key, value),
 
   /**
+   * 获取 Supabase 配置状态（不返回明文 key）。
+   * @returns {{ envPath: string, url: string, isConfigured: boolean, hasPublishableKey: boolean }}
+   */
+  getSupabaseConfigStatus: () => ipcRenderer.invoke('get-supabase-config-status'),
+
+  /**
+   * 获取当前 Supabase 登录态。
+   */
+  getSupabaseAuthState: () => ipcRenderer.invoke('supabase-auth-get-state'),
+
+  /**
+   * Supabase 邮箱密码注册。
+   * @param {{ email: string, password: string, displayName?: string, rememberMe?: boolean }} payload
+   */
+  supabaseSignUpWithPassword: (payload) =>
+    ipcRenderer.invoke('supabase-auth-sign-up-password', payload),
+
+  /**
+   * Supabase 邮箱密码登录。
+   * @param {{ email: string, password: string, rememberMe?: boolean }} payload
+   */
+  supabaseSignInWithPassword: (payload) =>
+    ipcRenderer.invoke('supabase-auth-sign-in-password', payload),
+
+  /**
+   * Supabase 登出。
+   */
+  supabaseSignOut: () => ipcRenderer.invoke('supabase-auth-sign-out'),
+
+  /**
    * 保存API密钥到env.local
    */
   saveApiKey: (apiKey) => ipcRenderer.invoke('save-api-key', apiKey),

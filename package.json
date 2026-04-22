@@ -76,7 +76,9 @@
       "!edit_prd.md",
       "!Fast Hardware.txt",
       "!nul",
-      "!env.local"
+      "!env.local",
+      "!.env.supabase",
+      "!.env.supabase.example"
     ],
     "extraFiles": [
       {
@@ -182,6 +184,7 @@
     }
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.104.0",
     "electron-updater": "^6.8.3",
     "marked": "^16.3.0",
     "mcporter": "^0.7.3",

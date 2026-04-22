@@ -41,6 +41,11 @@ class TabManager {
             button: document.querySelector('[data-tab="settings"]')
         });
 
+        this.tabs.set('personal-center', {
+            element: document.getElementById('personal-center-tab'),
+            button: document.querySelector('[data-tab="personal-center"]')
+        });
+
         // 注册二级标签页
         this.subTabs.set('preview', {
             element: document.getElementById('preview-sub-tab'),

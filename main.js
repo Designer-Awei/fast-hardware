@@ -13,23 +13,21 @@ process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
 const { app, BrowserWindow, Menu, ipcMain, screen, shell, dialog, nativeTheme } = require('electron');
 const path = require('path');
 const { pathToFileURL } = require('url');
-const fs = require('fs').promises;
+const fsSync = require('fs');
+const fs = fsSync.promises;
 const https = require('https');
+const { readSupabaseConfig } = require('./supabase/config');
+const {
+  getAuthState: getSupabaseAuthState,
+  signUpWithPassword: supabaseSignUpWithPassword,
+  signInWithPassword: supabaseSignInWithPassword,
+  signOut: supabaseSignOut
+} = require('./supabase/auth-service');
 const { setupSkillsEngineBridge } = require('./scripts/skills/renderer-engine-bridge');
 const { executeSkillInMain } = require('./scripts/skills/main-skill-executor');
 const { runSkillsAgentLoop } = require('./scripts/agent/skills-agent-loop');
 const { clearAbort, requestAbort } = require('./scripts/agent/skills-agent-loop-abort');
 const { executeProjectWorkspaceToolCall } = require('./scripts/agent/project-workspace-tools');
-
-/**
- * `web-search-exa` IPC 使用动态 `import('mcporter')`；electron-builder 若不追踪则安装包内会缺包。
- * 启动时做一次 `require.resolve`，将 `mcporter`（及可解析到的包路径）纳入依赖图，并与 `build.asarUnpack` 配合保证运行时可加载。
- */
-try {
-    require.resolve('mcporter/package.json');
-} catch (e) {
-    console.warn('[main] mcporter 未安装或无法解析，Web 检索（Exa MCP）将不可用:', e?.message || e);
-}
 
 setupSkillsEngineBridge();
 
@@ -48,6 +46,56 @@ const UPDATE_STATUS_CHANNEL = 'update-status';
 const MODEL_SYNC_TIMEOUT_MS = 5000;
 
 /**
+ * @returns {void}
+ */
+function focusMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+/**
+ * 懒加载 `mcporter`，并兼容打包后被解包到 `app.asar.unpacked` 的场景。
+ * `mcporter` 是 ESM-only 包，不能再用 `require.resolve()` 做启动预探测，否则会在启动期产生 exports 告警。
+ * @returns {Promise<any>}
+ */
+async function importMcporterModule() {
+  /** @type {unknown} */
+  let lastError = null;
+  const fileCandidates = [path.join(__dirname, 'node_modules', 'mcporter', 'dist', 'index.js')];
+  if (process.resourcesPath) {
+    fileCandidates.push(
+      path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'mcporter', 'dist', 'index.js'),
+      path.join(process.resourcesPath, 'app.asar', 'node_modules', 'mcporter', 'dist', 'index.js')
+    );
+  }
+
+  try {
+    return await import('mcporter');
+  } catch (error) {
+    lastError = error;
+  }
+
+  for (const candidate of fileCandidates) {
+    try {
+      if (!fsSync.existsSync(candidate)) {
+        continue;
+      }
+      return await import(pathToFileURL(candidate).href);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error('mcporter 加载失败');
+}
+
+/**
  * 记录启动阶段日志，便于排查首屏闪烁问题
  * @param {string} stage - 启动阶段
  * @param {Record<string, unknown>} [extra={}] - 附加信息
@@ -59,6 +107,15 @@ function logStartupStage(stage, extra = {}) {
   const elapsedMs = Date.now() - APP_START_TIME;
   console.log(`[startup][main][+${elapsedMs}ms] ${stage}`, extra);
 }
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+}
+
+app.on('second-instance', async () => {
+  focusMainWindow();
+});
 
 // 设置控制台编码为UTF-8
 if (process.platform === 'win32') {
@@ -2753,6 +2810,65 @@ ipcMain.handle('get-settings', async (event, key) => {
   }
 });
 
+ipcMain.handle('get-supabase-config-status', async () => {
+  try {
+    const config = readSupabaseConfig();
+    return {
+      envPath: config.envPath,
+      url: config.url,
+      isConfigured: config.isConfigured,
+      hasPublishableKey: Boolean(config.publishableKey)
+    };
+  } catch (error) {
+    return {
+      envPath: '',
+      url: '',
+      isConfigured: false,
+      hasPublishableKey: false,
+      error: error.message || String(error)
+    };
+  }
+});
+
+ipcMain.handle('supabase-auth-get-state', async () => {
+  try {
+    return await getSupabaseAuthState();
+  } catch (error) {
+    return {
+      isAuthenticated: false,
+      email: '',
+      id: '',
+      displayName: '',
+      role: 'user',
+      error: error.message || String(error)
+    };
+  }
+});
+
+ipcMain.handle('supabase-auth-sign-up-password', async (event, payload) => {
+  try {
+    return await supabaseSignUpWithPassword(payload || {});
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('supabase-auth-sign-in-password', async (event, payload) => {
+  try {
+    return await supabaseSignInWithPassword(payload || {});
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('supabase-auth-sign-out', async () => {
+  try {
+    return await supabaseSignOut();
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
 // 保存设置值（到env.local文件）
 ipcMain.handle('save-settings', async (event, key, value) => {
   console.log(`[main.js] 开始保存设置: key=${key}, value=${value}`);
@@ -3622,7 +3738,7 @@ ipcMain.handle('web-search-exa', async (event, query, options = {}) => {
   const exaMcpUrl = 'https://mcp.exa.ai/mcp';
 
   try {
-    const mcporter = await import('mcporter');
+    const mcporter = await importMcporterModule();
     const runtime = await mcporter.createRuntime({
       servers: [
         {

@@ -67,6 +67,7 @@ jspm_packages/
 .env.test
 .env.production
 .env.local
+.env.supabase
 # 本仓库 SiliconFlow 等密钥实际使用项目根下 env.local（非 .env.local）；勿提交
 env.local
 

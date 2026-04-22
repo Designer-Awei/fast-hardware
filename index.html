@@ -25,6 +25,9 @@
                 <button class="tab-btn" data-tab="settings">
                     系统设置
                 </button>
+                <button class="tab-btn" data-tab="personal-center">
+                    个人中心
+                </button>
             </div>
             <div class="nav-actions">
                 <button class="nav-btn" id="new-project">
@@ -35,6 +38,19 @@
                 </button>
                 <button class="nav-btn" id="load-project">
                     加载项目
+                </button>
+            </div>
+            <div class="nav-user">
+                <button
+                    class="nav-avatar-btn"
+                    id="nav-account-avatar"
+                    title="账号与登录"
+                    aria-label="账号与登录"
+                >
+                    <span class="nav-avatar-image" id="nav-avatar-image">
+                        <img src="" alt="用户头像" width="18" height="18" data-icon="user">
+                    </span>
+                    <span class="nav-avatar-fallback" id="nav-avatar-fallback">FH</span>
                 </button>
             </div>
         </nav>
@@ -627,6 +643,249 @@
                     </div>
                 </div>
             </div>
+
+            <div id="personal-center-tab" class="tab-content">
+                <div class="account-center-page">
+                    <div class="sub-tabs account-sub-tabs">
+                        <button class="account-sub-tab-btn active" data-account-sub-tab="account-settings">
+                            账号设置
+                        </button>
+                        <button class="account-sub-tab-btn" data-account-sub-tab="my-projects">
+                            我的方案
+                        </button>
+                        <button class="account-sub-tab-btn" data-account-sub-tab="creator-center">
+                            创作中心
+                        </button>
+                        <button class="account-sub-tab-btn is-hidden" id="community-management-tab-btn" data-account-sub-tab="community-management">
+                            社区管理
+                        </button>
+                    </div>
+
+                    <div class="account-sub-tab-content active" id="account-settings-sub-tab">
+                        <div class="account-center-scroll">
+                            <div class="account-auth-screen" id="account-auth-screen">
+                                <div class="account-auth-shell">
+                                    <div class="account-auth-hero">
+                                        <h2>欢迎回到 Fast Hardware</h2>
+                                        <p>
+                                            在一个工作台里完成电路搭建、项目沉淀、AI 对话辅助与方案分享，
+                                            让创作、调试和复用都更顺手。
+                                        </p>
+                                        <div class="account-auth-feature-list">
+                                            <div class="account-auth-feature-item">
+                                                <span class="account-auth-feature-kicker">01</span>
+                                                <div class="account-auth-feature-copy">
+                                                    <strong>电路搭建与项目管理</strong>
+                                                    <span>多项目工作区、画布状态与本地方案沉淀集中管理。</span>
+                                                </div>
+                                            </div>
+                                            <div class="account-auth-feature-item">
+                                                <span class="account-auth-feature-kicker">02</span>
+                                                <div class="account-auth-feature-copy">
+                                                    <strong>AI 对话辅助</strong>
+                                                    <span>围绕元件选型、接线建议与固件生成提供连续支持。</span>
+                                                </div>
+                                            </div>
+                                            <div class="account-auth-feature-item">
+                                                <span class="account-auth-feature-kicker">03</span>
+                                                <div class="account-auth-feature-copy">
+                                                    <strong>方案分享与创作中心</strong>
+                                                    <span>整理你的项目、准备导出内容，并管理后续社区创作数据。</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="account-auth-panel">
+                                        <div class="account-auth-mode-switch">
+                                            <button type="button" class="account-mode-btn active" id="account-login-mode-btn">登录</button>
+                                            <button type="button" class="account-mode-btn" id="account-register-mode-btn">注册</button>
+                                        </div>
+                                        <div class="account-login-only" id="account-login-only">
+                                            <div class="account-oauth-options">
+                                                <button type="button" class="account-oauth-btn" disabled>
+                                                    <img src="" alt="GitHub" width="20" height="20" data-icon="github">
+                                                    <span>GitHub</span>
+                                                </button>
+                                                <button type="button" class="account-oauth-btn" disabled>
+                                                    <img src="" alt="Google" width="20" height="20" data-icon="google">
+                                                    <span>Google</span>
+                                                </button>
+                                            </div>
+                                            <div class="account-auth-divider">
+                                                <span>当前先支持邮箱账号登录</span>
+                                            </div>
+                                        </div>
+                                        <form class="account-auth-form" id="account-auth-form">
+                                            <div class="form-group account-register-only is-hidden" id="account-register-only-group">
+                                                <label for="account-display-name-input">昵称</label>
+                                                <input id="account-display-name-input" type="text" placeholder="注册时可选填昵称">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="account-email-input">邮箱</label>
+                                                <input id="account-email-input" type="email" placeholder="you@example.com" autocomplete="email">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="account-password-input">密码</label>
+                                                <div class="input-with-icon">
+                                                    <input id="account-password-input" type="password" placeholder="至少 6 位" autocomplete="current-password">
+                                                    <button
+                                                        type="button"
+                                                        class="visibility-toggle"
+                                                        id="account-password-visibility-toggle"
+                                                        title="显示密码"
+                                                        aria-label="显示密码"
+                                                    >
+                                                        <span class="eye-icon">
+                                                            <img src="" alt="显示或隐藏密码" width="20" height="20" data-icon="eye">
+                                                        </span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <label class="account-remember-row">
+                                                <input type="checkbox" id="account-remember-checkbox" checked>
+                                                <span>30 天内保持登录</span>
+                                            </label>
+                                            <label class="account-agreement-row">
+                                                <input type="checkbox" id="account-agreement-checkbox">
+                                                <span>
+                                                    我已阅读并同意
+                                                    <button type="button" class="account-doc-link" data-account-doc="user-agreement">《用户协议》</button>
+                                                    与
+                                                    <button type="button" class="account-doc-link" data-account-doc="privacy-policy">《隐私政策》</button>
+                                                </span>
+                                            </label>
+                                            <button type="button" class="btn btn-primary account-submit-btn" id="account-submit-btn">登录</button>
+                                            <p class="account-form-hint" id="account-auth-feedback">
+                                                登录后即可继续使用你的账号状态、创作数据与个人中心能力。
+                                            </p>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="account-authenticated-view is-hidden" id="account-authenticated-view">
+                                <section class="account-profile-hero">
+                                    <div class="account-profile-summary">
+                                        <div class="account-profile-avatar" id="account-profile-avatar">FH</div>
+                                        <div class="account-profile-meta">
+                                            <div class="account-profile-name" id="account-display-name">未登录</div>
+                                            <div class="account-profile-email" id="account-display-email">未登录</div>
+                                            <div class="account-profile-role" id="account-display-role">角色：匿名用户</div>
+                                        </div>
+                                    </div>
+                                    <div class="account-inline-actions">
+                                        <button class="btn btn-secondary" id="account-switch-user-btn">切换账号</button>
+                                        <button class="btn btn-secondary" id="account-sign-out-btn" disabled>退出登录</button>
+                                    </div>
+                                </section>
+
+                                <section class="account-settings-surface">
+                                    <div class="account-settings-row">
+                                        <span class="account-settings-label">登录方式</span>
+                                        <span class="account-settings-value" id="account-provider-value">邮箱账号</span>
+                                    </div>
+                                    <div class="account-settings-row">
+                                        <span class="account-settings-label">登录状态</span>
+                                        <span class="account-settings-value" id="supabase-auth-status">anonymous</span>
+                                    </div>
+                                    <div class="account-settings-row">
+                                        <span class="account-settings-label">账号邮箱</span>
+                                        <span class="account-settings-value" id="account-email-value">-</span>
+                                    </div>
+                                    <div class="account-settings-row">
+                                        <span class="account-settings-label">显示昵称</span>
+                                        <span class="account-settings-value" id="account-name-value">-</span>
+                                    </div>
+                                    <div class="account-settings-row">
+                                        <span class="account-settings-label">用户角色</span>
+                                        <span class="account-settings-value" id="account-role-value">user</span>
+                                    </div>
+                                </section>
+
+                                <section class="account-settings-notes">
+                                    <p>
+                                        当前已完成邮箱密码账号接入。后续会继续补充 GitHub / Google 等 OAuth、
+                                        创客集市发布权限同步，以及管理员专属的社区审核入口。
+                                    </p>
+                                </section>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="account-sub-tab-content" id="my-projects-sub-tab">
+                        <div class="account-center-scroll">
+                            <div class="account-panel-card">
+                                <div class="account-panel-header">
+                                    <div>
+                                        <h3>我的方案</h3>
+                                        <p>读取系统设置中的项目存储路径，展示本地项目卡片；后续可扩展 Supabase 云备份</p>
+                                    </div>
+                                    <button class="btn btn-secondary" id="refresh-my-projects-btn">刷新列表</button>
+                                </div>
+                                <div class="account-status-row">
+                                    <span>项目读取路径</span>
+                                    <code id="my-projects-storage-path">未读取</code>
+                                </div>
+                                <div class="my-projects-grid" id="my-projects-grid">
+                                    <div class="account-empty-state">尚未加载本地项目。</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="account-sub-tab-content" id="creator-center-sub-tab">
+                        <div class="account-center-scroll">
+                            <div class="account-panel-grid">
+                                <section class="account-panel-card">
+                                    <div class="account-panel-header">
+                                        <div>
+                                            <h3>创作中心</h3>
+                                            <p>用于管理将来上传到创客集市的作品，并查看作品的社区反馈。</p>
+                                        </div>
+                                    </div>
+                                    <div class="creator-stats-grid">
+                                        <div class="creator-stat-card">
+                                            <span class="creator-stat-label">已上传作品</span>
+                                            <strong id="creator-upload-count">0</strong>
+                                        </div>
+                                        <div class="creator-stat-card">
+                                            <span class="creator-stat-label">累计点赞</span>
+                                            <strong id="creator-like-count">0</strong>
+                                        </div>
+                                        <div class="creator-stat-card">
+                                            <span class="creator-stat-label">累计收藏</span>
+                                            <strong id="creator-favorite-count">0</strong>
+                                        </div>
+                                        <div class="creator-stat-card">
+                                            <span class="creator-stat-label">累计复刻</span>
+                                            <strong id="creator-remix-count">0</strong>
+                                        </div>
+                                    </div>
+                                    <div class="account-empty-state creator-center-empty">
+                                        创客集市上传、审核与统计功能后续将与 Supabase / OSS 接入打通；当前先保留界面骨架与指标位。
+                                    </div>
+                                </section>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="account-sub-tab-content is-hidden" id="community-management-sub-tab">
+                        <div class="account-center-scroll">
+                            <div class="account-panel-card">
+                                <div class="account-panel-header">
+                                    <div>
+                                        <h3>社区管理</h3>
+                                        <p>仅管理员可见。后续这里将承载待审核作品列表、通过 / 驳回操作与审核记录。</p>
+                                    </div>
+                                </div>
+                                <div class="account-empty-state">
+                                    当前先保留管理员专属二级标签页骨架，后续会接入 Supabase 审核数据与审核动作。
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -658,6 +917,18 @@
           </div>
       </div>
 
+      <div class="settings-modal" id="account-doc-modal">
+          <div class="settings-modal-backdrop" data-close-account-doc-modal></div>
+          <div class="settings-modal-content account-doc-modal-content">
+              <div class="settings-modal-header">
+                  <h3 id="account-doc-modal-title">协议文档</h3>
+                  <button class="settings-modal-close" id="close-account-doc-modal" aria-label="关闭">×</button>
+              </div>
+              <div class="settings-modal-body">
+                  <div class="account-doc-modal-body" id="account-doc-modal-body"></div>
+              </div>
+          </div>
+      </div>
 
       <!-- JavaScript文件 -->
     <script src="scripts/model-config.js"></script>
@@ -673,6 +944,7 @@
     <script src="scripts/settings.js"></script>
     <script src="scripts/resizer.js"></script>
     <script src="scripts/project-tabs.js"></script>
+    <script src="scripts/account-center.js"></script>
     <script src="scripts/main.js"></script>
     <script type="module" src="scripts/chat.js"></script>
 </body>
