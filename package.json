@@ -99,6 +99,10 @@
       {
         "from": "data",
         "to": "data"
+      },
+      {
+        "from": ".env.supabase",
+        "to": "."
       }
     ],
     "win": {

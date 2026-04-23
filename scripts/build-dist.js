@@ -4,6 +4,7 @@
  */
 
 const fs = require('fs/promises');
+const fsSync = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { syncVersionFromPackageJson } = require('./sync-version');
@@ -90,6 +91,14 @@ async function main() {
 
   if (!cleanOnly) {
     syncVersionFromPackageJson();
+  }
+
+  const supabaseEnvPath = path.join(PROJECT_ROOT, '.env.supabase');
+  if (!cleanOnly && !fsSync.existsSync(supabaseEnvPath)) {
+    console.error(
+      '[dist] 缺少 .env.supabase：请从 .env.supabase.example 复制为 .env.supabase 并填写 NEXT_PUBLIC_SUPABASE_URL 与 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY 后再打包；该文件会复制到安装目录 resources 供生产环境读取。'
+    );
+    process.exit(1);
   }
 
   const outputDirectory = await cleanOutputDirectory();

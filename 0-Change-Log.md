@@ -11,6 +11,7 @@
 - **撤销备份可靠性（`supabase/auth-service.js`）**：先删除 **`project_backups`** 表记录并用 **`delete().select('id')`** 校验实际删除行数，再清理 Storage，避免 RLS 下「0 行删除仍返回成功」；无删除权限时返回明确错误文案。
 - **Supabase RLS**：为 **`public.project_backups`** 增加 **`project_backups_delete_own`**（`authenticated` 且 **`user_id = auth.uid()`** 可 `DELETE`），与撤销备份主进程逻辑配套。
 - **撤销备份交互（`scripts/account-center.js` / `styles/main.css`）**：与上传一致的 **加载态**（转圈 + 背景进度条 + 防重复点击）；**`refreshMyProjects` 后** `setRevokeButtonLoading(false)` 按 **`projectBackupMap`** 恢复 **`disabled`**，避免无备份时撤销按钮仍为可点态。
+- **生产环境 Supabase 配置（`supabase/config.js` / `package.json` / `scripts/build-dist.js`）**：`readSupabaseConfig` 优先读取 **`process.resourcesPath/.env.supabase`**（与 `app.asar` 同级）；打包通过 **`extraResources`** 将仓库根目录 **`.env.supabase`** 复制到安装目录 **`resources`**；**`npm run dist`** 前若缺少该文件则直接报错提示，避免打出无法登录的安装包。
 
 #### 🎯 2026-04-23 补充
 - **账号中心与个人入口（`index.html` / `scripts/account-center.js` / `styles/main.css`）**：新增顶部头像入口、个人中心一级标签与账号设置二级页骨架；未登录态切入类 App 登录页，已登录态展示邮箱、昵称、角色、登录方式，并为管理员预留社区管理入口。
@@ -23,7 +24,7 @@
 
 > **v0.2.8 已发布**：根目录 `package.json` 的 `version` 为 **0.2.8**；展示用文案与安装包命名以 `npm run sync-version` 及构建产物为准。
 
-> **打包前自检（账号 / Supabase）**：`electron-builder` 的 **`files`** 默认 **排除** 仓库根目录 **`.env.supabase`**（勿把密钥打进安装包）；生产环境需在安装目录旁或按你们约定路径提供 **`NEXT_PUBLIC_SUPABASE_URL`** 与 **`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`**（或兼容的 `ANON_KEY` 变量名），与 `supabase/config.js` 的 **`readSupabaseConfig`** 读取策略一致。Windows 推荐使用 **`npm run dist`**（会先 **`sync-version`** 再 **`electron-builder --publish=never`** 并清理调试 YAML）。
+> **打包前自检（账号 / Supabase）**：**`.env.supabase`** 仍 **不进 asar**（`files` 中排除），但会通过 **`extraResources`** 复制到安装目录 **`resources/.env.supabase`**；运行时 **`readSupabaseConfig`** 会优先读该路径。打包机需存在已填写的 **`.env.supabase`**（`npm run dist` 会校验）；**勿**将 **Service Role** 写入该文件，仅使用 **Publishable / Anon** 即可。也可通过环境变量 **`FASTHARDWARE_SUPABASE_ENV_PATH`** 指向自定义路径。
 
 ### 🎉 v0.2.7 (2026-04-18) — 联网与设置体验
 

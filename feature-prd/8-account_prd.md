@@ -300,4 +300,4 @@
 - 与 `9-maker-marketplace_prd.md` 中的角色、RLS、内容审核流程保持一致。
 - 当 OAuth 提供方接入时，更新本文件第 5 节与 `.env` 示例说明。
 - 若本地项目卡片结构扩展出真实缩略图字段，需要同步更新本文件第 4.3 节与第 8.3 节。
-- 打包交付物 **不包含** 仓库内 **`.env.supabase`** 密钥文件时，需在安装说明中约定生产环境配置路径与变量名（与 `supabase/config.js` 一致）。
+- 发布构建：仓库根 **`.env.supabase`** 经 **`extraResources`** 复制到安装目录 **`resources/.env.supabase`**；主进程 **`readSupabaseConfig`** 优先读取 **`process.resourcesPath`** 下该文件，其次为开发态仓库根路径。勿将 **Service Role** 写入该文件。

@@ -3,10 +3,33 @@
 const fs = require('fs');
 const path = require('path');
 
-/** @type {string} 仓库根目录 */
+/** @type {string} 仓库根目录（开发态或 asar 根路径） */
 const PROJECT_ROOT = path.resolve(__dirname, '..');
-/** @type {string} Supabase 本地配置文件路径 */
+/** @type {string} 开发时默认配置文件路径 */
 const DEFAULT_SUPABASE_ENV_PATH = path.join(PROJECT_ROOT, '.env.supabase');
+
+/**
+ * 按优先级列出 Supabase 环境文件路径。
+ * 打包后 `.env.supabase` 位于 `resources/`（与 `app.asar` 同级），由 `electron-builder` 的 `extraResources` 写入。
+ * @returns {string[]}
+ */
+function listSupabaseEnvPathCandidates() {
+  /** @type {string[]} */
+  const candidates = [];
+  const explicit = String(process.env.FASTHARDWARE_SUPABASE_ENV_PATH || '').trim();
+  if (explicit) {
+    candidates.push(explicit);
+  }
+  const resourcesPath =
+    typeof process.resourcesPath === 'string' && process.resourcesPath.trim()
+      ? process.resourcesPath.trim()
+      : '';
+  if (resourcesPath) {
+    candidates.push(path.join(resourcesPath, '.env.supabase'));
+  }
+  candidates.push(DEFAULT_SUPABASE_ENV_PATH);
+  return [...new Set(candidates.filter(Boolean))];
+}
 
 /**
  * 解析简单的 `.env` 键值对。
@@ -37,13 +60,21 @@ function parseEnvText(text) {
 
 /**
  * 读取 Supabase 配置；兼容旧变量 `NEXT_PUBLIC_SUPABASE_ANON_KEY`。
- * @param {string} [envPath=DEFAULT_SUPABASE_ENV_PATH] - 配置文件路径
+ * @param {string} [overridePath] - 若传入非空字符串，则仅尝试该路径（测试或调试）
  * @returns {{ envPath: string, url: string, publishableKey: string, oauthRedirectUrl: string, isConfigured: boolean }}
  */
-function readSupabaseConfig(envPath = DEFAULT_SUPABASE_ENV_PATH) {
+function readSupabaseConfig(overridePath) {
+  const paths = overridePath
+    ? [String(overridePath || '').trim()].filter(Boolean)
+    : listSupabaseEnvPathCandidates();
+  let envPath = paths[paths.length - 1] || DEFAULT_SUPABASE_ENV_PATH;
   let text = '';
-  if (fs.existsSync(envPath)) {
-    text = fs.readFileSync(envPath, 'utf8');
+  for (const p of paths) {
+    if (p && fs.existsSync(p)) {
+      envPath = p;
+      text = fs.readFileSync(p, 'utf8');
+      break;
+    }
   }
   const env = parseEnvText(text);
   const url = String(env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
@@ -62,6 +93,7 @@ function readSupabaseConfig(envPath = DEFAULT_SUPABASE_ENV_PATH) {
 
 module.exports = {
   DEFAULT_SUPABASE_ENV_PATH,
+  listSupabaseEnvPathCandidates,
   parseEnvText,
   readSupabaseConfig
 };
