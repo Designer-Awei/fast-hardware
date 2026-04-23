@@ -11,6 +11,7 @@
 process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
 
 const { app, BrowserWindow, Menu, ipcMain, screen, shell, dialog, nativeTheme } = require('electron');
+const http = require('http');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const fsSync = require('fs');
@@ -19,6 +20,15 @@ const https = require('https');
 const { readSupabaseConfig } = require('./supabase/config');
 const {
   getAuthState: getSupabaseAuthState,
+  getOAuthRedirectUrl: getSupabaseOAuthRedirectUrl,
+  handleOAuthCallbackUrl: handleSupabaseOAuthCallbackUrl,
+  signInWithOAuth: supabaseSignInWithOAuth,
+  updateProfile: supabaseUpdateProfile,
+  uploadAvatar: supabaseUploadAvatar,
+  getProjectBackups: supabaseGetProjectBackups,
+  uploadProjectBackup: supabaseUploadProjectBackup,
+  deleteProjectBackup: supabaseDeleteProjectBackup,
+  downloadProjectBackup: supabaseDownloadProjectBackup,
   signUpWithPassword: supabaseSignUpWithPassword,
   signInWithPassword: supabaseSignInWithPassword,
   signOut: supabaseSignOut
@@ -44,6 +54,12 @@ const STARTUP_DEBUG_ENABLED = process.argv.includes('--enable-startup-debug') ||
   process.env.STARTUP_DEBUG === '1';
 const UPDATE_STATUS_CHANNEL = 'update-status';
 const MODEL_SYNC_TIMEOUT_MS = 5000;
+const SUPABASE_AUTH_CALLBACK_CHANNEL = 'supabase-auth-callback';
+const SUPABASE_OAUTH_LOOPBACK_HOST = '127.0.0.1';
+const SUPABASE_OAUTH_LOOPBACK_PORT = 38129;
+let pendingSupabaseAuthCallbackUrl = '';
+let pendingSupabaseAuthCallbackPayload = null;
+let supabaseOAuthCallbackServer = null;
 
 /**
  * @returns {void}
@@ -57,6 +73,237 @@ function focusMainWindow() {
   }
   mainWindow.show();
   mainWindow.focus();
+}
+
+/**
+ * 注册昵称更新与头像上传 IPC（在应用 ready 时执行，避免旧主进程未加载到最新 handler）。
+ * @returns {void}
+ */
+function registerSupabaseProfileAndAvatarIpcHandlers() {
+  try {
+    ipcMain.removeHandler('supabase-auth-update-profile');
+  } catch {
+    /* 首次启动可能尚未注册过该 channel */
+  }
+  try {
+    ipcMain.removeHandler('supabase-auth-upload-avatar');
+  } catch {
+    /* 首次启动可能尚未注册过该 channel */
+  }
+  ipcMain.handle('supabase-auth-update-profile', async (event, payload) => {
+    try {
+      return await supabaseUpdateProfile(payload || {});
+    } catch (error) {
+      return { success: false, error: error.message || String(error) };
+    }
+  });
+  ipcMain.handle('supabase-auth-upload-avatar', async (event, payload) => {
+    try {
+      return await supabaseUploadAvatar(payload || {});
+    } catch (error) {
+      return { success: false, error: error.message || String(error) };
+    }
+  });
+}
+
+/**
+ * @returns {string}
+ */
+function getSupabaseAuthRedirectUrl() {
+  return String(getSupabaseOAuthRedirectUrl() || 'fasthardware://auth/callback').trim();
+}
+
+/**
+ * @returns {string}
+ */
+function getSupabaseAuthProtocolScheme() {
+  const redirectUrl = getSupabaseAuthRedirectUrl();
+  try {
+    return String(new URL(redirectUrl).protocol || '').replace(/:$/, '').trim();
+  } catch {
+    return 'fasthardware';
+  }
+}
+
+/**
+ * @param {string[]} argv
+ * @returns {string}
+ */
+function extractSupabaseAuthDeepLinkFromArgv(argv) {
+  const schemePrefix = `${getSupabaseAuthProtocolScheme()}://`;
+  return String((argv || []).find((item) => String(item || '').startsWith(schemePrefix)) || '').trim();
+}
+
+/**
+ * @returns {void}
+ */
+function registerSupabaseProtocolClient() {
+  const scheme = getSupabaseAuthProtocolScheme();
+  if (!scheme) {
+    return;
+  }
+  if (process.defaultApp) {
+    app.setAsDefaultProtocolClient(scheme, process.execPath, [path.resolve(process.argv[1] || '.')]);
+    return;
+  }
+  app.setAsDefaultProtocolClient(scheme);
+}
+
+/**
+ * @param {{ success: boolean, message: string, state?: unknown, error?: string }} payload
+ * @returns {void}
+ */
+function emitSupabaseAuthCallbackPayload(payload) {
+  pendingSupabaseAuthCallbackPayload = payload;
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isLoadingMainFrame()) {
+    return;
+  }
+  mainWindow.webContents.send(SUPABASE_AUTH_CALLBACK_CHANNEL, payload);
+  pendingSupabaseAuthCallbackPayload = null;
+}
+
+/**
+ * @param {string} callbackUrl
+ * @returns {Promise<void>}
+ */
+async function processSupabaseAuthCallbackUrl(callbackUrl) {
+  const normalizedUrl = String(callbackUrl || '').trim();
+  if (!normalizedUrl) {
+    return;
+  }
+  const result = await handleSupabaseOAuthCallbackUrl(normalizedUrl);
+  emitSupabaseAuthCallbackPayload(result);
+}
+
+/**
+ * @param {string} callbackUrl
+ * @returns {Promise<void>}
+ */
+async function queueOrProcessSupabaseAuthCallbackUrl(callbackUrl) {
+  pendingSupabaseAuthCallbackUrl = String(callbackUrl || '').trim();
+  if (!pendingSupabaseAuthCallbackUrl || !app.isReady()) {
+    return;
+  }
+  const nextUrl = pendingSupabaseAuthCallbackUrl;
+  pendingSupabaseAuthCallbackUrl = '';
+  await processSupabaseAuthCallbackUrl(nextUrl);
+}
+
+/**
+ * @returns {string}
+ */
+function getSupabaseLoopbackRedirectUrl() {
+  return `http://${SUPABASE_OAUTH_LOOPBACK_HOST}:${SUPABASE_OAUTH_LOOPBACK_PORT}/auth/callback`;
+}
+
+/**
+ * @param {{ success: boolean, message: string, error?: string }} payload
+ * @returns {string}
+ */
+function buildSupabaseOAuthCallbackPage(payload) {
+  const isSuccess = Boolean(payload?.success);
+  const title = isSuccess ? '登录成功' : '登录失败';
+  const message = String(payload?.message || (isSuccess ? '已完成登录，请返回应用。' : '登录失败，请返回应用重试。'));
+  const tone = isSuccess ? '#1f7a4c' : '#b42318';
+  const background = isSuccess ? '#ecfdf3' : '#fef3f2';
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${title}</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #f6f8fc;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: #1f2937;
+    }
+    .card {
+      width: min(92vw, 460px);
+      box-sizing: border-box;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 18px;
+      padding: 28px 24px;
+      box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 600;
+      color: ${tone};
+      background: ${background};
+      margin-bottom: 14px;
+    }
+    h1 {
+      margin: 0 0 12px;
+      font-size: 24px;
+    }
+    p {
+      margin: 0;
+      line-height: 1.7;
+      color: #475467;
+      font-size: 15px;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="badge">${title}</div>
+    <h1>${title}</h1>
+    <p>${message}</p>
+  </main>
+</body>
+</html>`;
+}
+
+/**
+ * @returns {Promise<boolean>}
+ */
+async function ensureSupabaseOAuthCallbackServer() {
+  if (supabaseOAuthCallbackServer) {
+    return true;
+  }
+  return await new Promise((resolve) => {
+    const server = http.createServer(async (req, res) => {
+      try {
+        const requestUrl = new URL(String(req.url || '/'), getSupabaseLoopbackRedirectUrl());
+        if (requestUrl.pathname !== '/auth/callback') {
+          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end('Not Found');
+          return;
+        }
+        const result = await handleSupabaseOAuthCallbackUrl(requestUrl.toString());
+        emitSupabaseAuthCallbackPayload(result);
+        res.writeHead(result.success ? 200 : 400, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(buildSupabaseOAuthCallbackPage(result));
+      } catch (error) {
+        const payload = {
+          success: false,
+          message: error?.message || String(error),
+          error: 'oauth_loopback_server_failed'
+        };
+        emitSupabaseAuthCallbackPayload(payload);
+        res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(buildSupabaseOAuthCallbackPage(payload));
+      }
+    });
+    server.on('error', (error) => {
+      console.warn('[supabase] OAuth 本地回调服务启动失败:', error?.message || error);
+      resolve(false);
+    });
+    server.listen(SUPABASE_OAUTH_LOOPBACK_PORT, SUPABASE_OAUTH_LOOPBACK_HOST, () => {
+      supabaseOAuthCallbackServer = server;
+      resolve(true);
+    });
+  });
 }
 
 /**
@@ -113,8 +360,17 @@ if (!gotSingleInstanceLock) {
   app.quit();
 }
 
-app.on('second-instance', async () => {
+app.on('second-instance', async (_event, commandLine) => {
   focusMainWindow();
+  const deepLinkUrl = extractSupabaseAuthDeepLinkFromArgv(commandLine || []);
+  if (deepLinkUrl) {
+    await queueOrProcessSupabaseAuthCallbackUrl(deepLinkUrl);
+  }
+});
+
+app.on('open-url', async (event, url) => {
+  event.preventDefault();
+  await queueOrProcessSupabaseAuthCallbackUrl(url);
 });
 
 // 设置控制台编码为UTF-8
@@ -614,7 +870,7 @@ async function fetchPublicPageText({ hostname, path: requestPath }) {
       path: requestPath,
       method: 'GET',
       headers: {
-        'User-Agent': 'Fast-Hardware/0.2.7'
+        'User-Agent': 'Fast-Hardware/0.2.8'
       }
     }, (res) => {
       let responseBody = '';
@@ -1936,7 +2192,38 @@ async function createWindow() {
   });
 
   // 页面加载完成后显示窗口
+  let hasInitializedWindowAfterFirstLoad = false;
+  let reloadWindowSnapshot = null;
+  mainWindow.webContents.on('did-start-loading', () => {
+    if (!hasInitializedWindowAfterFirstLoad || mainWindow.isDestroyed()) {
+      return;
+    }
+    reloadWindowSnapshot = {
+      isMaximized: mainWindow.isMaximized(),
+      bounds: mainWindow.getBounds()
+    };
+  });
   mainWindow.webContents.on('did-finish-load', async () => {
+    if (hasInitializedWindowAfterFirstLoad) {
+      logStartupStage('webContents:did-finish-load:reload-skip-window-restore', {
+        url: mainWindow.webContents.getURL()
+      });
+      if (reloadWindowSnapshot && !mainWindow.isDestroyed()) {
+        if (reloadWindowSnapshot.isMaximized) {
+          if (!mainWindow.isMaximized()) {
+            mainWindow.maximize();
+          }
+        } else {
+          if (mainWindow.isMaximized()) {
+            mainWindow.unmaximize();
+          }
+          mainWindow.setBounds(reloadWindowSnapshot.bounds, true);
+        }
+        reloadWindowSnapshot = null;
+      }
+      return;
+    }
+    hasInitializedWindowAfterFirstLoad = true;
     console.log('页面加载完成');
     logStartupStage('webContents:did-finish-load', {
       url: mainWindow.webContents.getURL()
@@ -1961,6 +2248,10 @@ async function createWindow() {
 
     // 聚焦窗口
     mainWindow.focus();
+    if (pendingSupabaseAuthCallbackPayload) {
+      mainWindow.webContents.send(SUPABASE_AUTH_CALLBACK_CHANNEL, pendingSupabaseAuthCallbackPayload);
+      pendingSupabaseAuthCallbackPayload = null;
+    }
 
     broadcastUpdateStatus();
 
@@ -2018,6 +2309,10 @@ async function createWindow() {
 // 应用程序准备就绪时创建窗口
 app.whenReady().then(async () => {
   console.log('Electron应用程序已准备就绪');
+  registerSupabaseProfileAndAvatarIpcHandlers();
+  registerSupabaseProtocolClient();
+  pendingSupabaseAuthCallbackUrl = extractSupabaseAuthDeepLinkFromArgv(process.argv);
+  await ensureSupabaseOAuthCallbackServer();
 
   await createSplashWindow();
 
@@ -2028,6 +2323,9 @@ app.whenReady().then(async () => {
 
   setupAutoUpdater();
   createWindow();
+  if (pendingSupabaseAuthCallbackUrl) {
+    await queueOrProcessSupabaseAuthCallbackUrl(pendingSupabaseAuthCallbackUrl);
+  }
 
   const autoCheckUpdates = await readSettingValue('autoCheckUpdates');
   const shouldAutoCheckUpdates = autoCheckUpdates !== 'false';
@@ -2861,9 +3159,62 @@ ipcMain.handle('supabase-auth-sign-in-password', async (event, payload) => {
   }
 });
 
+ipcMain.handle('supabase-auth-sign-in-oauth', async (event, payload) => {
+  try {
+    const hasLoopbackServer = await ensureSupabaseOAuthCallbackServer();
+    const redirectTo = hasLoopbackServer ? getSupabaseLoopbackRedirectUrl() : getSupabaseAuthRedirectUrl();
+    const result = await supabaseSignInWithOAuth({
+      ...(payload || {}),
+      redirectTo
+    });
+    if (!result?.success) {
+      return result;
+    }
+    await shell.openExternal(String(result.launchUrl || '').trim());
+    return {
+      success: true,
+      message: result.message || '已打开浏览器，请完成第三方登录。'
+    };
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
 ipcMain.handle('supabase-auth-sign-out', async () => {
   try {
     return await supabaseSignOut();
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('supabase-project-backup-list', async (event, payload) => {
+  try {
+    return await supabaseGetProjectBackups(payload || {});
+  } catch (error) {
+    return { success: false, error: error.message || String(error), backups: [] };
+  }
+});
+
+ipcMain.handle('supabase-project-backup-upload', async (event, payload) => {
+  try {
+    return await supabaseUploadProjectBackup(payload || {});
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('supabase-project-backup-delete', async (event, payload) => {
+  try {
+    return await supabaseDeleteProjectBackup(payload || {});
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('supabase-project-backup-download', async (event, payload) => {
+  try {
+    return await supabaseDownloadProjectBackup(payload || {});
   } catch (error) {
     return { success: false, error: error.message || String(error) };
   }

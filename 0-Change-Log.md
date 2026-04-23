@@ -2,6 +2,29 @@
 
 ## 📝 更新日志
 
+### 🎉 v0.2.8 (2026-04-24) — 账号与个人中心、云端备份
+
+以下 **🎯 日期补充**按**日期降序**排列（最新在上）。
+
+#### 🎯 2026-04-24 补充
+- **个人中心 · 我的项目 · 云端备份（`scripts/account-center.js` / `styles/main.css` / `preload.js` / `main.js` / `supabase/auth-service.js`）**：在登录态下列出本地项目卡片并展示备份状态；支持 **上传/更新备份**、**撤销备份**、**下载恢复到本地**；本地项目路径与列表键统一 **`\` → `/` 归一化**；备份清单 **`__manifest__.json`** 映射原始相对路径与安全存储名；单方案备份体积上限 **5MB**、每用户最多 **10** 个不同方案备份（更新已有方案不计入新增上限）。
+- **撤销备份可靠性（`supabase/auth-service.js`）**：先删除 **`project_backups`** 表记录并用 **`delete().select('id')`** 校验实际删除行数，再清理 Storage，避免 RLS 下「0 行删除仍返回成功」；无删除权限时返回明确错误文案。
+- **Supabase RLS**：为 **`public.project_backups`** 增加 **`project_backups_delete_own`**（`authenticated` 且 **`user_id = auth.uid()`** 可 `DELETE`），与撤销备份主进程逻辑配套。
+- **撤销备份交互（`scripts/account-center.js` / `styles/main.css`）**：与上传一致的 **加载态**（转圈 + 背景进度条 + 防重复点击）；**`refreshMyProjects` 后** `setRevokeButtonLoading(false)` 按 **`projectBackupMap`** 恢复 **`disabled`**，避免无备份时撤销按钮仍为可点态。
+
+#### 🎯 2026-04-23 补充
+- **账号中心与个人入口（`index.html` / `scripts/account-center.js` / `styles/main.css`）**：新增顶部头像入口、个人中心一级标签与账号设置二级页骨架；未登录态切入类 App 登录页，已登录态展示邮箱、昵称、角色、登录方式，并为管理员预留社区管理入口。
+- **Supabase 邮箱密码接入（`main.js` / `preload.js` / `supabase/auth-service.js` / `supabase/config.js`）**：主进程统一托管邮箱注册、登录、登出与登录态读取，渲染层通过 IPC 调用，避免 preload 直接耦合本地 Supabase 模块；`profiles` 补写与读取流程同步打通。
+- **登录页结构与交互（`index.html` / `styles/main.css` / `scripts/account-center.js`）**：登录面板改为左右分栏；补齐昵称、邮箱、密码表单、协议勾选、协议文档弹窗、密码显隐切换与反馈提示；GitHub / Google 作为 OAuth 占位入口接入本地图标资源。
+- **OAuth 样式修正（`index.html` / `styles/main.css`）**：GitHub / Google 按钮图标统一调整为 **20px**，按钮文案统一调整为 **16px**，对齐新的登录页视觉规范。
+- **邮箱验证链路清理（`main.js` / `preload.js` / `supabase/auth-service.js` / `package.json` / `.env.supabase*`）**：在 Supabase 已关闭 Confirm email 后，移除 `fasthardware://auth/callback` 自定义协议、邮箱验证回调监听、注册成功邮件 Edge Function 方案与相关环境变量；注册成功后直接写入 Supabase 并自动登录，软件内提示“注册成功”。
+- **30 天保持登录（`index.html` / `scripts/account-center.js` / `supabase/auth-service.js` / `styles/main.css`）**：登录页新增“30 天内保持登录”勾选项；勾选时本地会话最长保留 30 天，不勾选则仅保留当前应用会话；开发环境与生产环境均按同一套 `userData` 会话文件策略生效。
+- **密码显隐图标状态修正（`scripts/account-center.js`）**：修复密码默认隐藏时仍显示“可见”图标的问题，确保不可见状态显示 `eye-off`，可见状态显示 `eye`。
+
+> **v0.2.8 已发布**：根目录 `package.json` 的 `version` 为 **0.2.8**；展示用文案与安装包命名以 `npm run sync-version` 及构建产物为准。
+
+> **打包前自检（账号 / Supabase）**：`electron-builder` 的 **`files`** 默认 **排除** 仓库根目录 **`.env.supabase`**（勿把密钥打进安装包）；生产环境需在安装目录旁或按你们约定路径提供 **`NEXT_PUBLIC_SUPABASE_URL`** 与 **`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`**（或兼容的 `ANON_KEY` 变量名），与 `supabase/config.js` 的 **`readSupabaseConfig`** 读取策略一致。Windows 推荐使用 **`npm run dist`**（会先 **`sync-version`** 再 **`electron-builder --publish=never`** 并清理调试 YAML）。
+
 ### 🎉 v0.2.7 (2026-04-18) — 联网与设置体验
 
 - **联网检索封顶与直连提示（`scripts/agent/skills-agent-loop.js` / `scripts/agent/skills-agent-shared.js` / `scripts/chat.js`）**：实时/优先联网场景下 `web_search_exa` 连续失败后不再无限强注，默认**每用户消息最多执行 3 次**（`FH_WEB_SEARCH_MAX_PER_RUN` 可调 1～10）；达上限后允许 **final_message** 诚实说明失败原因。**直连短答**系统提示不再笼统写「绝不调用 skills」，避免模型向用户误称「直连禁止联网」；**`isRealtimeQuery`**（渲染侧与主进程）补充天气/气象等关键词，便于「杭州天气」类句走 Agent 检索路由。

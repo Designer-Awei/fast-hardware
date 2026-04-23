@@ -463,22 +463,42 @@ class FastHardwareApp {
 
         const notification = document.createElement('div');
         notification.className = `notification ${type}`;
-        notification.textContent = message;
+        const textEl = document.createElement('span');
+        textEl.className = 'notification-text';
+        textEl.textContent = String(message || '');
+        notification.appendChild(textEl);
 
         container.appendChild(notification);
 
         // 触发动画
         setTimeout(() => {
             notification.classList.add('show');
-        }, 100);
+            requestAnimationFrame(() => {
+                const styles = window.getComputedStyle(notification);
+                const paddingLeft = Number.parseFloat(styles.paddingLeft || '0') || 0;
+                const paddingRight = Number.parseFloat(styles.paddingRight || '0') || 0;
+                const visibleWidth = Math.max(0, notification.clientWidth - paddingLeft - paddingRight);
+                const fullTextWidth = textEl.scrollWidth;
+                const overflowDistance = Math.max(0, fullTextWidth - visibleWidth);
+                let hideDelay = duration;
+                if (overflowDistance > 4) {
+                    const durationPerRound = Math.max(4000, Math.min(14000, overflowDistance * 18));
+                    notification.style.setProperty('--notification-marquee-distance', `${overflowDistance}px`);
+                    notification.style.setProperty('--notification-marquee-duration', `${durationPerRound}ms`);
+                    notification.classList.add('scrolling');
+                    hideDelay = durationPerRound * 2 + 350;
+                }
 
-        // 自动移除
-        setTimeout(() => {
-            notification.classList.remove('show');
-            setTimeout(() => {
-                container.removeChild(notification);
-            }, 300);
-        }, duration);
+                setTimeout(() => {
+                    notification.classList.remove('show');
+                    setTimeout(() => {
+                        if (notification.parentNode === container) {
+                            container.removeChild(notification);
+                        }
+                    }, 300);
+                }, hideDelay);
+            });
+        }, 100);
     }
 
     /**
@@ -497,44 +517,49 @@ class FastHardwareApp {
             // 打开项目文件夹选择对话框
             const result = await window.electronAPI.selectDirectory();
             if (!result.canceled && result.filePaths.length > 0) {
-                const projectPath = result.filePaths[0];
-
-                // 验证项目文件夹
-                const validation = await this.validateProjectFolder(projectPath);
-                if (!validation.valid) {
-                    this.showNotification(validation.message, 'error');
-                    return;
-                }
-
-                // 读取项目配置文件
-                const projectData = await this.loadProjectConfig(projectPath);
-
-                // 添加路径信息
-                projectData.path = projectPath;
-
-                // 添加到项目标签管理器（如果已初始化）
-                if (this.projectTabsManager) {
-                    this.projectTabsManager.addExistingProject(projectData);
-                } else {
-                    // 如果项目标签管理器还未初始化，直接渲染到画布
-                    await this.renderProjectToCanvas(projectData);
-                    this.currentProject = projectPath;
-                    this.isProjectModified = false;
-                }
-
-                // 清理代码编辑器的缓存，确保加载新项目的代码
-                if (window.canvasInstance) {
-                    window.canvasInstance.lastSavedCodeContent = null;
-                    window.canvasInstance.currentCodePath = null;
-                }
-
-                console.log('📂 项目加载完成，设置当前项目:', this.currentProject);
-                this.showNotification('项目加载成功！', 'success');
+                await this.openProjectByPath(result.filePaths[0]);
             }
         } catch (error) {
             console.error('加载项目失败:', error);
             this.showNotification('项目加载失败: ' + error.message, 'error');
         }
+    }
+
+    /**
+     * 按项目路径直接打开项目（用于“我的项目”卡片快速打开）。
+     * @param {string} projectPath
+     * @returns {Promise<void>}
+     */
+    async openProjectByPath(projectPath) {
+        const normalizedPath = String(projectPath || '').trim();
+        if (!normalizedPath) {
+            throw new Error('项目路径为空，无法打开。');
+        }
+
+        const validation = await this.validateProjectFolder(normalizedPath);
+        if (!validation.valid) {
+            throw new Error(validation.message);
+        }
+
+        const projectData = await this.loadProjectConfig(normalizedPath);
+        projectData.path = normalizedPath;
+
+        if (this.projectTabsManager) {
+            this.projectTabsManager.addExistingProject(projectData);
+        } else {
+            await this.renderProjectToCanvas(projectData);
+            this.currentProject = normalizedPath;
+            this.isProjectModified = false;
+        }
+
+        if (window.canvasInstance) {
+            window.canvasInstance.lastSavedCodeContent = null;
+            window.canvasInstance.currentCodePath = null;
+        }
+
+        this.switchTab('circuit-design');
+        console.log('📂 项目加载完成，设置当前项目:', this.currentProject);
+        this.showNotification('项目加载成功！', 'success');
     }
 
     /**

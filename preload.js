@@ -168,9 +168,74 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('supabase-auth-sign-in-password', payload),
 
   /**
+   * Supabase 第三方 OAuth 登录。
+   * @param {{ provider: 'google' | 'github', rememberMe?: boolean }} payload
+   */
+  supabaseSignInWithOAuth: (payload) =>
+    ipcRenderer.invoke('supabase-auth-sign-in-oauth', payload),
+
+  /**
+   * 更新账号资料（当前支持昵称）。
+   * @param {{ displayName: string }} payload
+   */
+  supabaseUpdateProfile: (payload) =>
+    ipcRenderer.invoke('supabase-auth-update-profile', payload),
+
+  /**
+   * 上传并覆盖当前用户头像。
+   * @param {{ dataUrl: string }} payload
+   */
+  supabaseUploadAvatar: (payload) =>
+    ipcRenderer.invoke('supabase-auth-upload-avatar', payload),
+
+  /**
+   * 读取当前用户项目备份状态。
+   * @param {{ projectPaths: string[] }} payload
+   */
+  supabaseListProjectBackups: (payload) =>
+    ipcRenderer.invoke('supabase-project-backup-list', payload),
+
+  /**
+   * 上传或更新项目备份。
+   * @param {{ projectPath: string, projectName?: string, lastModified?: string }} payload
+   */
+  supabaseUploadProjectBackup: (payload) =>
+    ipcRenderer.invoke('supabase-project-backup-upload', payload),
+
+  /**
+   * 撤销当前项目的云端备份。
+   * @param {{ projectPath: string }} payload
+   */
+  supabaseDeleteProjectBackup: (payload) =>
+    ipcRenderer.invoke('supabase-project-backup-delete', payload),
+
+  /**
+   * 下载云端备份到本地项目目录。
+   * @param {{ projectKey: string, projectName: string, storagePath: string }} payload
+   */
+  supabaseDownloadProjectBackup: (payload) =>
+    ipcRenderer.invoke('supabase-project-backup-download', payload),
+
+  /**
    * Supabase 登出。
    */
   supabaseSignOut: () => ipcRenderer.invoke('supabase-auth-sign-out'),
+
+  /**
+   * 监听 Supabase OAuth 回调结果。
+   * @param {(payload: { success: boolean, message: string, state?: unknown, error?: string }) => void} callback
+   * @returns {() => void}
+   */
+  onSupabaseAuthCallback: (callback) => {
+    if (typeof callback !== 'function') {
+      return () => {};
+    }
+    const handler = (_evt, payload) => {
+      callback(payload && typeof payload === 'object' ? payload : { success: false, message: '' });
+    };
+    ipcRenderer.on('supabase-auth-callback', handler);
+    return () => ipcRenderer.removeListener('supabase-auth-callback', handler);
+  },
 
   /**
    * 保存API密钥到env.local

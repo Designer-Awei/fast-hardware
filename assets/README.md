@@ -55,8 +55,10 @@ assets/icon-copy.svg
 - `icon-package.svg`
 - `icon-refresh.svg`
 - `icon-save.svg`
+- `icon-share-2.svg`
 - `icon-send.svg`
 - `icon-trash-2.svg`
+- `icon-upload-cloud.svg`
 - `icon-user.svg`
 
 ## 新增 SVG 图标步骤

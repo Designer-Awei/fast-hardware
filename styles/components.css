@@ -872,19 +872,19 @@
     right: 20px;
     background: #333;
     color: white;
-    padding: 0 20px; /* 移除上下padding，使用固定高度 */
-    height: 40px; /* 与项目标签页高度一致 */
+    padding: 10px 14px;
+    min-height: 40px;
     display: flex;
-    align-items: center; /* 垂直居中文本 */
+    align-items: center;
     border-radius: 6px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     z-index: 999; /* 降低z-index，避免遮挡按钮 */
     transform: translateX(400px);
     transition: transform 0.3s ease;
-    max-width: 300px;
-    white-space: nowrap; /* 防止文本换行 */
+    max-width: 520px;
+    white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis; /* 超长文本显示省略号 */
+    line-height: 1.2;
 }
 
 .notification.show {
@@ -902,6 +902,28 @@
 .notification.warning {
     background: #ffc107;
     color: #333;
+}
+
+.notification-text {
+    display: inline-block;
+    white-space: nowrap;
+    transform: translateX(0);
+    will-change: transform;
+}
+
+.notification.scrolling .notification-text {
+    animation: notification-marquee var(--notification-marquee-duration, 6000ms) linear 2;
+}
+
+@keyframes notification-marquee {
+    0%,
+    8% {
+        transform: translateX(0);
+    }
+    92%,
+    100% {
+        transform: translateX(calc(-1 * var(--notification-marquee-distance, 0px)));
+    }
 }
 
 /* 统一浅色主题：关键页面组件颜色不跟随系统深浅色自动切换 */

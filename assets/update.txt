@@ -1,28 +1,129 @@
 [
   {
+    "version": "0.2.8",
+    "date": "2026-04-24",
+    "sections": [
+      {
+        "title": "账号与个人中心",
+        "items": [
+          "新增顶部头像入口与「个人中心」一级页，支持邮箱密码注册登录、资料与头像、30 天保持登录选项",
+          "「我的项目」展示本地方案卡片，已登录时可查看云端备份状态并打开项目目录",
+          "登录页左右分栏、协议弹窗、OAuth 占位入口与通知体验优化"
+        ]
+      },
+      {
+        "title": "云端项目备份",
+        "items": [
+          "支持上传/更新备份、撤销备份与下载恢复到本地；路径归一化与清单映射，单方案 5MB、每用户最多 10 个方案备份",
+          "撤销时先校验数据库删除行数再清理对象存储，并需配置本人可删的 RLS 策略",
+          "上传与撤销过程展示加载态；撤销成功后撤销按钮与「无备份」状态一致"
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.2.7",
+    "date": "2026-04-18",
+    "sections": [
+      {
+        "title": "联网与设置体验",
+        "items": [
+          "联网检索增加失败封顶与直连短答优化，实时问题下的 Exa 检索路由更稳定",
+          "无 API Key 时模型刷新按钮会进入禁用态并给出明确提示，减少误操作",
+          "设置页布局与启动体验继续优化，包含 Splash 展示时序、系统设置页宽度和卡片布局调整"
+        ]
+      },
+      {
+        "title": "发布与打包",
+        "items": [
+          "版本同步流程继续收口，npm run dist 会自动同步展示用版本文案",
+          "打包完成后自动清理 builder 调试 YAML 文件，产物目录更整洁",
+          "mcporter 与 MCP 相关依赖随安装包正确分发，Web 检索功能在打包环境下更可靠"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.2.6",
     "date": "2026-03-21",
     "sections": [
       {
-        "title": "版本与发布",
+        "title": "Skills 架构重构",
         "items": [
-          "当前版本 0.2.6：产品版本以 package.json 为准，展示文案与安装包命名经 npm run sync-version 对齐",
-          "Skills 主进程 Agent Loop、execute-skill 与画布 CircuitSkillsEngine RPC、辅助型 skills 与项目/工作区能力见更新日志",
-          "npm run dist 打包前会自动执行版本同步（clean:dist 不触发）"
+          "Skills Agent 编排迁入主进程，统一由 runSkillsAgentLoop 执行多轮调用、进度推送与中断控制",
+          "主进程 execute-skill 与渲染进程 CircuitSkillsEngine RPC 打通，技能执行链路更稳定",
+          "电路类 skills 收敛为方案设计、补全建议、Web 检索与连线编辑等辅助型能力，降低错误落盘风险"
         ]
       },
       {
-        "title": "设置与启动体验",
+        "title": "测试与稳定性",
         "items": [
-          "设置页：匹配结果列宽、卡片高度、快捷键单滚动容器、应用更新卡片更新日志入口等（详见 0-Change-Log.md v0.2.4 / v0.2.3）",
-          "启动：Splash 前黑窗与首帧展示优化（详见更新日志）"
+          "测试用例与 e2e 场景收敛，保留更贴近真实链路的真测方案",
+          "连线编辑、固件补丁审阅、项目会话隔离与进度文案在多个日期补充中持续修复和打磨",
+          "设置页思考开关、普通对话上下文压缩和工具结果压缩等能力继续完善"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.2.5",
+    "date": "2026-03-21",
+    "sections": [
+      {
+        "title": "Skills 与 Agent 体系",
+        "items": [
+          "可复用 skills 正式落到 skills 目录，形成统一的 manifest 与 execute 契约",
+          "主对话继续从按钮式 workflow 过渡到 skill 驱动的 agent loop，由模型自主编排工具顺序",
+          "新增和整理 scheme_design、completion_suggestion、web_search_exa 等能力，并补充 README 与 PRD 文档"
         ]
       },
       {
-        "title": "Skills 架构（v0.2.6）",
+        "title": "测试支持",
         "items": [
-          "主进程 runSkillsAgentLoop、技能进度与中断、主进程 execute-skill + 渲染进程引擎 RPC",
-          "辅助型 wiring / scheme / completion 等边界；连线紧凑快照与 wiring_edit 护栏；test-cases 与 e2e 场景收敛"
+          "补充 live skills 与集成基准脚本，覆盖真实 SiliconFlow 与 Exa 链路",
+          "测试目录职责重新梳理，方便后续持续验证 skills 执行质量"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.2.4",
+    "date": "2026-03-12",
+    "sections": [
+      {
+        "title": "默认模型与工作流展示",
+        "items": [
+          "默认对话模型切换为 Qwen3.5-27B，技能流程等待文案与用时展示同步优化",
+          "旧按钮驱动 workflow 被彻底移除，统一进入 skills agent loop 处理",
+          "实时问题下会优先触发联网检索，并补充当前时间与时区上下文"
+        ]
+      },
+      {
+        "title": "版本同步与打包",
+        "items": [
+          "新增 npm run sync-version，自动同步 index.html、main.js、assets/update.txt 与中英文 README 的版本文案",
+          "npm run dist 在打包前会自动执行版本同步，减少发布时人工漏改"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.2.3",
+    "date": "2026-03-10",
+    "sections": [
+      {
+        "title": "设置页与模型体验",
+        "items": [
+          "设置页卡片高度、快捷键滚动容器与更新日志入口继续优化，应用内更新日志改为读取 assets/update.txt",
+          "引入在线模型同步、服务商筛选、价格补全与类型标签页，模型选择体验更完整",
+          "开发环境更新检查与“当前为开发版本”提示生效，便于验证自动更新流程"
+        ]
+      },
+      {
+        "title": "启动与展示",
+        "items": [
+          "修复 Splash 前黑窗与首帧闪现问题，进一步优化启动时序",
+          "设置页与工作流相关界面的视觉细节继续统一"
         ]
       }
     ]

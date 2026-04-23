@@ -274,8 +274,8 @@ body {
 }
 
 .nav-avatar-btn {
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
     border-radius: 999px;
     border: 1px solid rgba(255,255,255,0.28);
     background: rgba(255,255,255,0.12);
@@ -321,6 +321,8 @@ body {
 
 .nav-avatar-btn.logged-in .nav-avatar-fallback {
     display: inline-flex;
+    background-size: cover;
+    background-position: center;
 }
 
 /* 主内容区域 */
@@ -1556,7 +1558,7 @@ body {
 .account-center-scroll {
     height: 100%;
     overflow-y: auto;
-    padding: 22px 24px 28px;
+    padding: 20px;
     box-sizing: border-box;
 }
 
@@ -1743,14 +1745,15 @@ body {
     border: 1px solid #d8def1;
     border-radius: 12px;
     background: #f8faff;
-    color: #8a94ad;
+    color: #657297;
     font-size: 16px;
     font-weight: 600;
-    cursor: not-allowed;
+    cursor: pointer;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, color 0.2s ease;
 }
 
 .account-oauth-btn img {
@@ -1758,6 +1761,21 @@ body {
     height: 20px;
     flex-shrink: 0;
     opacity: 0.9;
+}
+
+.account-oauth-btn:hover:not(:disabled) {
+    border-color: #b9c7f3;
+    box-shadow: 0 8px 18px rgba(102, 126, 234, 0.12);
+    color: #495983;
+    transform: translateY(-1px);
+}
+
+.account-oauth-btn:disabled {
+    color: #8a94ad;
+    cursor: not-allowed;
+    opacity: 0.78;
+    box-shadow: none;
+    transform: none;
 }
 
 .account-auth-divider {
@@ -1936,6 +1954,31 @@ body {
     font-size: 20px;
 }
 
+.account-profile-avatar-wrap {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.account-profile-avatar-wrap:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(57, 74, 126, 0.18);
+}
+
+.account-profile-avatar-wrap[aria-disabled='true'] {
+    cursor: not-allowed;
+    opacity: 0.72;
+    box-shadow: none;
+}
+
+.account-profile-avatar-wrap:focus-visible {
+    outline: 2px solid #7388ef;
+    outline-offset: 3px;
+}
+
 .account-profile-name {
     font-size: 18px;
     font-weight: 700;
@@ -1973,12 +2016,6 @@ body {
     white-space: nowrap;
 }
 
-.account-inline-actions {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-}
-
 .account-form-hint {
     margin: 14px 0 0;
     color: #66718c;
@@ -1992,7 +2029,6 @@ body {
     justify-content: space-between;
     gap: 18px;
     padding: 22px 0 20px;
-    border-bottom: 1px solid rgba(129, 145, 191, 0.18);
 }
 
 .account-settings-surface {
@@ -2037,23 +2073,171 @@ body {
     line-height: 1.8;
 }
 
+.account-signout-row {
+    margin-top: 14px;
+    display: flex;
+    gap: 12px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.account-edit-profile-btn {
+    flex: 1;
+    min-height: 38px;
+    border-radius: 10px;
+}
+
+.account-sign-out-danger-btn {
+    flex: 1;
+    box-sizing: border-box;
+    min-height: 38px;
+    padding: 0 16px;
+    border: none;
+    border-radius: 10px;
+    background: #da3d3d;
+    color: white;
+    font-size: 13px;
+    box-shadow: 0 10px 18px rgba(218, 61, 61, 0.2);
+}
+
+.account-sign-out-danger-btn:disabled {
+    background: #e6a7a7;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.account-avatar-modal-content {
+    max-width: 420px;
+}
+
+#account-avatar-modal .account-avatar-modal-content.settings-modal-content {
+    width: min(440px, 92vw);
+    max-width: 440px;
+    max-height: none;
+    overflow: visible;
+}
+
+#account-avatar-modal .settings-modal-header {
+    padding: 16px 20px 10px;
+}
+
+#account-avatar-modal .settings-modal-body {
+    flex: 0 0 auto;
+    overflow: visible;
+    padding: 12px 24px 8px;
+}
+
+#account-avatar-modal .account-avatar-modal-footer.settings-modal-footer {
+    justify-content: stretch;
+    gap: 12px;
+    flex-wrap: nowrap;
+    flex-shrink: 0;
+    padding: 14px 24px 20px;
+    margin-top: 0;
+    border-top: 1px solid #eceef5;
+}
+
+#account-avatar-modal .account-avatar-modal-footer .btn {
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: none;
+}
+
+.account-profile-modal-content {
+    width: min(420px, 92vw);
+    max-width: 420px;
+}
+
+.account-profile-name-input {
+    width: 100%;
+    min-height: 40px;
+    border: 1px solid #d8def1;
+    border-radius: 10px;
+    padding: 0 12px;
+    box-sizing: border-box;
+}
+
+.account-profile-name-input:focus {
+    outline: none;
+    border-color: #7388ef;
+    box-shadow: 0 0 0 3px rgba(115, 136, 239, 0.14);
+}
+
+.account-profile-modal-footer .btn {
+    flex: 1;
+}
+
+.account-avatar-crop-wrap {
+    width: 280px;
+    height: 280px;
+    margin: 0 auto 10px;
+    border-radius: 14px;
+    border: 1px solid #e1e5f4;
+    overflow: hidden;
+    background: repeating-conic-gradient(from 45deg, #f2f4fb 0% 25%, #f8f9fd 0% 50%) 50% / 20px 20px;
+}
+
+#account-avatar-crop-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: grab;
+}
+
+#account-avatar-crop-canvas.is-dragging {
+    cursor: grabbing;
+}
+
+.account-avatar-tip {
+    margin: 6px 0 12px;
+    color: #65718f;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.account-avatar-zoom-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: #51608a;
+    font-size: 13px;
+}
+
+.account-avatar-zoom-row input {
+    flex: 1;
+}
+
 .my-projects-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 18px;
-    margin-top: 18px;
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    gap: 20px;
+    align-content: flex-start;
 }
 
 .my-project-card {
-    border: 1px solid #e6e9f4;
-    border-radius: 14px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
     overflow: hidden;
     background: white;
-    box-shadow: 0 4px 18px rgba(71, 86, 126, 0.08);
+    transition: all 0.2s ease;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.my-project-card.my-project-card-cloud-only {
+    border-color: #d9b45f;
+    background: linear-gradient(180deg, #fffdf6 0%, #fffaf0 100%);
+}
+
+.my-project-card:hover {
+    border-color: #667eea;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+    transform: translateY(-1px);
 }
 
 .my-project-card-thumb {
-    height: 136px;
+    height: 100px;
     background: linear-gradient(135deg, #6a74ee 0%, #8f59c7 100%);
     color: white;
     display: flex;
@@ -2062,20 +2246,49 @@ body {
     justify-content: flex-end;
     padding: 16px;
     box-sizing: border-box;
-    gap: 6px;
+    gap: 10px;
+    position: relative;
+}
+
+.my-project-card-share-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 22px;
+    height: 22px;
+    border: none;
+    background: transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    transition: opacity 0.2s ease;
+}
+
+.my-project-card-share-btn:hover {
+    opacity: 0.78;
+}
+
+.my-project-card-share-btn img {
+    filter: brightness(0) invert(1);
+    opacity: 1;
 }
 
 .my-project-card-thumb strong {
-    font-size: 18px;
+    font-size: 20px;
 }
 
 .my-project-card-body {
     padding: 16px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
 }
 
 .my-project-card-body h4 {
     margin: 0 0 8px;
-    font-size: 16px;
+    font-size: 14px;
     color: #2f3b66;
 }
 
@@ -2087,11 +2300,157 @@ body {
 }
 
 .my-project-card-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
+    display: block;
     font-size: 12px;
     color: #5d6a86;
+    margin-bottom: 12px;
+}
+
+.my-project-card-actions {
+    margin-top: auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+}
+
+.my-project-card-backup-btn,
+.my-project-card-revoke-btn,
+.my-project-card-download-btn,
+.my-project-card-open-btn {
+    width: 100%;
+    min-height: 36px;
+    border-radius: 8px;
+    border: none;
+    background: linear-gradient(90deg, #7b3ff6 0%, #8f38ff 100%);
+    color: white;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    box-shadow: 0 10px 18px rgba(130, 63, 246, 0.2);
+    transition: background 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    position: relative;
+    overflow: hidden;
+}
+
+.my-project-card-backup-btn:hover,
+.my-project-card-revoke-btn:hover,
+.my-project-card-download-btn:hover,
+.my-project-card-open-btn:hover {
+    background: linear-gradient(90deg, #7040dc 0%, #8231ef 100%);
+}
+
+.my-project-card-backup-btn img[data-icon],
+.my-project-card-revoke-btn img[data-icon],
+.my-project-card-download-btn img[data-icon],
+.my-project-card-open-btn img[data-icon] {
+    width: 18px;
+    height: 18px;
+    filter: brightness(0) invert(1);
+}
+
+.my-project-card-revoke-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.my-project-card-revoke-btn:disabled:hover {
+    background: linear-gradient(90deg, #7b3ff6 0%, #8f38ff 100%);
+}
+
+.my-project-card-btn-spinner {
+    display: none;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    border-top-color: #ffffff;
+    border-radius: 999px;
+    animation: my-project-upload-spin 0.85s linear infinite;
+}
+
+.my-project-card-backup-btn.is-uploading::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 0%;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.32));
+    animation: my-project-upload-progress 1.4s ease-in-out infinite;
+}
+
+.my-project-card-backup-btn.is-uploading {
+    cursor: not-allowed;
+    opacity: 0.95;
+}
+
+.my-project-card-backup-btn.is-uploading .my-project-card-btn-label,
+.my-project-card-backup-btn.is-uploading img[data-icon] {
+    opacity: 0;
+}
+
+.my-project-card-backup-btn.is-uploading .my-project-card-btn-spinner {
+    display: inline-flex;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+}
+
+.my-project-card-revoke-btn.is-uploading::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 0%;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.32));
+    animation: my-project-upload-progress 1.4s ease-in-out infinite;
+}
+
+.my-project-card-revoke-btn.is-uploading {
+    cursor: not-allowed;
+    opacity: 0.95;
+}
+
+.my-project-card-revoke-btn.is-uploading .my-project-card-btn-label,
+.my-project-card-revoke-btn.is-uploading img[data-icon] {
+    opacity: 0;
+}
+
+.my-project-card-revoke-btn.is-uploading .my-project-card-btn-spinner {
+    display: inline-flex;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+}
+
+@keyframes my-project-upload-spin {
+    from {
+        transform: translate(-50%, -50%) rotate(0deg);
+    }
+    to {
+        transform: translate(-50%, -50%) rotate(360deg);
+    }
+}
+
+@keyframes my-project-upload-progress {
+    0% {
+        width: 0%;
+    }
+    50% {
+        width: 64%;
+    }
+    100% {
+        width: 100%;
+    }
 }
 
 .creator-stats-grid {
@@ -2183,7 +2542,7 @@ body {
 
 @media (max-width: 640px) {
     .account-center-scroll {
-        padding: 16px;
+        padding: 20px;
     }
 
     .account-auth-hero {
@@ -3615,7 +3974,7 @@ kbd.key {
     border-radius: 12px;
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
     max-width: 500px;
-    width: 70%;
+    width: 40%;
     max-height: 70vh;
     overflow: hidden;
     display: flex;

@@ -38,7 +38,7 @@ function parseEnvText(text) {
 /**
  * 读取 Supabase 配置；兼容旧变量 `NEXT_PUBLIC_SUPABASE_ANON_KEY`。
  * @param {string} [envPath=DEFAULT_SUPABASE_ENV_PATH] - 配置文件路径
- * @returns {{ envPath: string, url: string, publishableKey: string, isConfigured: boolean }}
+ * @returns {{ envPath: string, url: string, publishableKey: string, oauthRedirectUrl: string, isConfigured: boolean }}
  */
 function readSupabaseConfig(envPath = DEFAULT_SUPABASE_ENV_PATH) {
   let text = '';
@@ -50,10 +50,12 @@ function readSupabaseConfig(envPath = DEFAULT_SUPABASE_ENV_PATH) {
   const publishableKey = String(
     env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
   ).trim();
+  const oauthRedirectUrl = String(env.SUPABASE_OAUTH_REDIRECT_URL || 'fasthardware://auth/callback').trim();
   return {
     envPath,
     url,
     publishableKey,
+    oauthRedirectUrl,
     isConfigured: Boolean(url && publishableKey)
   };
 }

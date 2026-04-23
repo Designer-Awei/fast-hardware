@@ -10,7 +10,7 @@
 
 [🇨🇳 中文](README.md) | [🇺🇸 English](README_EN.md)
 
-[![Version](https://img.shields.io/badge/version-0.2.7-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
+[![Version](https://img.shields.io/badge/version-0.2.8-blue.svg)](https://github.com/Designer-Awei/fast-hardware/releases)
 [![Electron](https://img.shields.io/badge/Electron-27.0.0-47848F.svg)](https://electronjs.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-16+-339933.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -62,7 +62,7 @@
 ### 🚧 LLM智能助手 (规划中)
 自然语言交互，智能推荐硬件方案，自动生成电路设计。
 
-## ✨ 最新特性 (v0.2.7)
+## ✨ 最新特性 (v0.2.8)
 
 ### 📦 版本与发布
 - **一键同步版本号**: 修改 `package.json` 的 `version` 后执行 `npm run sync-version`，或直接 `npm run dist`（打包前会自动同步 `index.html`、`main.js`、`assets/update.txt`、中英文 README）
@@ -84,7 +84,7 @@
 - **开发版本状态提示**: 当本地版本高于远程版本时，更新区会显示“当前为开发版本”
 
 ### 📚 文档与版本同步
-- **版本升级**: 项目当前版本升级为 `0.2.7`
+- **版本升级**: 项目当前版本升级为 `0.2.8`
 - **更新日志链接修正**: README 中的更新日志入口同步指向现有的 `0-Change-Log.md`
 
 ---
@@ -194,7 +194,7 @@ fast-hardware/
 ├── 📁 scripts/                   # 前端脚本（含 chat.js、circuit-skills-engine.js、skills-progress-bus.js 等）
 ├── 📁 styles/                    # 样式文件
 ├── 📁 dist/                      # 构建输出目录 (打包后生成)
-│   ├── Fast-Hardware-Setup-0.2.7.exe    # Windows安装程序
+│   ├── Fast-Hardware-Setup-0.2.8.exe    # Windows安装程序
 │   ├── Fast Hardware-0.1.9-win.zip      # Windows绿色版
 │   └── win-unpacked/                    # 未打包版本
 ├── 📄 main.js                    # Electron主进程
@@ -294,7 +294,7 @@ npm run clean:dist
 ### 分发文件说明
 
 #### 🎯 **Windows (64位专用)**
-- **`Fast-Hardware-Setup-0.2.7.exe`** (约76MB) - **专业安装程序**
+- **`Fast-Hardware-Setup-0.2.8.exe`** (约76MB) - **专业安装程序**
   - ✅ 自定义安装路径选择
   - ✅ 自动创建桌面快捷方式
   - ✅ 自动创建开始菜单快捷方式
@@ -314,7 +314,7 @@ npm run clean:dist
 - **存储空间**: 200MB 可用空间
 
 ### 🚀 安装指南
-1. 下载 `Fast-Hardware-Setup-0.2.7.exe`
+1. 下载 `Fast-Hardware-Setup-0.2.8.exe`
 2. 双击运行安装程序
 3. 选择安装位置（可自定义）
 4. 按照提示完成安装
