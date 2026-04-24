@@ -14,6 +14,16 @@ class ProjectTabsManager {
     }
 
     /**
+     * 规范化项目路径用于比对（Windows 下路径按不区分大小写处理）。
+     * @param {string} rawPath
+     * @returns {string}
+     */
+    normalizeProjectPathKey(rawPath) {
+        const normalized = String(rawPath || '').trim().replace(/\\/g, '/');
+        return normalized.toLowerCase();
+    }
+
+    /**
      * 初始化项目标签页管理器
      */
     init() {
@@ -50,13 +60,9 @@ class ProjectTabsManager {
         const projectName = options.name || `未命名项目${projectId}`;
         
         // 获取画布的默认位置（左下角）
-        let defaultPanX = 50;
-        let defaultPanY = 550; // 默认值
-        
-        if (window.canvasInstance && window.canvasInstance.canvas) {
-            defaultPanX = 50;
-            defaultPanY = window.canvasInstance.canvas.height - 50;
-        }
+        const defaultView = this.getDefaultCanvasView();
+        const defaultPanX = defaultView.panX;
+        const defaultPanY = defaultView.panY;
         
         const newProject = {
             id: projectId,
@@ -97,11 +103,12 @@ class ProjectTabsManager {
      * @param {Object} projectData - 项目数据
      * @returns {Object} 项目对象
      */
-    addExistingProject(projectData) {
+    async addExistingProject(projectData) {
         // 在添加新项目前，先保存当前项目的画布状态
         this.saveCurrentCanvasState();
         
         const projectId = this.generateProjectId();
+        const defaultView = this.getDefaultCanvasView();
         
         const project = {
             id: projectId,
@@ -116,8 +123,8 @@ class ProjectTabsManager {
                 components: [],
                 connections: [],
                 zoom: 1.0,
-                panX: 50,
-                panY: 550
+                panX: defaultView.panX,
+                panY: defaultView.panY
             },
             createdAt: projectData.createdAt || new Date().toISOString()
         };
@@ -129,11 +136,26 @@ class ProjectTabsManager {
         this.addProjectTab(project);
 
         // 切换到该项目
-        this.switchProject(projectId);
+        await this.switchProject(projectId);
 
         console.log(`✅ 添加已存在项目: ${project.name} (ID: ${projectId})`);
 
         return project;
+    }
+
+    /**
+     * 按路径查找已打开项目，避免重复打开同一项目标签。
+     * @param {string} projectPath
+     * @returns {Object|null}
+     */
+    findProjectByPath(projectPath) {
+        const targetKey = this.normalizeProjectPathKey(projectPath);
+        if (!targetKey) {
+            return null;
+        }
+        return this.projects.find((project) =>
+            this.normalizeProjectPathKey(project?.path || '') === targetKey
+        ) || null;
     }
 
     /**
@@ -194,7 +216,7 @@ class ProjectTabsManager {
      * 切换到指定项目
      * @param {number} projectId - 项目ID
      */
-    switchProject(projectId) {
+    async switchProject(projectId) {
         const project = this.projects.find(p => p.id === projectId);
         if (!project) {
             console.error(`❌ 项目未找到: ${projectId}`);
@@ -213,7 +235,7 @@ class ProjectTabsManager {
         this.updateTabsUI();
 
         // 恢复项目画布状态
-        this.restoreCanvasState(project);
+        await this.restoreCanvasState(project);
 
         // 更新应用状态
         this.app.currentProject = project.path;
@@ -228,6 +250,20 @@ class ProjectTabsManager {
                 }
             })
         );
+    }
+
+    /**
+     * 获取画布默认视图（与 CanvasManager.resetView 保持一致）。
+     * @returns {{ zoom: number, panX: number, panY: number }}
+     */
+    getDefaultCanvasView() {
+        const panX = 50;
+        const panY = window.canvasInstance?.canvas ? window.canvasInstance.canvas.height - 50 : 550;
+        return {
+            zoom: 1.0,
+            panX,
+            panY
+        };
     }
 
     /**
@@ -350,12 +386,13 @@ class ProjectTabsManager {
                     // 如果有保存的画布状态，使用保存的视图位置
                     window.canvasInstance.scale = project.canvasData.zoom || 1.0;
                     window.canvasInstance.offsetX = project.canvasData.panX || 50;
-                    window.canvasInstance.offsetY = project.canvasData.panY || 550;
+                    window.canvasInstance.offsetY = project.canvasData.panY || this.getDefaultCanvasView().panY;
                 } else {
                     // 首次打开，使用默认视图位置
-                    window.canvasInstance.scale = 1.0;
-                    window.canvasInstance.offsetX = 50;
-                    window.canvasInstance.offsetY = window.canvasInstance.canvas ? window.canvasInstance.canvas.height - 50 : 550;
+                    const defaultView = this.getDefaultCanvasView();
+                    window.canvasInstance.scale = defaultView.zoom;
+                    window.canvasInstance.offsetX = defaultView.panX;
+                    window.canvasInstance.offsetY = defaultView.panY;
                 }
                 
                 window.canvasInstance.draw();
@@ -376,9 +413,10 @@ class ProjectTabsManager {
                 }
 
                 // 恢复视图状态
-                window.canvasInstance.scale = project.canvasData.zoom || 1.0;
-                window.canvasInstance.offsetX = project.canvasData.panX || 50;
-                window.canvasInstance.offsetY = project.canvasData.panY || 550;
+                const defaultView = this.getDefaultCanvasView();
+                window.canvasInstance.scale = project.canvasData.zoom || defaultView.zoom;
+                window.canvasInstance.offsetX = project.canvasData.panX || defaultView.panX;
+                window.canvasInstance.offsetY = project.canvasData.panY || defaultView.panY;
 
                 // 重新渲染
                 window.canvasInstance.draw();

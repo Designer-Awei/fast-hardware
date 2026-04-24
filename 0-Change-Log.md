@@ -12,6 +12,9 @@
 - **Supabase RLS**：为 **`public.project_backups`** 增加 **`project_backups_delete_own`**（`authenticated` 且 **`user_id = auth.uid()`** 可 `DELETE`），与撤销备份主进程逻辑配套。
 - **撤销备份交互（`scripts/account-center.js` / `styles/main.css`）**：与上传一致的 **加载态**（转圈 + 背景进度条 + 防重复点击）；**`refreshMyProjects` 后** `setRevokeButtonLoading(false)` 按 **`projectBackupMap`** 恢复 **`disabled`**，避免无备份时撤销按钮仍为可点态。
 - **生产环境 Supabase 配置（`supabase/config.js` / `package.json` / `scripts/build-dist.js`）**：`readSupabaseConfig` 优先读取 **`process.resourcesPath/.env.supabase`**（与 `app.asar` 同级）；打包通过 **`extraResources`** 将仓库根目录 **`.env.supabase`** 复制到安装目录 **`resources`**；**`npm run dist`** 前若缺少该文件则直接报错提示，避免打出无法登录的安装包。
+- **打开项目默认视图与坐标显示修正（`scripts/main.js` / `scripts/project-tabs.js` / `scripts/canvas.js`）**：修复从“我的项目/加载项目”打开后画布视图偏上问题；打开项目时在切换到电路搭建页后执行 `resizeCanvas + requestAnimationFrame + resetView`，并输出当前 `scale/offset/canvas` 控制台日志便于定位视图异常。
+- **防止重复打开同一路径项目（`scripts/main.js` / `scripts/project-tabs.js`）**：新增按路径规范化（`\\`→`/` + 小写）查找已打开标签；再次打开同一路径项目时直接切换到现有标签并刷新默认视图，不再新增重复项目标签。
+- **坐标系第一象限显示修正（`scripts/canvas.js`）**：保持原点在初始视图左下不变，仅修正鼠标坐标显示的 Y 方向，确保右上区域显示为正坐标。
 
 #### 🎯 2026-04-23 补充
 - **账号中心与个人入口（`index.html` / `scripts/account-center.js` / `styles/main.css`）**：新增顶部头像入口、个人中心一级标签与账号设置二级页骨架；未登录态切入类 App 登录页，已登录态展示邮箱、昵称、角色、登录方式，并为管理员预留社区管理入口。

@@ -2804,9 +2804,9 @@ void loop() {
         const canvasX = e.clientX - rect.left;
         const canvasY = e.clientY - rect.top;
 
-        // 转换为世界坐标（Y轴：上正下负，符合平面直角坐标系）
+        // 转换为展示坐标（保持原点在左下，且第一象限为右上：X/Y 都为正）
         const worldX = Math.round((canvasX - this.offsetX) / this.scale);
-        const worldY = Math.round((canvasY - this.offsetY) / this.scale); // 保持Y轴方向一致
+        const worldY = Math.round((this.offsetY - canvasY) / this.scale);
 
         const mouseXElement = document.getElementById('mouse-x');
         const mouseYElement = document.getElementById('mouse-y');

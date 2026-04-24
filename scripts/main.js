@@ -536,6 +536,26 @@ class FastHardwareApp {
             throw new Error('项目路径为空，无法打开。');
         }
 
+        const existingProject =
+            this.projectTabsManager &&
+            typeof this.projectTabsManager.findProjectByPath === 'function'
+                ? this.projectTabsManager.findProjectByPath(normalizedPath)
+                : null;
+        if (existingProject && this.projectTabsManager) {
+            await this.projectTabsManager.switchProject(existingProject.id);
+            this.currentProject = existingProject.path || normalizedPath;
+            this.isProjectModified = Boolean(existingProject.isModified);
+            if (window.canvasInstance) {
+                window.canvasInstance.lastSavedCodeContent = null;
+                window.canvasInstance.currentCodePath = null;
+            }
+            this.switchTab('circuit-design');
+            await this.resetCanvasToDefaultView();
+            this.logCanvasViewState(`打开已存在项目标签: ${existingProject.name}`);
+            this.showNotification('项目已打开，已切换到对应标签。', 'info');
+            return;
+        }
+
         const validation = await this.validateProjectFolder(normalizedPath);
         if (!validation.valid) {
             throw new Error(validation.message);
@@ -545,7 +565,7 @@ class FastHardwareApp {
         projectData.path = normalizedPath;
 
         if (this.projectTabsManager) {
-            this.projectTabsManager.addExistingProject(projectData);
+            await this.projectTabsManager.addExistingProject(projectData);
         } else {
             await this.renderProjectToCanvas(projectData);
             this.currentProject = normalizedPath;
@@ -558,8 +578,45 @@ class FastHardwareApp {
         }
 
         this.switchTab('circuit-design');
+        await this.resetCanvasToDefaultView();
+        this.logCanvasViewState(`打开新项目: ${projectData.projectName || normalizedPath}`);
         console.log('📂 项目加载完成，设置当前项目:', this.currentProject);
         this.showNotification('项目加载成功！', 'success');
+    }
+
+    /**
+     * 打开项目后将画布恢复到默认视图（与“重置视图”按钮一致）。
+     * 这里会先触发 resize，再在下一帧执行 reset，避免从隐藏页切回时使用旧高度导致偏移。
+     * @returns {Promise<void>}
+     */
+    async resetCanvasToDefaultView() {
+        if (!window.canvasInstance || typeof window.canvasInstance.resetView !== 'function') {
+            return;
+        }
+        if (typeof window.canvasInstance.resizeCanvas === 'function') {
+            window.canvasInstance.resizeCanvas();
+        }
+        await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+        if (typeof window.canvasInstance.resizeCanvas === 'function') {
+            window.canvasInstance.resizeCanvas();
+        }
+        window.canvasInstance.resetView();
+    }
+
+    /**
+     * 控制台输出当前画布视图位置，便于排查打开项目后的偏移问题。
+     * @param {string} context
+     * @returns {void}
+     */
+    logCanvasViewState(context) {
+        const canvas = window.canvasInstance;
+        if (!canvas) {
+            console.log(`[view] ${context} | 画布实例不存在`);
+            return;
+        }
+        console.log(
+            `[view] ${context} | scale=${canvas.scale} offsetX=${canvas.offsetX} offsetY=${canvas.offsetY} canvasWidth=${canvas.canvas?.width || 0} canvasHeight=${canvas.canvas?.height || 0}`
+        );
     }
 
     /**
