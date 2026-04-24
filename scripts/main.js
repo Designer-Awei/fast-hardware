@@ -275,7 +275,7 @@ class FastHardwareApp {
      * 切换到下一个标签页
      */
     switchToNextTab() {
-        const tabs = ['circuit-design', 'component-lib', 'settings', 'personal-center'];
+        const tabs = ['circuit-design', 'component-lib', 'settings', 'personal-center', 'maker-marketplace'];
         const currentIndex = tabs.indexOf(this.currentTab);
         const nextIndex = (currentIndex + 1) % tabs.length;
         this.switchTab(tabs[nextIndex]);
@@ -582,6 +582,138 @@ class FastHardwareApp {
         this.logCanvasViewState(`打开新项目: ${projectData.projectName || normalizedPath}`);
         console.log('📂 项目加载完成，设置当前项目:', this.currentProject);
         this.showNotification('项目加载成功！', 'success');
+    }
+
+    /**
+     * 规范化 bundle 内相对路径（正斜杠、去前导 /）。
+     * @param {unknown} p
+     * @returns {string}
+     */
+    normalizeBundleRelativePath(p) {
+        return String(p || '').replace(/\\/g, '/').replace(/^\/+/, '').trim();
+    }
+
+    /**
+     * 从集市 bundle 中取第一份 .ino 文本。
+     * @param {Record<string, unknown> | null | undefined} bundle
+     * @returns {{ text: string, relativePath: string } | null}
+     */
+    pickFirstInoFromMarketplaceBundle(bundle) {
+        const files = bundle && Array.isArray(bundle.files) ? bundle.files : [];
+        const item = files.find((f) => String(f?.relativePath || '').toLowerCase().endsWith('.ino'));
+        if (item && typeof item.text === 'string') {
+            return {
+                text: item.text,
+                relativePath: this.normalizeBundleRelativePath(item.relativePath) || 'sketch.ino'
+            };
+        }
+        return null;
+    }
+
+    /**
+     * 将集市单文件 bundle 转为与 loadProjectConfig 一致的项目数据结构（含元件 data）。
+     * @param {Record<string, unknown>} bundle
+     * @param {string} postId
+     * @returns {Record<string, unknown>}
+     */
+    buildProjectDataFromMarketplaceBundle(bundle, postId) {
+        const files = Array.isArray(bundle.files) ? bundle.files : [];
+        const configItem = files.find(
+            (f) => this.normalizeBundleRelativePath(f?.relativePath) === 'circuit_config.json'
+        );
+        if (!configItem || typeof configItem.text !== 'string') {
+            throw new Error('项目包缺少 circuit_config.json');
+        }
+        /** @type {Record<string, unknown>} */
+        const projectData = JSON.parse(configItem.text);
+        projectData.marketplaceBundle = bundle;
+        const postKey = String(postId || '').trim().toLowerCase();
+        projectData.marketplacePostId = postKey;
+        projectData.path = `marketplace-session://${postKey}`;
+        const comps = Array.isArray(projectData.components) ? projectData.components : [];
+        for (const component of comps) {
+            const cf = String(component.componentFile || '').trim();
+            if (!cf) {
+                continue;
+            }
+            const rel = this.normalizeBundleRelativePath(`components/${cf}`);
+            const item = files.find((f) => this.normalizeBundleRelativePath(f?.relativePath) === rel);
+            if (item && typeof item.text === 'string') {
+                try {
+                    component.data = JSON.parse(item.text);
+                } catch {
+                    component.data = {};
+                }
+            }
+        }
+        return projectData;
+    }
+
+    /**
+     * 创客集市：从内存 bundle 打开电路项目（不写 temp）。
+     * @param {{ postId: string, bundle: Record<string, unknown> }} detail
+     * @returns {Promise<void>}
+     */
+    async openProjectFromMarketplaceBundle(detail) {
+        const postIdKey = String(detail?.postId || '').trim().toLowerCase();
+        const bundle = detail?.bundle;
+        if (!postIdKey || !bundle || typeof bundle !== 'object') {
+            throw new Error('项目包无效，无法打开。');
+        }
+        const virtualPath = `marketplace-session://${postIdKey}`;
+        let existing =
+            this.projectTabsManager &&
+            typeof this.projectTabsManager.findProjectByPath === 'function'
+                ? this.projectTabsManager.findProjectByPath(virtualPath)
+                : null;
+        if (
+            !existing &&
+            this.projectTabsManager &&
+            typeof this.projectTabsManager.findOpenMarketplaceSessionByPostId === 'function'
+        ) {
+            existing = this.projectTabsManager.findOpenMarketplaceSessionByPostId(postIdKey);
+        }
+        if (existing && this.projectTabsManager) {
+            if (!existing.path && existing.projectData && typeof existing.projectData.path === 'string') {
+                existing.path = existing.projectData.path;
+            }
+            await this.projectTabsManager.switchProject(existing.id);
+            this.currentProject = existing.path || virtualPath;
+            this.isProjectModified = Boolean(existing.isModified);
+            if (window.canvasInstance) {
+                const ino = this.pickFirstInoFromMarketplaceBundle(
+                    /** @type {Record<string, unknown>} */ (existing.projectData?.marketplaceBundle || bundle)
+                );
+                if (ino?.text) {
+                    window.canvasInstance.lastSavedCodeContent = ino.text;
+                    window.canvasInstance.currentCodePath = `memory:/${ino.relativePath}`;
+                }
+            }
+            this.switchTab('circuit-design');
+            await this.resetCanvasToDefaultView();
+            this.showNotification('项目已打开，已切换到对应标签。', 'info');
+            return;
+        }
+
+        const projectData = this.buildProjectDataFromMarketplaceBundle(bundle, postIdKey);
+        if (this.projectTabsManager) {
+            await this.projectTabsManager.addExistingProject(projectData);
+        } else {
+            await this.renderProjectToCanvas(projectData);
+            this.currentProject = virtualPath;
+            this.isProjectModified = false;
+        }
+        if (window.canvasInstance) {
+            const ino = this.pickFirstInoFromMarketplaceBundle(bundle);
+            window.canvasInstance.lastSavedCodeContent = ino?.text || '';
+            window.canvasInstance.currentCodePath = ino?.relativePath
+                ? `memory:/${ino.relativePath}`
+                : `${virtualPath}/${String(projectData.projectName || 'sketch')}.ino`;
+        }
+        this.switchTab('circuit-design');
+        await this.resetCanvasToDefaultView();
+        this.logCanvasViewState(`打开集市内存项目: ${postIdKey}`);
+        this.showNotification('已从内存加载集市项目', 'success');
     }
 
     /**
@@ -1085,6 +1217,21 @@ void loop() {
      */
     async loadProjectConfig(projectPath) {
         try {
+            const normalizedPath = String(projectPath || '').trim();
+            if (normalizedPath.startsWith('marketplace-session://')) {
+                const existing =
+                    this.projectTabsManager &&
+                    typeof this.projectTabsManager.findProjectByPath === 'function'
+                        ? this.projectTabsManager.findProjectByPath(normalizedPath)
+                        : null;
+                if (!existing?.projectData) {
+                    throw new Error('内存项目不存在或已关闭，请从集市重新打开。');
+                }
+                return typeof structuredClone === 'function'
+                    ? structuredClone(existing.projectData)
+                    : JSON.parse(JSON.stringify(existing.projectData));
+            }
+
             console.log('读取项目配置:', projectPath);
             const circuitConfigPath = `${projectPath}/circuit_config.json`;
 
@@ -1110,19 +1257,61 @@ void loop() {
     }
 
     /**
-     * 渲染项目到画布
+     * 将项目数据渲染到指定画布管理器（主画布或集市详情预览实例）。
+     * @param {{ clearComponents: Function, addComponent: Function, addConnection: Function, forceRender: Function }} targetManager
+     * @param {Record<string, unknown>} projectData
+     * @returns {Promise<void>}
+     */
+    async renderProjectToCanvasManager(targetManager, projectData) {
+        if (!targetManager || typeof targetManager.clearComponents !== 'function') {
+            throw new Error('画布管理器无效，无法渲染。');
+        }
+        targetManager.clearComponents();
+
+        if (projectData.components && projectData.components.length > 0) {
+            console.log(`渲染 ${projectData.components.length} 个元件`);
+            for (const component of projectData.components) {
+                if (component.data) {
+                    const x = component.position[0];
+                    const y = component.position[1];
+                    const orientation = component.orientation || 'up';
+                    targetManager.addComponent(component.data, x, y, component.instanceId, orientation);
+                } else {
+                    console.warn('元件缺少数据:', component);
+                }
+            }
+        } else {
+            console.warn('没有元件需要渲染');
+        }
+
+        if (projectData.connections && projectData.connections.length > 0) {
+            console.log(`渲染 ${projectData.connections.length} 条连线`);
+            for (const connection of projectData.connections) {
+                targetManager.addConnection(connection);
+            }
+        } else {
+            console.log('没有连线需要渲染');
+        }
+
+        targetManager.forceRender();
+        setTimeout(() => {
+            targetManager.forceRender();
+        }, 100);
+    }
+
+    /**
+     * 渲染项目到主画布
      */
     async renderProjectToCanvas(projectData) {
         try {
             console.log('渲染项目到画布...');
 
-            // 等待canvasManager初始化完成
             let attempts = 0;
-            const maxAttempts = 50; // 最多等待5秒
+            const maxAttempts = 50;
 
             while (!window.canvasManager && attempts < maxAttempts) {
                 console.log('等待canvasManager初始化...');
-                await new Promise(resolve => setTimeout(resolve, 100));
+                await new Promise((resolve) => setTimeout(resolve, 100));
                 attempts++;
             }
 
@@ -1131,50 +1320,8 @@ void loop() {
                 throw new Error('画布管理器初始化失败，请刷新页面重试');
             }
 
-            // 清空当前画布
-            window.canvasManager.clearComponents();
-
-            // 渲染元件
-            if (projectData.components && projectData.components.length > 0) {
-                console.log(`渲染 ${projectData.components.length} 个元件`);
-                for (const component of projectData.components) {
-                    if (component.data) {
-                        // position是数组格式[x, y]，需要分别传递
-                        const x = component.position[0];
-                        const y = component.position[1];
-                        // 使用circuit_config.json中的instanceId作为元件ID，确保连线能正确引用
-                        // 传入orientation参数，确保元件朝向正确
-                        const orientation = component.orientation || 'up';
-                        window.canvasManager.addComponent(component.data, x, y, component.instanceId, orientation);
-                    } else {
-                        console.warn('元件缺少数据:', component);
-                    }
-                }
-            } else {
-                console.warn('没有元件需要渲染');
-            }
-
-            // 渲染连线
-            if (projectData.connections && projectData.connections.length > 0) {
-                console.log(`渲染 ${projectData.connections.length} 条连线`);
-                for (const connection of projectData.connections) {
-                    window.canvasManager.addConnection(connection);
-                }
-            } else {
-                console.log('没有连线需要渲染');
-            }
-
+            await this.renderProjectToCanvasManager(window.canvasManager, projectData);
             console.log('项目渲染完成');
-
-            // 强制重新渲染画布（添加延时确保所有连线都已添加）
-            if (window.canvasManager) {
-                // 立即渲染一次
-                window.canvasManager.forceRender();
-                // 延时再次渲染，确保异步操作完成
-                setTimeout(() => {
-                    window.canvasManager.forceRender();
-                }, 100);
-            }
         } catch (error) {
             console.error('渲染项目失败:', error);
             throw new Error('渲染项目失败: ' + error.message);

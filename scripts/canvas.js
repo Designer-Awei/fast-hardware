@@ -4,7 +4,13 @@
  */
 
 class CanvasManager {
-    constructor() {
+    /**
+     * @param {{ canvasElement?: HTMLElement | string, isReadOnlyPreview?: boolean } | undefined} options
+     */
+    constructor(options) {
+        /** @type {{ canvasElement?: HTMLElement | string, isReadOnlyPreview?: boolean }} */
+        this.previewOptions = options && typeof options === 'object' ? options : {};
+        this.isReadOnlyPreview = Boolean(this.previewOptions.isReadOnlyPreview);
         this.canvas = null;
         this.ctx = null;
         this.scale = 1;
@@ -54,7 +60,44 @@ class CanvasManager {
         // 间距管理
         this.wireSpacingManager = new WireSpacingManager();
 
+        if (this.isReadOnlyPreview) {
+            this.markProjectAsModified = () => {};
+        }
         this.init();
+    }
+
+    /**
+     * 销毁只读预览实例（移除监听并清空画布），供集市详情模态关闭时调用。
+     * @returns {void}
+     */
+    destroyReadOnlyPreview() {
+        if (!this.isReadOnlyPreview) {
+            return;
+        }
+        const list = this._readOnlyPreviewCleanups;
+        if (Array.isArray(list)) {
+            list.forEach((fn) => {
+                try {
+                    fn();
+                } catch {
+                    /* ignore */
+                }
+            });
+        }
+        this._readOnlyPreviewCleanups = null;
+        this.components = [];
+        this.connections = [];
+        this.wireSpacingManager?.sideWires?.clear?.();
+        this.wireSpacingManager?.wireRegistry?.clear?.();
+        if (this.ctx && this.canvas) {
+            try {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            } catch {
+                /* ignore */
+            }
+        }
+        this.canvas = null;
+        this.ctx = null;
     }
 
     /**
@@ -260,32 +303,44 @@ class CanvasManager {
      * 初始化画布管理器
      */
     init() {
-        this.canvas = document.getElementById('main-canvas');
+        let el = this.previewOptions.canvasElement;
+        if (typeof el === 'string') {
+            el = document.getElementById(el);
+        }
+        this.canvas = el || document.getElementById('main-canvas');
         if (!this.canvas) {
             console.warn('未找到画布元素');
             return;
         }
 
         this.ctx = this.canvas.getContext('2d');
-        
-        // 延迟初始化，确保容器完全渲染
+
+        const bootDelay = this.isReadOnlyPreview ? 0 : 100;
+        // 延迟初始化，确保容器完全渲染（主画布）；预览实例立即初始化
         setTimeout(() => {
             this.resizeCanvas();
             this.resetView(); // 设置初始视图（内部会调用draw()）
-            this.bindEvents();
-            
+            if (this.isReadOnlyPreview) {
+                this.bindReadOnlyPreviewEvents();
+            } else {
+                this.bindEvents();
+            }
+
             // 确保画布内容可见（额外保险）
             requestAnimationFrame(() => {
                 this.draw();
-                console.debug('🎨 画布初始化完成');
+                console.debug(this.isReadOnlyPreview ? '🎨 集市预览画布初始化完成' : '🎨 画布初始化完成');
             });
-        }, 100);
+        }, bootDelay);
     }
 
     /**
      * 调整画布大小
      */
     resizeCanvas() {
+        if (!this.canvas || !this.ctx) {
+            return;
+        }
         const container = this.canvas.parentElement;
         if (container) {
             const rect = container.getBoundingClientRect();
@@ -440,6 +495,57 @@ class CanvasManager {
 
         // 键盘事件
         document.addEventListener('keydown', (e) => this.handleKeyDown(e));
+    }
+
+    /**
+     * 集市详情模态内只读预览：仅平移与滚轮缩放，不编辑元件与连线。
+     * @returns {void}
+     */
+    bindReadOnlyPreviewEvents() {
+        /** @type {Array<() => void>} */
+        this._readOnlyPreviewCleanups = [];
+        /**
+         * @param {EventTarget} target
+         * @param {string} type
+         * @param {EventListenerOrEventListenerObject} listener
+         * @param {AddEventListenerOptions | boolean} [opts]
+         */
+        const on = (target, type, listener, opts) => {
+            target.addEventListener(type, listener, opts);
+            this._readOnlyPreviewCleanups.push(() => target.removeEventListener(type, listener, opts));
+        };
+
+        this._previewPanning = false;
+        const onDown = (e) => {
+            this._previewPanning = true;
+            this.lastMouseX = e.clientX;
+            this.lastMouseY = e.clientY;
+            this.canvas.style.cursor = 'grabbing';
+            e.preventDefault();
+        };
+        const onMove = (e) => {
+            if (!this._previewPanning) {
+                return;
+            }
+            this.offsetX += e.clientX - this.lastMouseX;
+            this.offsetY += e.clientY - this.lastMouseY;
+            this.lastMouseX = e.clientX;
+            this.lastMouseY = e.clientY;
+            this.draw();
+            e.preventDefault();
+        };
+        const endPan = () => {
+            this._previewPanning = false;
+            if (this.canvas) {
+                this.canvas.style.cursor = 'grab';
+            }
+        };
+
+        on(this.canvas, 'mousedown', onDown);
+        on(this.canvas, 'mousemove', onMove);
+        on(window, 'mouseup', endPan);
+        on(this.canvas, 'mouseleave', endPan);
+        on(this.canvas, 'wheel', (e) => this.handleWheel(e), { passive: false });
     }
 
     /**
@@ -2042,26 +2148,44 @@ class CanvasManager {
             // 检查是否有当前项目
             else if (window.mainApp?.currentProject) {
                 const projectPath = window.mainApp.currentProject;
-                const projectData = await window.mainApp.loadProjectConfig(projectPath);
+                if (String(projectPath).startsWith('marketplace-session://')) {
+                    const projectData = await window.mainApp.loadProjectConfig(projectPath);
+                    const ino =
+                        typeof window.mainApp.pickFirstInoFromMarketplaceBundle === 'function'
+                            ? window.mainApp.pickFirstInoFromMarketplaceBundle(projectData.marketplaceBundle)
+                            : null;
+                    if (ino?.text) {
+                        codeContent = ino.text;
+                        codePath = `memory:/${ino.relativePath || 'sketch.ino'}`;
+                    } else {
+                        codeContent = window.mainApp.generateArduinoCode(
+                            projectData,
+                            projectData.projectName
+                        );
+                        codePath = `${projectPath}/${projectData.projectName || 'sketch'}.ino`;
+                    }
+                } else {
+                    const projectData = await window.mainApp.loadProjectConfig(projectPath);
 
-                // 按照项目保存逻辑确定代码文件路径
-                // 优先使用项目名称作为文件名
-                let actualCodePath = `${projectPath}/${projectData.projectName}.ino`;
+                    // 按照项目保存逻辑确定代码文件路径
+                    // 优先使用项目名称作为文件名
+                    let actualCodePath = `${projectPath}/${projectData.projectName}.ino`;
 
-                try {
-                    // 尝试读取项目名称对应的.ino文件
-                    codeContent = await window.electronAPI.loadFile(actualCodePath);
-                    codePath = actualCodePath;
-                } catch (error) {
                     try {
-                        // 如果不存在，尝试读取默认文件名
-                        const defaultCodePath = `${projectPath}/generated_code.ino`;
-                        codeContent = await window.electronAPI.loadFile(defaultCodePath);
-                        codePath = defaultCodePath;
-                    } catch (error2) {
-                        // 如果都没有找到，生成新的代码
-                        codeContent = window.mainApp.generateArduinoCode(projectData, projectData.projectName);
+                        // 尝试读取项目名称对应的.ino文件
+                        codeContent = await window.electronAPI.loadFile(actualCodePath);
                         codePath = actualCodePath;
+                    } catch (error) {
+                        try {
+                            // 如果不存在，尝试读取默认文件名
+                            const defaultCodePath = `${projectPath}/generated_code.ino`;
+                            codeContent = await window.electronAPI.loadFile(defaultCodePath);
+                            codePath = defaultCodePath;
+                        } catch (error2) {
+                            // 如果都没有找到，生成新的代码
+                            codeContent = window.mainApp.generateArduinoCode(projectData, projectData.projectName);
+                            codePath = actualCodePath;
+                        }
                     }
                 }
             } else {
@@ -2819,6 +2943,9 @@ void loop() {
      * 更新缩放显示
      */
     updateZoomDisplay() {
+        if (this.isReadOnlyPreview) {
+            return;
+        }
         const zoomPercent = Math.round(this.scale * 100);
         const zoomLevelElement = document.getElementById('zoom-level');
         if (zoomLevelElement) {

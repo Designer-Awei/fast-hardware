@@ -48,6 +48,7 @@ assets/icon-copy.svg
 - `icon-eye.svg`
 - `icon-eye-off.svg`
 - `icon-folder-open.svg`
+- `icon-git-branch.svg`
 - `icon-info.svg`
 - `icon-image.svg`
 - `icon-keyboard.svg`
@@ -56,7 +57,9 @@ assets/icon-copy.svg
 - `icon-refresh.svg`
 - `icon-save.svg`
 - `icon-share-2.svg`
+- `icon-star.svg`
 - `icon-send.svg`
+- `icon-thumbs-up.svg`
 - `icon-trash-2.svg`
 - `icon-upload-cloud.svg`
 - `icon-user.svg`

@@ -28,6 +28,9 @@
                 <button class="tab-btn" data-tab="personal-center">
                     个人中心
                 </button>
+                <button class="tab-btn" data-tab="maker-marketplace">
+                    创客集市
+                </button>
             </div>
             <div class="nav-actions">
                 <button class="nav-btn" id="new-project">
@@ -644,6 +647,23 @@
                 </div>
             </div>
 
+            <div id="maker-marketplace-tab" class="tab-content">
+                <div class="marketplace-page">
+                    <div class="marketplace-search-bar">
+                        <input type="text" id="marketplace-search-input" class="marketplace-search-input" placeholder="搜索项目名/描述">
+                        <select id="marketplace-sort-select" class="marketplace-sort-select">
+                            <option value="likes">点赞优先</option>
+                            <option value="favorites">收藏优先</option>
+                            <option value="remixes">复刻优先</option>
+                        </select>
+                        <button class="btn btn-secondary" id="marketplace-search-btn">搜索</button>
+                    </div>
+                    <div class="marketplace-grid" id="marketplace-grid">
+                        <div class="account-empty-state">请先登录后查看创客集市。</div>
+                    </div>
+                </div>
+            </div>
+
             <div id="personal-center-tab" class="tab-content">
                 <div class="account-center-page">
                     <div class="sub-tabs account-sub-tabs">
@@ -658,6 +678,9 @@
                         </button>
                         <button class="account-sub-tab-btn is-hidden" id="community-management-tab-btn" data-account-sub-tab="community-management">
                             社区管理
+                        </button>
+                        <button class="account-sub-tab-btn is-hidden" id="permission-management-tab-btn" data-account-sub-tab="permission-management">
+                            权限管理
                         </button>
                     </div>
 
@@ -861,8 +884,58 @@
                                         <p>仅管理员可见。后续这里将承载待审核作品列表、通过 / 驳回操作与审核记录。</p>
                                     </div>
                                 </div>
-                                <div class="account-empty-state">
-                                    当前先保留管理员专属二级标签页骨架，后续会接入 Supabase 审核数据与审核动作。
+                                <div id="community-pending-container">
+                                    <div class="account-empty-state">暂无待审核项目。</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="account-sub-tab-content is-hidden" id="permission-management-sub-tab">
+                        <div class="account-center-scroll">
+                            <div class="permission-management-panel">
+                                <div class="permission-stats-grid">
+                                    <div class="permission-stat-card">
+                                        <span class="permission-stat-label">注册用户总数</span>
+                                        <strong id="permission-total-users">0</strong>
+                                    </div>
+                                    <div class="permission-stat-card">
+                                        <span class="permission-stat-label">管理员数量</span>
+                                        <strong id="permission-admin-count">0</strong>
+                                    </div>
+                                    <div class="permission-stat-card">
+                                        <span class="permission-stat-label">超级管理员数量</span>
+                                        <strong id="permission-super-admin-count">0</strong>
+                                    </div>
+                                </div>
+
+                                <div class="permission-search-row">
+                                    <input
+                                        type="text"
+                                        id="permission-user-search-input"
+                                        class="permission-search-input"
+                                        placeholder="按邮箱或昵称搜索已注册账号"
+                                    >
+                                    <button type="button" class="btn btn-secondary" id="permission-user-search-btn">搜索</button>
+                                </div>
+
+                                <div class="permission-table-wrap">
+                                    <table class="permission-table">
+                                        <thead>
+                                            <tr>
+                                                <th>邮箱</th>
+                                                <th>昵称</th>
+                                                <th>角色</th>
+                                                <th>注册时间</th>
+                                                <th>操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="permission-users-tbody">
+                                            <tr>
+                                                <td colspan="5" class="permission-table-empty">暂无数据</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
                         </div>
@@ -871,6 +944,50 @@
             </div>
         </main>
     </div>
+
+      <div class="settings-modal" id="marketplace-publish-modal">
+          <div class="settings-modal-backdrop" data-close-marketplace-publish-modal></div>
+          <div class="settings-modal-content account-doc-modal-content">
+              <div class="settings-modal-header">
+                  <h3>发布到创客集市</h3>
+                  <button class="settings-modal-close" id="close-marketplace-publish-modal" aria-label="关闭">×</button>
+              </div>
+              <div class="settings-modal-body">
+                  <div class="form-group">
+                      <label for="marketplace-publish-description">项目描述</label>
+                      <textarea id="marketplace-publish-description" class="account-profile-input" rows="4" placeholder="请输入发布描述（可编辑）"></textarea>
+                  </div>
+                  <div class="marketplace-publish-preview" id="marketplace-publish-preview"></div>
+                  <div class="marketplace-modal-actions">
+                      <button type="button" class="btn btn-secondary" id="cancel-marketplace-publish-btn">取消</button>
+                      <button type="button" class="btn btn-primary marketplace-publish-btn" id="confirm-marketplace-publish-btn">
+                          <span class="marketplace-btn-label">发布</span>
+                          <span class="marketplace-btn-spinner" aria-hidden="true"></span>
+                      </button>
+                  </div>
+              </div>
+          </div>
+      </div>
+
+      <div class="settings-modal" id="marketplace-post-detail-modal">
+          <div class="settings-modal-backdrop" data-close-marketplace-post-detail-modal></div>
+          <div class="settings-modal-content marketplace-detail-modal-content">
+              <div class="settings-modal-header">
+                  <h3 id="marketplace-detail-title">项目预览</h3>
+                  <button class="settings-modal-close" id="close-marketplace-post-detail-modal" aria-label="关闭">×</button>
+              </div>
+              <div class="settings-modal-body">
+                  <div class="marketplace-detail-layout">
+                      <div class="marketplace-detail-preview-wrap" id="marketplace-detail-preview-wrap">
+                          <canvas id="marketplace-detail-preview-canvas" class="marketplace-detail-preview-canvas" width="420" height="260"></canvas>
+                          <div class="marketplace-detail-preview-tip">与电路页相同引擎渲染；拖动平移，滚轮缩放（仅预览，不可编辑）</div>
+                          <p id="marketplace-detail-description" class="marketplace-detail-description"></p>
+                      </div>
+                  </div>
+                  <div class="marketplace-modal-actions" id="marketplace-detail-actions"></div>
+              </div>
+          </div>
+      </div>
 
       <!-- 固件代码编辑器浮动窗口 -->
       <div class="code-editor-modal" id="code-editor-modal" style="display: none;">

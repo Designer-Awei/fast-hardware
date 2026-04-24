@@ -6,6 +6,13 @@
 
 以下 **🎯 日期补充**按**日期降序**排列（最新在上）。
 
+#### 🎯 2026-04-25 补充
+- **社区管理 · 待审卡片加载态（`styles/main.css`）**：点击待审卡片拉取详情时，整卡 **半透明遮罩** + **几何居中大号转圈**，替代右上角小圈，层次更清晰。
+- **集市详情预览 · 与电路页同引擎渲染（`scripts/account-center.js` / `scripts/canvas.js` / `scripts/main.js` / `index.html`）**：弃用此前基于 **`position`/`path`/尺寸估算** 的 **2D 简化示意**；改为拉取与「**查看细节**」相同的 **Storage 项目 bundle**，经 **`buildProjectDataFromMarketplaceBundle`** 与 **`renderProjectToCanvasManager`** 写入 **第二套 `CanvasManager` 只读实例**（独立 `#marketplace-detail-preview-canvas`），元件/连线/网格与主 **电路搭建** 页一致；**`ResizeObserver`** 监听 **`#marketplace-detail-preview-wrap`** 自适应尺寸；关闭模态 **`destroyReadOnlyPreview`** 移除监听并释放引用；拉取前/失败时 **`drawMarketplacePreviewPlaceholder`** 占位文案；提示文案标明与电路页 **同一引擎**、仅预览不可编辑。
+- **`CanvasManager` 预览构造参数（`scripts/canvas.js`）**：支持 `{ canvasElement, isReadOnlyPreview: true }`；只读模式下 **`markProjectAsModified` 空操作**、**`updateZoomDisplay` 不写主界面缩放百分比**；**`bindReadOnlyPreviewEvents`** 仅左键拖动画布平移 + 滚轮缩放（与主画布 **`zoom`** 逻辑一致）；**`resizeCanvas`** 在 `canvas`/`ctx` 缺失时安全返回。
+- **渲染管线复用（`scripts/main.js`）**：新增 **`renderProjectToCanvasManager(targetManager, projectData)`**，将原 **`renderProjectToCanvas`** 改为对 **`window.canvasManager`** 的薄封装，供主画布与集市预览共用。
+- **集市内存项目 · 防重复标签（`scripts/main.js` / `scripts/project-tabs.js` / `scripts/account-center.js`）**：虚拟路径与帖 id **小写规范化**；**`projectData.marketplacePostId`** 与标签对象 **`marketplacePostId`**；**`findOpenMarketplaceSessionByPostId`** 按 `path` / `projectData.path` / 帖 id 补查，避免 `findProjectByPath` 漏检导致同一待审帖多次「查看细节」新开重复标签；详情按钮 **`bundleOpenPostId`** 优先使用打开详情的 **`postId`**，与 **`detail.id`** 对齐。
+
 #### 🎯 2026-04-24 补充
 - **个人中心 · 我的项目 · 云端备份（`scripts/account-center.js` / `styles/main.css` / `preload.js` / `main.js` / `supabase/auth-service.js`）**：在登录态下列出本地项目卡片并展示备份状态；支持 **上传/更新备份**、**撤销备份**、**下载恢复到本地**；本地项目路径与列表键统一 **`\` → `/` 归一化**；备份清单 **`__manifest__.json`** 映射原始相对路径与安全存储名；单方案备份体积上限 **5MB**、每用户最多 **10** 个不同方案备份（更新已有方案不计入新增上限）。
 - **撤销备份可靠性（`supabase/auth-service.js`）**：先删除 **`project_backups`** 表记录并用 **`delete().select('id')`** 校验实际删除行数，再清理 Storage，避免 RLS 下「0 行删除仍返回成功」；无删除权限时返回明确错误文案。
@@ -15,6 +22,9 @@
 - **打开项目默认视图与坐标显示修正（`scripts/main.js` / `scripts/project-tabs.js` / `scripts/canvas.js`）**：修复从“我的项目/加载项目”打开后画布视图偏上问题；打开项目时在切换到电路搭建页后执行 `resizeCanvas + requestAnimationFrame + resetView`，并输出当前 `scale/offset/canvas` 控制台日志便于定位视图异常。
 - **防止重复打开同一路径项目（`scripts/main.js` / `scripts/project-tabs.js`）**：新增按路径规范化（`\\`→`/` + 小写）查找已打开标签；再次打开同一路径项目时直接切换到现有标签并刷新默认视图，不再新增重复项目标签。
 - **坐标系第一象限显示修正（`scripts/canvas.js`）**：保持原点在初始视图左下不变，仅修正鼠标坐标显示的 Y 方向，确保右上区域显示为正坐标。
+- **权限管理页交互与查询优化（`index.html` / `styles/main.css` / `scripts/account-center.js` / `supabase/sql/002_permission_management.sql`）**：修复权限管理用户查询的函数返回类型不匹配；搜索区移除重置按钮、搜索按钮固定宽度并右对齐；首次进入权限管理仅加载统计，用户列表改为手动触发查询；表格容器限制为最多 5 行可见，超出后容器内纵向滚动，字段名行固定便于对照。
+- **权限真源迁移（`supabase/sql/002_permission_management.sql` / `supabase/auth-service.js`）**：新增 `public.user_roles` 作为唯一授权真源，角色默认值统一 `user`；历史 `auth.users.raw_app_meta_data.role` 已清理；权限管理 RPC 与登录态角色读取切换到 `user_roles`。
+- **创客集市需求重构（`feature-prd/9-maker-marketplace_prd.md` / `feature-prd/8-account_prd.md`）**：文档明确当前仅使用 Supabase Storage（不再引入阿里云 OSS）；删除“至少一款国内 OAuth”硬要求；补齐“我的项目发布 -> 社区管理审核 -> 创客集市展示”完整闭环、每日 3 次配额、审核态/发布态预览、数据库与 Storage 路径设计。
 
 #### 🎯 2026-04-23 补充
 - **账号中心与个人入口（`index.html` / `scripts/account-center.js` / `styles/main.css`）**：新增顶部头像入口、个人中心一级标签与账号设置二级页骨架；未登录态切入类 App 登录页，已登录态展示邮箱、昵称、角色、登录方式，并为管理员预留社区管理入口。

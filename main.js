@@ -29,6 +29,16 @@ const {
   uploadProjectBackup: supabaseUploadProjectBackup,
   deleteProjectBackup: supabaseDeleteProjectBackup,
   downloadProjectBackup: supabaseDownloadProjectBackup,
+  getPermissionManagementStats: supabaseGetPermissionManagementStats,
+  listUsersForPermissionManagement: supabaseListUsersForPermissionManagement,
+  updateUserRoleBySuperAdmin: supabaseUpdateUserRoleBySuperAdmin,
+  publishMarketplacePost: supabasePublishMarketplacePost,
+  listMarketplacePendingPosts: supabaseListMarketplacePendingPosts,
+  listMarketplaceApprovedPosts: supabaseListMarketplaceApprovedPosts,
+  getMarketplacePostDetail: supabaseGetMarketplacePostDetail,
+  getMarketplaceProjectBundle: supabaseGetMarketplaceProjectBundle,
+  reviewMarketplacePost: supabaseReviewMarketplacePost,
+  interactMarketplacePost: supabaseInteractMarketplacePost,
   signUpWithPassword: supabaseSignUpWithPassword,
   signInWithPassword: supabaseSignInWithPassword,
   signOut: supabaseSignOut
@@ -3215,6 +3225,86 @@ ipcMain.handle('supabase-project-backup-delete', async (event, payload) => {
 ipcMain.handle('supabase-project-backup-download', async (event, payload) => {
   try {
     return await supabaseDownloadProjectBackup(payload || {});
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('supabase-permission-management-stats', async () => {
+  try {
+    return await supabaseGetPermissionManagementStats();
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('supabase-permission-management-list-users', async (event, payload) => {
+  try {
+    return await supabaseListUsersForPermissionManagement(payload || {});
+  } catch (error) {
+    return { success: false, error: error.message || String(error), users: [], total: 0 };
+  }
+});
+
+ipcMain.handle('supabase-permission-management-update-role', async (event, payload) => {
+  try {
+    return await supabaseUpdateUserRoleBySuperAdmin(payload || {});
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('supabase-marketplace-publish', async (event, payload) => {
+  try {
+    return await supabasePublishMarketplacePost(payload || {});
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('supabase-marketplace-list-pending', async () => {
+  try {
+    return await supabaseListMarketplacePendingPosts();
+  } catch (error) {
+    return { success: false, error: error.message || String(error), posts: [] };
+  }
+});
+
+ipcMain.handle('supabase-marketplace-list-approved', async (event, payload) => {
+  try {
+    return await supabaseListMarketplaceApprovedPosts(payload || {});
+  } catch (error) {
+    return { success: false, error: error.message || String(error), posts: [] };
+  }
+});
+
+ipcMain.handle('supabase-marketplace-post-detail', async (event, payload) => {
+  try {
+    return await supabaseGetMarketplacePostDetail(payload || {});
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('supabase-marketplace-project-bundle', async (event, payload) => {
+  try {
+    return await supabaseGetMarketplaceProjectBundle(payload || {});
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('supabase-marketplace-review', async (event, payload) => {
+  try {
+    return await supabaseReviewMarketplacePost(payload || {});
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('supabase-marketplace-interact', async (event, payload) => {
+  try {
+    return await supabaseInteractMarketplacePost(payload || {});
   } catch (error) {
     return { success: false, error: error.message || String(error) };
   }

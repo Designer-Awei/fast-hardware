@@ -2,17 +2,205 @@
   "projectName": "sample-led-project",
   "description": "通过Fast Hardware创建的电路设计",
   "version": "1.0.0",
-  "createdAt": "2025-09-14T12:31:03.588Z",
-  "lastModified": "2025-09-14T12:31:03.588Z",
+  "createdAt": "2026-04-24T13:04:34.755Z",
+  "lastModified": "2026-04-24T13:04:34.755Z",
   "components": [
     {
       "componentFile": "std-arduino-nano-220724.json",
       "instanceId": "arduino-nano-1",
       "position": [
-        220.82040711370433,
-        -336.11972859086376
+        226.07808567777107,
+        -291.95522865270306
       ],
       "orientation": "up",
+      "libraryComponentId": "std-arduino-nano-220724",
+      "componentName": "Arduino Nano",
+      "pins": {
+        "side1": [
+          {
+            "pinId": "side1-1",
+            "pinName": "D12",
+            "type": "digital_io",
+            "order": 1
+          },
+          {
+            "pinId": "side1-2",
+            "pinName": "D11",
+            "type": "digital_io",
+            "order": 2
+          },
+          {
+            "pinId": "side1-3",
+            "pinName": "D10",
+            "type": "digital_io",
+            "order": 3
+          },
+          {
+            "pinId": "side1-4",
+            "pinName": "D9",
+            "type": "digital_io",
+            "order": 4
+          },
+          {
+            "pinId": "side1-5",
+            "pinName": "D8",
+            "type": "digital_io",
+            "order": 5
+          },
+          {
+            "pinId": "side1-6",
+            "pinName": "D7",
+            "type": "digital_io",
+            "order": 6
+          },
+          {
+            "pinId": "side1-7",
+            "pinName": "D6",
+            "type": "digital_io",
+            "order": 7
+          },
+          {
+            "pinId": "side1-8",
+            "pinName": "D5",
+            "type": "digital_io",
+            "order": 8
+          },
+          {
+            "pinId": "side1-9",
+            "pinName": "D4",
+            "type": "digital_io",
+            "order": 9
+          },
+          {
+            "pinId": "side1-10",
+            "pinName": "D3",
+            "type": "digital_io",
+            "order": 10
+          },
+          {
+            "pinId": "side1-11",
+            "pinName": "D2",
+            "type": "digital_io",
+            "order": 11
+          },
+          {
+            "pinId": "side1-12",
+            "pinName": "GND",
+            "type": "ground",
+            "order": 12
+          },
+          {
+            "pinId": "side1-13",
+            "pinName": "RST",
+            "type": "special",
+            "order": 13
+          },
+          {
+            "pinId": "side1-14",
+            "pinName": "RX0",
+            "type": "special",
+            "order": 14
+          },
+          {
+            "pinId": "side1-15",
+            "pinName": "TX1",
+            "type": "special",
+            "order": 15
+          }
+        ],
+        "side3": [
+          {
+            "pinId": "side3-1",
+            "pinName": "D13",
+            "type": "digital_io",
+            "order": 1
+          },
+          {
+            "pinId": "side3-2",
+            "pinName": "3V3",
+            "type": "power",
+            "order": 2
+          },
+          {
+            "pinId": "side3-3",
+            "pinName": "REF",
+            "type": "special",
+            "order": 3
+          },
+          {
+            "pinId": "side3-4",
+            "pinName": "A0",
+            "type": "analog_io",
+            "order": 4
+          },
+          {
+            "pinId": "side3-5",
+            "pinName": "A1",
+            "type": "analog_io",
+            "order": 5
+          },
+          {
+            "pinId": "side3-6",
+            "pinName": "A2",
+            "type": "analog_io",
+            "order": 6
+          },
+          {
+            "pinId": "side3-7",
+            "pinName": "A3",
+            "type": "analog_io",
+            "order": 7
+          },
+          {
+            "pinId": "side3-8",
+            "pinName": "A4",
+            "type": "analog_io",
+            "order": 8
+          },
+          {
+            "pinId": "side3-9",
+            "pinName": "A5",
+            "type": "analog_io",
+            "order": 9
+          },
+          {
+            "pinId": "side3-10",
+            "pinName": "A6",
+            "type": "analog_io",
+            "order": 10
+          },
+          {
+            "pinId": "side3-11",
+            "pinName": "A7",
+            "type": "analog_io",
+            "order": 11
+          },
+          {
+            "pinId": "side3-12",
+            "pinName": "5V",
+            "type": "power",
+            "order": 12
+          },
+          {
+            "pinId": "side3-13",
+            "pinName": "RST",
+            "type": "special",
+            "order": 13
+          },
+          {
+            "pinId": "side3-14",
+            "pinName": "GND",
+            "type": "ground",
+            "order": 14
+          },
+          {
+            "pinId": "side3-15",
+            "pinName": "VIN",
+            "type": "power",
+            "order": 15
+          }
+        ]
+      },
       "properties": {
         "customLabel": "Arduino Nano"
       }
@@ -21,10 +209,40 @@
       "componentFile": "std-rgb-三色-led-211130.json",
       "instanceId": "rgb-led-1",
       "position": [
-        190.73148978006066,
-        -121.99381056333544
+        160.1737221455935,
+        -493.4649316924762
       ],
-      "orientation": "down",
+      "orientation": "up",
+      "libraryComponentId": "std-rgb-三色-led-211130",
+      "componentName": "RGB 三色 LED",
+      "pins": {
+        "side3": [
+          {
+            "pinId": "side3-1",
+            "pinName": "R",
+            "type": "power",
+            "order": 1
+          },
+          {
+            "pinId": "side3-2",
+            "pinName": "G",
+            "type": "power",
+            "order": 2
+          },
+          {
+            "pinId": "side3-3",
+            "pinName": "B",
+            "type": "power",
+            "order": 3
+          },
+          {
+            "pinId": "side3-4",
+            "pinName": "GND",
+            "type": "ground",
+            "order": 4
+          }
+        ]
+      },
       "properties": {
         "customLabel": "RGB 三色 LED"
       }
@@ -33,10 +251,34 @@
       "componentFile": "std-按键开关模块-222902.json",
       "instanceId": "button-1",
       "position": [
-        230.69196877514045,
-        -546.1312185638673
+        601.7116235413515,
+        -309.0908835743435
       ],
-      "orientation": "up",
+      "orientation": "right",
+      "libraryComponentId": "std-按键开关模块-222902",
+      "componentName": "按键开关模块",
+      "pins": {
+        "side3": [
+          {
+            "pinId": "side3-1",
+            "pinName": "S",
+            "type": "digital_io",
+            "order": 1
+          },
+          {
+            "pinId": "side3-2",
+            "pinName": "VCC",
+            "type": "power",
+            "order": 2
+          },
+          {
+            "pinId": "side3-3",
+            "pinName": "GND",
+            "type": "ground",
+            "order": 3
+          }
+        ]
+      },
       "properties": {
         "customLabel": "按键开关模块"
       }
@@ -58,20 +300,28 @@
       "wireType": "digital",
       "path": [
         {
-          "x": 210.69196877514045,
-          "y": -526.1312185638673
+          "x": 581.7116235413515,
+          "y": -329.0908835743435
         },
         {
-          "x": 210.69196877514045,
-          "y": -451.1254735773655
+          "x": 571.7116235413515,
+          "y": -329.0908835743435
         },
         {
-          "x": 268.82040711370433,
-          "y": -451.1254735773655
+          "x": 422.8948546095613,
+          "y": -329.0908835743435
         },
         {
-          "x": 268.82040711370433,
-          "y": -376.11972859086376
+          "x": 422.8948546095613,
+          "y": -341.95522865270306
+        },
+        {
+          "x": 274.07808567777107,
+          "y": -341.95522865270306
+        },
+        {
+          "x": 274.07808567777107,
+          "y": -331.95522865270306
         }
       ],
       "style": {
@@ -79,127 +329,7 @@
         "dashPattern": []
       },
       "metadata": {
-        "createdAt": "2025-09-14T12:31:03.588Z",
-        "connectionType": "digital"
-      }
-    },
-    {
-      "id": "wire-2",
-      "source": {
-        "instanceId": "arduino-nano-1",
-        "pinId": "side1-4",
-        "pinName": "D9"
-      },
-      "target": {
-        "instanceId": "rgb-led-1",
-        "pinId": "side3-1",
-        "pinName": "R"
-      },
-      "wireType": "digital",
-      "path": [
-        {
-          "x": 156.82040711370433,
-          "y": -376.11972859086376
-        },
-        {
-          "x": 156.82040711370433,
-          "y": -256.5567695770996
-        },
-        {
-          "x": 220.73148978006066,
-          "y": -256.5567695770996
-        },
-        {
-          "x": 220.73148978006066,
-          "y": -136.99381056333544
-        }
-      ],
-      "style": {
-        "thickness": 2,
-        "dashPattern": []
-      },
-      "metadata": {
-        "createdAt": "2025-09-14T12:31:03.588Z",
-        "connectionType": "digital"
-      }
-    },
-    {
-      "id": "wire-3",
-      "source": {
-        "instanceId": "arduino-nano-1",
-        "pinId": "side1-3",
-        "pinName": "D10"
-      },
-      "target": {
-        "instanceId": "rgb-led-1",
-        "pinId": "side3-2",
-        "pinName": "G"
-      },
-      "wireType": "digital",
-      "path": [
-        {
-          "x": 140.82040711370433,
-          "y": -376.11972859086376
-        },
-        {
-          "x": 140.82040711370433,
-          "y": -256.5567695770996
-        },
-        {
-          "x": 200.73148978006066,
-          "y": -256.5567695770996
-        },
-        {
-          "x": 200.73148978006066,
-          "y": -136.99381056333544
-        }
-      ],
-      "style": {
-        "thickness": 2,
-        "dashPattern": []
-      },
-      "metadata": {
-        "createdAt": "2025-09-14T12:31:03.588Z",
-        "connectionType": "digital"
-      }
-    },
-    {
-      "id": "wire-4",
-      "source": {
-        "instanceId": "arduino-nano-1",
-        "pinId": "side1-2",
-        "pinName": "D11"
-      },
-      "target": {
-        "instanceId": "rgb-led-1",
-        "pinId": "side3-3",
-        "pinName": "B"
-      },
-      "wireType": "digital",
-      "path": [
-        {
-          "x": 124.82040711370433,
-          "y": -376.11972859086376
-        },
-        {
-          "x": 124.82040711370433,
-          "y": -256.5567695770996
-        },
-        {
-          "x": 180.73148978006066,
-          "y": -256.5567695770996
-        },
-        {
-          "x": 180.73148978006066,
-          "y": -136.99381056333544
-        }
-      ],
-      "style": {
-        "thickness": 2,
-        "dashPattern": []
-      },
-      "metadata": {
-        "createdAt": "2025-09-14T12:31:03.588Z",
+        "createdAt": "2026-04-24T13:04:34.754Z",
         "connectionType": "digital"
       }
     },
@@ -212,26 +342,34 @@
       },
       "target": {
         "instanceId": "arduino-nano-1",
-        "pinId": "side3-14",
+        "pinId": "side1-12",
         "pinName": "GND"
       },
       "wireType": "ground",
       "path": [
         {
-          "x": 160.73148978006066,
-          "y": -136.99381056333544
+          "x": 190.1737221455935,
+          "y": -478.4649316924762
         },
         {
-          "x": 160.73148978006066,
-          "y": -216.5567695770996
+          "x": 190.1737221455935,
+          "y": -438.4649316924762
         },
         {
-          "x": 316.82040711370433,
-          "y": -216.5567695770996
+          "x": 240.1259039116823,
+          "y": -438.4649316924762
         },
         {
-          "x": 316.82040711370433,
-          "y": -296.11972859086376
+          "x": 240.1259039116823,
+          "y": -341.95522865270306
+        },
+        {
+          "x": 290.07808567777107,
+          "y": -341.95522865270306
+        },
+        {
+          "x": 290.07808567777107,
+          "y": -331.95522865270306
         }
       ],
       "style": {
@@ -239,7 +377,7 @@
         "dashPattern": []
       },
       "metadata": {
-        "createdAt": "2025-09-14T12:31:03.588Z",
+        "createdAt": "2026-04-24T13:04:34.755Z",
         "connectionType": "ground"
       }
     },
@@ -258,20 +396,28 @@
       "wireType": "power",
       "path": [
         {
-          "x": 230.69196877514045,
-          "y": -526.1312185638673
+          "x": 581.7116235413515,
+          "y": -309.0908835743435
         },
         {
-          "x": 230.69196877514045,
-          "y": -411.1254735773655
+          "x": 561.7116235413515,
+          "y": -309.0908835743435
         },
         {
-          "x": 284.82040711370433,
-          "y": -411.1254735773655
+          "x": 425.8948546095613,
+          "y": -309.0908835743435
         },
         {
-          "x": 284.82040711370433,
-          "y": -296.11972859086376
+          "x": 425.8948546095613,
+          "y": -231.95522865270306
+        },
+        {
+          "x": 290.07808567777107,
+          "y": -231.95522865270306
+        },
+        {
+          "x": 290.07808567777107,
+          "y": -251.95522865270306
         }
       ],
       "style": {
@@ -279,7 +425,7 @@
         "dashPattern": []
       },
       "metadata": {
-        "createdAt": "2025-09-14T12:31:03.588Z",
+        "createdAt": "2026-04-24T13:04:34.755Z",
         "connectionType": "power"
       }
     },
@@ -298,20 +444,28 @@
       "wireType": "ground",
       "path": [
         {
-          "x": 250.69196877514045,
-          "y": -526.1312185638673
+          "x": 581.7116235413515,
+          "y": -289.0908835743435
         },
         {
-          "x": 250.69196877514045,
-          "y": -411.1254735773655
+          "x": 551.7116235413515,
+          "y": -289.0908835743435
         },
         {
-          "x": 316.82040711370433,
-          "y": -411.1254735773655
+          "x": 436.8948546095613,
+          "y": -289.0908835743435
         },
         {
-          "x": 316.82040711370433,
-          "y": -296.11972859086376
+          "x": 436.8948546095613,
+          "y": -221.95522865270306
+        },
+        {
+          "x": 322.07808567777107,
+          "y": -221.95522865270306
+        },
+        {
+          "x": 322.07808567777107,
+          "y": -251.95522865270306
         }
       ],
       "style": {
@@ -319,15 +473,153 @@
         "dashPattern": []
       },
       "metadata": {
-        "createdAt": "2025-09-14T12:31:03.588Z",
+        "createdAt": "2026-04-24T13:04:34.755Z",
         "connectionType": "ground"
+      }
+    },
+    {
+      "id": "conn_1777035612990_mp6li016z",
+      "source": {
+        "instanceId": "rgb-led-1",
+        "pinId": "side3-1",
+        "pinName": "R"
+      },
+      "target": {
+        "instanceId": "arduino-nano-1",
+        "pinId": "side1-2",
+        "pinName": "D11"
+      },
+      "path": [
+        {
+          "x": 130.1737221455935,
+          "y": -478.4649316924762
+        },
+        {
+          "x": 130.1737221455935,
+          "y": -458.4649316924762
+        },
+        {
+          "x": 130.1737221455935,
+          "y": -405.21008017258964
+        },
+        {
+          "x": 130.07808567777107,
+          "y": -405.21008017258964
+        },
+        {
+          "x": 130.07808567777107,
+          "y": -351.95522865270306
+        },
+        {
+          "x": 130.07808567777107,
+          "y": -331.95522865270306
+        }
+      ],
+      "style": {
+        "color": "#2196f3",
+        "width": 2
+      },
+      "metadata": {
+        "createdAt": "2026-04-24T13:04:34.755Z"
+      }
+    },
+    {
+      "id": "conn_1777035614796_hxxiq9nfm",
+      "source": {
+        "instanceId": "rgb-led-1",
+        "pinId": "side3-2",
+        "pinName": "G"
+      },
+      "target": {
+        "instanceId": "arduino-nano-1",
+        "pinId": "side1-3",
+        "pinName": "D10"
+      },
+      "path": [
+        {
+          "x": 150.1737221455935,
+          "y": -478.4649316924762
+        },
+        {
+          "x": 150.1737221455935,
+          "y": -448.4649316924762
+        },
+        {
+          "x": 150.1737221455935,
+          "y": -405.21008017258964
+        },
+        {
+          "x": 146.07808567777107,
+          "y": -405.21008017258964
+        },
+        {
+          "x": 146.07808567777107,
+          "y": -361.95522865270306
+        },
+        {
+          "x": 146.07808567777107,
+          "y": -331.95522865270306
+        }
+      ],
+      "style": {
+        "color": "#2196f3",
+        "width": 2
+      },
+      "metadata": {
+        "createdAt": "2026-04-24T13:04:34.755Z"
+      }
+    },
+    {
+      "id": "conn_1777035618014_20wt50x11",
+      "source": {
+        "instanceId": "rgb-led-1",
+        "pinId": "side3-3",
+        "pinName": "B"
+      },
+      "target": {
+        "instanceId": "arduino-nano-1",
+        "pinId": "side1-4",
+        "pinName": "D9"
+      },
+      "path": [
+        {
+          "x": 170.1737221455935,
+          "y": -478.4649316924762
+        },
+        {
+          "x": 170.1737221455935,
+          "y": -438.4649316924762
+        },
+        {
+          "x": 170.1737221455935,
+          "y": -405.21008017258964
+        },
+        {
+          "x": 162.07808567777107,
+          "y": -405.21008017258964
+        },
+        {
+          "x": 162.07808567777107,
+          "y": -371.95522865270306
+        },
+        {
+          "x": 162.07808567777107,
+          "y": -331.95522865270306
+        }
+      ],
+      "style": {
+        "color": "#2196f3",
+        "width": 2
+      },
+      "metadata": {
+        "createdAt": "2026-04-24T13:04:34.755Z"
       }
     }
   ],
   "canvas": {
-    "zoom": 1,
-    "panX": 50,
-    "panY": 580,
+    "zoom": 0.9797707205477252,
+    "panX": 53.32587525128656,
+    "panY": 635.0979438062468,
     "gridSize": 10,
     "showGrid": true
   }

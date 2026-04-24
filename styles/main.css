@@ -2479,6 +2479,464 @@ body {
     color: #2f3b66;
 }
 
+.permission-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+    margin-bottom: 18px;
+}
+
+.permission-management-panel {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+}
+
+.permission-stat-card {
+    background: #f6f8fe;
+    border-radius: 14px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.permission-stat-label {
+    font-size: 12px;
+    color: #6c7894;
+}
+
+.permission-stat-card strong {
+    font-size: 24px;
+    color: #2f3b66;
+}
+
+.permission-search-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: flex-end;
+    margin-bottom: 16px;
+}
+
+.permission-search-input {
+    flex: 1 1 auto;
+    min-height: 38px;
+    border-radius: 10px;
+    border: 1px solid #d7def0;
+    background: #fff;
+    color: #2f3b66;
+    font-size: 14px;
+    padding: 0 12px;
+}
+
+#permission-user-search-btn {
+    flex: 0 0 100px;
+    width: 100px;
+}
+
+.permission-search-input:focus {
+    outline: none;
+    border-color: #7b3ff6;
+    box-shadow: 0 0 0 3px rgba(123, 63, 246, 0.14);
+}
+
+.permission-table-wrap {
+    border: 1px solid #e1e6f4;
+    border-radius: 12px;
+    overflow-x: auto;
+    overflow-y: auto;
+    max-height: 264px;
+    background: #ffffff;
+}
+
+.permission-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.permission-table th,
+.permission-table td {
+    text-align: left;
+    padding: 12px 14px;
+    border-bottom: 1px solid #eef2fb;
+    color: #3d4a69;
+}
+
+.permission-table th {
+    background: #f7f9ff;
+    color: #5f6d8a;
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.permission-table tbody tr {
+    height: 44px;
+}
+
+.permission-table tr:last-child td {
+    border-bottom: none;
+}
+
+.permission-table-empty {
+    text-align: center !important;
+    color: #7a87a5 !important;
+}
+
+.permission-role-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 72px;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.permission-role-chip.role-user {
+    color: #3d5582;
+    background: #eaf1ff;
+}
+
+.permission-role-chip.role-admin {
+    color: #5f3fa6;
+    background: #efe6ff;
+}
+
+.permission-role-chip.role-super-admin {
+    color: #8b2b52;
+    background: #ffe9f3;
+}
+
+.permission-action-btn {
+    min-height: 28px;
+    border: none;
+    border-radius: 8px;
+    padding: 0 10px;
+    font-size: 12px;
+    color: #ffffff;
+    background: linear-gradient(90deg, #7b3ff6 0%, #8f38ff 100%);
+    cursor: pointer;
+}
+
+.permission-action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.marketplace-page {
+    padding: 20px;
+}
+
+.marketplace-search-bar {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) 180px 100px;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.marketplace-search-input,
+.marketplace-sort-select {
+    min-height: 38px;
+    border-radius: 10px;
+    border: 1px solid #d7def0;
+    background: #fff;
+    color: #2f3b66;
+    padding: 0 12px;
+}
+
+.marketplace-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 14px;
+}
+
+.marketplace-card {
+    border: 1px solid #e1e6f4;
+    border-radius: 14px;
+    background: #fff;
+    overflow: hidden;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.marketplace-card[data-pending-post-id] {
+    cursor: pointer;
+}
+
+.marketplace-card--pending-review {
+    position: relative;
+}
+
+.marketplace-card--pending-review.is-opening {
+    pointer-events: none;
+}
+
+.marketplace-card--pending-review.is-opening::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(10, 14, 28, 0.42);
+    z-index: 5;
+    pointer-events: none;
+}
+
+.marketplace-card--pending-review.is-opening::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 46px;
+    height: 46px;
+    box-sizing: border-box;
+    border: 4px solid rgba(255, 255, 255, 0.22);
+    border-top-color: #ffffff;
+    border-radius: 50%;
+    animation: my-project-upload-spin 0.75s linear infinite;
+    z-index: 6;
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.12);
+}
+
+.marketplace-card--pending-review:hover {
+    border-color: #667eea;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+    transform: translateY(-1px);
+}
+
+.marketplace-card-head {
+    padding: 14px 16px;
+    background: linear-gradient(120deg, #6e6cf7, #8f3fff);
+    color: #fff;
+}
+
+.marketplace-card-head strong {
+    display: block;
+    font-size: 30px;
+}
+
+.marketplace-card-body {
+    padding: 14px 16px;
+}
+
+.marketplace-card-desc {
+    margin: 0 0 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #59688a;
+}
+
+.marketplace-card-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.marketplace-icon-btn {
+    border: none;
+    border-radius: 8px;
+    padding: 6px 10px;
+    background: #f1e8ff;
+    color: #6639bf;
+    font-size: 12px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.marketplace-icon-btn img[data-icon] {
+    width: 14px;
+    height: 14px;
+}
+
+.marketplace-publish-preview {
+    border: 1px solid #e1e6f4;
+    border-radius: 10px;
+    padding: 12px;
+    margin: 12px 0;
+}
+
+.marketplace-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 4px 0 14px;
+}
+
+.marketplace-detail-actions.is-reviewing button:not(.is-uploading) {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
+.marketplace-detail-actions:has(.marketplace-detail-open-btn.is-uploading) button:not(.marketplace-detail-open-btn) {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
+.marketplace-review-btn--reject {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+    color: #ffffff !important;
+    border-color: #ef4444 !important;
+    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.28);
+}
+
+.marketplace-review-btn--reject:hover {
+    background: linear-gradient(135deg, #f87171 0%, #ef4444 100%) !important;
+    border-color: #f87171 !important;
+    transform: translateY(-1px);
+}
+
+.marketplace-review-btn--reject.is-uploading {
+    cursor: not-allowed;
+    opacity: 0.98;
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+    color: #ffffff !important;
+    transform: none !important;
+}
+
+.marketplace-publish-btn {
+    position: relative;
+    overflow: hidden;
+    min-width: 120px;
+}
+
+.marketplace-btn-spinner {
+    display: none;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    border-top-color: #ffffff;
+    border-radius: 999px;
+    animation: my-project-upload-spin 0.85s linear infinite;
+}
+
+.marketplace-publish-btn.is-uploading::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 0%;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.32));
+    animation: my-project-upload-progress 1.4s ease-in-out infinite;
+}
+
+.marketplace-publish-btn.is-uploading {
+    cursor: not-allowed;
+    opacity: 0.98;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    border-color: #667eea !important;
+    color: #ffffff !important;
+    transform: none !important;
+}
+
+.marketplace-publish-btn.is-uploading .marketplace-btn-label {
+    opacity: 0;
+}
+
+.marketplace-publish-btn.is-uploading .marketplace-btn-spinner {
+    display: inline-flex;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 3;
+}
+
+.marketplace-publish-btn.is-uploading:hover .marketplace-btn-spinner,
+.marketplace-publish-btn.is-uploading:focus-visible .marketplace-btn-spinner {
+    display: inline-flex;
+}
+
+.marketplace-detail-open-btn {
+    position: relative;
+    overflow: hidden;
+    min-width: 120px;
+}
+
+.marketplace-detail-open-btn .marketplace-btn-spinner {
+    border: 2px solid rgba(60, 80, 120, 0.22);
+    border-top-color: #4466aa;
+}
+
+.marketplace-detail-open-btn.is-uploading::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 0%;
+    background: linear-gradient(90deg, rgba(68, 102, 170, 0.08), rgba(68, 102, 170, 0.18));
+    animation: my-project-upload-progress 1.4s ease-in-out infinite;
+}
+
+.marketplace-detail-open-btn.is-uploading {
+    cursor: not-allowed;
+    opacity: 0.96;
+    transform: none !important;
+}
+
+.marketplace-detail-open-btn.is-uploading .marketplace-btn-label {
+    opacity: 0;
+}
+
+.marketplace-detail-open-btn.is-uploading .marketplace-btn-spinner {
+    display: inline-flex;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 3;
+}
+
+.marketplace-detail-modal-content {
+    width: min(980px, calc(100% - 40px));
+    max-width: 980px;
+}
+
+.marketplace-detail-layout {
+    display: block;
+}
+
+.marketplace-detail-preview-wrap {
+    border: 1px solid #e1e6f4;
+    border-radius: 10px;
+    padding: 10px;
+    background: #f7f9ff;
+}
+
+.marketplace-detail-preview-canvas {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 21 / 13;
+    border-radius: 8px;
+    background: #f1f4fb;
+    border: 1px solid #dce4f7;
+    cursor: grab;
+    display: block;
+}
+
+.marketplace-detail-preview-canvas.is-dragging {
+    cursor: grabbing;
+}
+
+.marketplace-detail-preview-tip {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #7384a6;
+}
+
+.marketplace-detail-description {
+    margin: 10px 0 0;
+    color: #526389;
+}
+
 .account-empty-state {
     border: 1px dashed #cfd6eb;
     border-radius: 14px;
@@ -2560,6 +3018,11 @@ body {
 
     .account-oauth-options {
         grid-template-columns: 1fr;
+    }
+
+    .permission-search-row {
+        flex-direction: column;
+        align-items: stretch;
     }
 
     .account-settings-row {

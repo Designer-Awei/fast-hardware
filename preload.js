@@ -217,6 +217,74 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('supabase-project-backup-download', payload),
 
   /**
+   * 超级管理员权限管理：读取用户统计。
+   */
+  supabaseGetPermissionManagementStats: () =>
+    ipcRenderer.invoke('supabase-permission-management-stats'),
+
+  /**
+   * 超级管理员权限管理：按关键字查询用户列表。
+   * @param {{ query?: string, page?: number, pageSize?: number }} payload
+   */
+  supabaseListUsersForPermissionManagement: (payload) =>
+    ipcRenderer.invoke('supabase-permission-management-list-users', payload),
+
+  /**
+   * 超级管理员权限管理：更新目标用户角色。
+   * @param {{ userId: string, role: 'user'|'admin' }} payload
+   */
+  supabaseUpdateUserRoleBySuperAdmin: (payload) =>
+    ipcRenderer.invoke('supabase-permission-management-update-role', payload),
+
+  /**
+   * 创客集市：发布项目（进入待审核）。
+   * @param {{ projectPath: string, projectName?: string, description?: string }} payload
+   */
+  supabasePublishMarketplacePost: (payload) =>
+    ipcRenderer.invoke('supabase-marketplace-publish', payload),
+
+  /**
+   * 创客集市：读取待审核项目（管理员/超级管理员）。
+   */
+  supabaseListMarketplacePendingPosts: () =>
+    ipcRenderer.invoke('supabase-marketplace-list-pending'),
+
+  /**
+   * 创客集市：读取已通过项目列表。
+   * @param {{ query?: string, sortBy?: 'likes'|'favorites'|'remixes' }} payload
+   */
+  supabaseListMarketplaceApprovedPosts: (payload) =>
+    ipcRenderer.invoke('supabase-marketplace-list-approved', payload),
+
+  /**
+   * 创客集市：读取项目详情（审核态/发布态）。
+   * @param {{ postId: string }} payload
+   */
+  supabaseGetMarketplacePostDetail: (payload) =>
+    ipcRenderer.invoke('supabase-marketplace-post-detail', payload),
+
+  /**
+   * 创客集市：拉取并解析 project.bundle.json（仅内存，不落盘）。
+   * @param {{ postId: string }} payload
+   */
+  supabaseGetMarketplaceProjectBundle: (payload) =>
+    ipcRenderer.invoke('supabase-marketplace-project-bundle', payload),
+
+  /**
+   * 创客集市：审核项目（通过/拒绝）。
+   * @param {{ postId: string, action: 'approve'|'reject', rejectReason?: string }} payload
+   */
+  supabaseReviewMarketplacePost: (payload) =>
+    ipcRenderer.invoke('supabase-marketplace-review', payload),
+
+  /**
+   * 创客集市：互动（点赞/收藏/复刻）。
+   * @param {{ postId: string, action: 'like'|'favorite'|'remix' }} payload
+   */
+  supabaseInteractMarketplacePost: (payload) =>
+    ipcRenderer.invoke('supabase-marketplace-interact', payload),
+
+  /**
    * Supabase 登出。
    */
   supabaseSignOut: () => ipcRenderer.invoke('supabase-auth-sign-out'),

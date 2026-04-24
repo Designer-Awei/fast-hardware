@@ -15,6 +15,23 @@ class AccountCenterManager {
         };
         this.authMode = 'login';
         this.currentSubTab = 'account-settings';
+        this.permissionUsers = [];
+        this.permissionSearchQuery = '';
+        this.permissionListLoading = false;
+        this.permissionUpdatingUserIds = new Set();
+        this.marketplacePublishContext = null;
+        this.marketplacePosts = [];
+        this.marketplacePendingPosts = [];
+        /** @type {Map<string, { success: boolean, detail?: Record<string, unknown>, error?: string }>} */
+        this.marketplacePostDetailCache = new Map();
+        /** @type {{ postId: string, reopenPending: boolean } | null} */
+        this.marketplaceDetailReviewSession = null;
+        /** @type {boolean} */
+        this.marketplaceDetailReviewMode = false;
+        /** @type {any} */
+        this._marketplacePreviewCanvasMgr = null;
+        /** @type {ResizeObserver | null} */
+        this._marketplacePreviewResizeObs = null;
         this.init();
     }
 
@@ -58,6 +75,26 @@ class AccountCenterManager {
         this.projectsGrid = document.getElementById('my-projects-grid');
         this.communityTabBtn = document.getElementById('community-management-tab-btn');
         this.communityTabPanel = document.getElementById('community-management-sub-tab');
+        this.communityPendingContainer = document.getElementById('community-pending-container');
+        this.permissionTabBtn = document.getElementById('permission-management-tab-btn');
+        this.permissionTabPanel = document.getElementById('permission-management-sub-tab');
+        this.permissionSearchInput = document.getElementById('permission-user-search-input');
+        this.permissionSearchBtn = document.getElementById('permission-user-search-btn');
+        this.permissionUsersTbody = document.getElementById('permission-users-tbody');
+        this.marketplaceGrid = document.getElementById('marketplace-grid');
+        this.marketplaceSearchInput = document.getElementById('marketplace-search-input');
+        this.marketplaceSortSelect = document.getElementById('marketplace-sort-select');
+        this.marketplaceSearchBtn = document.getElementById('marketplace-search-btn');
+        this.marketplacePublishModal = document.getElementById('marketplace-publish-modal');
+        this.marketplacePublishDescriptionInput = document.getElementById('marketplace-publish-description');
+        this.marketplacePublishPreview = document.getElementById('marketplace-publish-preview');
+        this.marketplaceDetailModal = document.getElementById('marketplace-post-detail-modal');
+        this.marketplaceDetailTitle = document.getElementById('marketplace-detail-title');
+        this.marketplaceDetailDescription = document.getElementById('marketplace-detail-description');
+        this.marketplaceDetailPreviewCanvas = document.getElementById('marketplace-detail-preview-canvas');
+        this.marketplaceDetailPreviewWrap = document.getElementById('marketplace-detail-preview-wrap');
+        this.marketplaceDetailActions = document.getElementById('marketplace-detail-actions');
+        this.marketplacePublishConfirmBtn = document.getElementById('confirm-marketplace-publish-btn');
         this.docModal = document.getElementById('account-doc-modal');
         this.docModalTitle = document.getElementById('account-doc-modal-title');
         this.docModalBody = document.getElementById('account-doc-modal-body');
@@ -169,12 +206,84 @@ class AccountCenterManager {
                 }
             });
         });
+        this.permissionSearchBtn?.addEventListener('click', async () => {
+            this.permissionSearchQuery = String(this.permissionSearchInput?.value || '').trim();
+            await this.refreshPermissionUsers();
+        });
+        this.permissionSearchInput?.addEventListener('keydown', async (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                this.permissionSearchQuery = String(this.permissionSearchInput?.value || '').trim();
+                await this.refreshPermissionUsers();
+            }
+        });
+        this.permissionUsersTbody?.addEventListener('click', async (event) => {
+            const trigger = event.target?.closest?.('[data-permission-role-update]');
+            if (!trigger) {
+                return;
+            }
+            const userId = String(trigger.getAttribute('data-user-id') || '').trim();
+            const role = String(trigger.getAttribute('data-target-role') || '').trim();
+            const email = String(trigger.getAttribute('data-user-email') || '').trim();
+            await this.handlePermissionRoleUpdate(userId, role, email);
+        });
+        this.marketplaceSearchBtn?.addEventListener('click', async () => {
+            await this.refreshMarketplaceApprovedPosts();
+        });
+        this.marketplaceSearchInput?.addEventListener('keydown', async (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                await this.refreshMarketplaceApprovedPosts();
+            }
+        });
+        document.getElementById('close-marketplace-publish-modal')?.addEventListener('click', () => {
+            this.closeMarketplacePublishModal();
+        });
+        document.getElementById('cancel-marketplace-publish-btn')?.addEventListener('click', () => {
+            this.closeMarketplacePublishModal();
+        });
+        this.marketplacePublishModal?.querySelector('[data-close-marketplace-publish-modal]')?.addEventListener('click', () => {
+            this.closeMarketplacePublishModal();
+        });
+        document.getElementById('confirm-marketplace-publish-btn')?.addEventListener('click', async () => {
+            await this.confirmMarketplacePublish();
+        });
+        this.marketplacePublishDescriptionInput?.addEventListener('input', () => {
+            this.renderMarketplacePublishPreviewCard();
+        });
+        document.getElementById('close-marketplace-post-detail-modal')?.addEventListener('click', () => {
+            this.closeMarketplaceDetailModal();
+        });
+        this.marketplaceDetailModal?.querySelector('[data-close-marketplace-post-detail-modal]')?.addEventListener('click', () => {
+            this.closeMarketplaceDetailModal();
+        });
+        this.marketplaceGrid?.addEventListener('click', async (event) => {
+            const actionBtn = event.target?.closest?.('[data-marketplace-interact]');
+            if (actionBtn) {
+                const postId = String(actionBtn.getAttribute('data-post-id') || '').trim();
+                const action = String(actionBtn.getAttribute('data-marketplace-interact') || '').trim();
+                await this.interactMarketplacePost(postId, action);
+                return;
+            }
+            const card = event.target?.closest?.('[data-marketplace-post-id]');
+            if (card) {
+                await this.openMarketplacePostDetail(String(card.getAttribute('data-marketplace-post-id') || '').trim(), false);
+            }
+        });
+        this.communityTabPanel?.addEventListener('click', async (event) => {
+            const card = event.target?.closest?.('[data-pending-post-id]');
+            if (card) {
+                await this.openMarketplacePostDetail(String(card.getAttribute('data-pending-post-id') || '').trim(), true);
+            }
+        });
 
         this.projectsGrid?.addEventListener('click', async (event) => {
             const shareBtn = event.target?.closest?.('[data-project-share]');
             if (shareBtn) {
+                const projectPath = String(shareBtn.getAttribute('data-project-path') || '').trim();
                 const projectName = String(shareBtn.getAttribute('data-project-name') || '').trim() || '当前项目';
-                this.showNotification(`分享功能预留中：${projectName}`, 'info');
+                const projectDescription = String(shareBtn.getAttribute('data-project-description') || '').trim();
+                this.openMarketplacePublishModal(projectPath, projectName, projectDescription);
                 return;
             }
             const backupBtn = event.target?.closest?.('[data-project-backup]');
@@ -223,6 +332,9 @@ class AccountCenterManager {
                     await this.refreshMyProjects();
                 }
             }
+            if (tabName === 'maker-marketplace') {
+                await this.refreshMarketplaceApprovedPosts();
+            }
         });
     }
 
@@ -270,6 +382,27 @@ class AccountCenterManager {
         });
         if (subTabName === 'my-projects') {
             await this.refreshMyProjects();
+        }
+        if (subTabName === 'community-management') {
+            await this.refreshMarketplacePendingPosts();
+            const sess = this.marketplaceDetailReviewSession;
+            if (sess?.reopenPending && sess.postId) {
+                const stillPending = this.marketplacePendingPosts.some(
+                    (p) => String(p.id || '') === String(sess.postId)
+                );
+                if (stillPending) {
+                    const alreadyOpen = Boolean(this.marketplaceDetailModal?.classList.contains('show'));
+                    if (!alreadyOpen) {
+                        await this.openMarketplacePostDetail(String(sess.postId), true, { fromSessionReopen: true });
+                    }
+                } else {
+                    this.marketplaceDetailReviewSession = null;
+                    this.showNotification('原待审项目已不在列表中，审核会话已结束。', 'info');
+                }
+            }
+        }
+        if (subTabName === 'permission-management') {
+            await this.refreshPermissionStats();
         }
     }
 
@@ -490,7 +623,9 @@ class AccountCenterManager {
         const name = this.authState.displayName || this.authState.email || '未登录';
         const fallback = this.buildAvatarFallback(name);
         const isAuthenticated = this.authState.isAuthenticated;
-        const isAdmin = this.authState.role === 'admin';
+        const roleKey = String(this.authState.role || '').toLowerCase();
+        const isAdmin = roleKey === 'admin' || roleKey === 'super_admin';
+        const isSuperAdmin = roleKey === 'super_admin';
 
         this.avatarBtn?.classList.toggle('logged-in', isAuthenticated);
         if (this.avatarFallback) {
@@ -547,6 +682,11 @@ class AccountCenterManager {
         this.communityTabBtn?.classList.toggle('is-hidden', !isAdmin);
         this.communityTabPanel?.classList.toggle('is-hidden', !isAdmin);
         if (!isAdmin && this.currentSubTab === 'community-management') {
+            this.switchSubTab('account-settings');
+        }
+        this.permissionTabBtn?.classList.toggle('is-hidden', !isSuperAdmin);
+        this.permissionTabPanel?.classList.toggle('is-hidden', !isSuperAdmin);
+        if (!isSuperAdmin && this.currentSubTab === 'permission-management') {
             this.switchSubTab('account-settings');
         }
     }
@@ -917,6 +1057,7 @@ class AccountCenterManager {
      */
     mapRoleLabel(role) {
         const key = String(role || '').toLowerCase();
+        if (key === 'super_admin') return '超级管理员';
         if (key === 'admin') return '管理员';
         if (key === 'user') return '普通用户';
         if (key === 'anonymous' || key === '') return '匿名用户';
@@ -1026,7 +1167,8 @@ class AccountCenterManager {
             this.renderProjectsEmpty('当前项目目录下还没有可展示的本地项目。');
             return;
         }
-        this.projectBackupMap = await this.fetchProjectBackupMap(cards.map((item) => item.path));
+        // 拉取账号下全部云备份，才能列出「本地已删、仅云端有备份」的项目卡片
+        this.projectBackupMap = await this.fetchProjectBackupMap([]);
         const cloudOnlyCards = this.buildCloudOnlyBackupCards(cards);
 
         this.projectsGrid.innerHTML = [...cards, ...cloudOnlyCards]
@@ -1053,6 +1195,8 @@ class AccountCenterManager {
                                 class="my-project-card-share-btn"
                                 data-project-share="1"
                                 data-project-name="${this.escapeHtml(project.projectName)}"
+                                data-project-description="${this.escapeHtml(project.description)}"
+                                data-project-path="${this.escapeHtml(project.path)}"
                                 title="分享（预留）"
                                 aria-label="分享（预留）"
                             >
@@ -1099,6 +1243,7 @@ class AccountCenterManager {
                                     data-project-backup-download="1"
                                     data-project-key="${this.escapeHtml(String(project.projectKey || ''))}"
                                     data-project-name="${this.escapeHtml(project.projectName)}"
+                                    title="在项目存储根目录下从 bundle 反序列化并创建项目文件夹"
                                 >
                                     <img src="" alt="" width="18" height="18" data-icon="download">
                                     <span>下载备份</span>
@@ -1205,7 +1350,7 @@ class AccountCenterManager {
                 folderName: projectName,
                 path: '',
                 projectName,
-                description: '本地项目缺失，仅保留云端备份，可下载恢复到本地项目目录。',
+                description: '本地项目缺失，仅保留云端备份。可在下方将备份反序列化并恢复到「系统设置」中的项目存储目录。',
                 componentCount: 0,
                 connectionCount: 0,
                 lastModified: String(backupInfo?.backupAt || ''),
@@ -1300,35 +1445,41 @@ class AccountCenterManager {
     }
 
     /**
+     * 将云端 bundle 反序列化到「系统设置」中的项目存储根目录下，重建完整项目文件夹。
      * @param {string} projectKey
      * @param {string} projectName
      * @returns {Promise<void>}
      */
     async downloadProjectBackup(projectKey, projectName) {
         if (!window.electronAPI?.supabaseDownloadProjectBackup) {
-            this.showNotification('当前环境不支持下载备份。', 'warning');
+            this.showNotification('当前环境不支持恢复备份。', 'warning');
             return;
         }
-        if (!this.lastProjectStoragePath) {
-            this.showNotification('未配置项目存储路径，无法下载备份。', 'warning');
+        const storagePath = String((await window.electronAPI.getSettings('storagePath')) || '').trim();
+        this.lastProjectStoragePath = storagePath;
+        if (!storagePath) {
+            this.showNotification('未配置项目存储路径，无法恢复到本地。请先在系统设置中配置项目文件夹路径。', 'warning');
             return;
         }
         const normalizedKey = String(projectKey || '').trim();
         if (!normalizedKey) {
-            this.showNotification('备份标识无效，无法下载。', 'warning');
+            this.showNotification('备份标识无效，无法恢复。', 'warning');
             return;
         }
-        this.showNotification('正在下载云端备份，请稍候...', 'info');
+        this.showNotification('正在从云端反序列化并写入项目目录，请稍候...', 'info');
         const result = await window.electronAPI.supabaseDownloadProjectBackup({
             projectKey: normalizedKey,
             projectName: String(projectName || '').trim(),
-            storagePath: this.lastProjectStoragePath
+            storagePath
         });
         if (!result?.success) {
-            this.showNotification(this.formatResultError(result, '下载备份失败，请稍后重试。'), 'error');
+            this.showNotification(this.formatResultError(result, '恢复到本地失败，请稍后重试。'), 'error');
             return;
         }
-        this.showNotification(String(result?.message || '云端备份已下载到本地。'), 'success');
+        this.showNotification(
+            String(result?.message || '已从备份在项目存储目录下恢复项目文件夹。'),
+            'success'
+        );
         await this.refreshMyProjects();
     }
 
@@ -1429,6 +1580,742 @@ class AccountCenterManager {
         } catch (error) {
             this.showNotification(`打开项目失败：${error?.message || error}`, 'error');
         }
+    }
+
+    /**
+     * 刷新权限管理页（统计 + 用户列表）。
+     * @returns {Promise<void>}
+     */
+    async refreshPermissionManagement() {
+        const roleKey = String(this.authState?.role || '').toLowerCase();
+        if (roleKey !== 'super_admin') {
+            return;
+        }
+        await this.refreshPermissionStats();
+        await this.refreshPermissionUsers();
+    }
+
+    /**
+     * 刷新权限管理统计。
+     * @returns {Promise<void>}
+     */
+    async refreshPermissionStats() {
+        if (!window.electronAPI?.supabaseGetPermissionManagementStats) {
+            return;
+        }
+        try {
+            const result = await window.electronAPI.supabaseGetPermissionManagementStats();
+            if (!result?.success) {
+                this.showNotification(this.formatResultError(result, '读取权限统计失败。'), 'error');
+                return;
+            }
+            const stats = result?.stats || {};
+            const setText = (id, value) => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.textContent = String(value);
+                }
+            };
+            setText('permission-total-users', Number(stats.totalUsers || 0));
+            setText('permission-admin-count', Number(stats.adminCount || 0));
+            setText('permission-super-admin-count', Number(stats.superAdminCount || 0));
+        } catch (error) {
+            this.showNotification(this.localizeAuthMessage(String(error?.message || error || '读取权限统计失败。')) || '读取权限统计失败。', 'error');
+        }
+    }
+
+    /**
+     * 刷新权限管理用户列表。
+     * @returns {Promise<void>}
+     */
+    async refreshPermissionUsers() {
+        if (!this.permissionUsersTbody || !window.electronAPI?.supabaseListUsersForPermissionManagement) {
+            return;
+        }
+        this.permissionListLoading = true;
+        this.renderPermissionUsersTable();
+        try {
+            try {
+                const result = await window.electronAPI.supabaseListUsersForPermissionManagement({
+                    query: this.permissionSearchQuery,
+                    page: 1,
+                    pageSize: 50
+                });
+                if (!result?.success) {
+                    this.showNotification(this.formatResultError(result, '读取用户列表失败。'), 'error');
+                    this.permissionUsers = [];
+                    this.renderPermissionUsersTable();
+                    return;
+                }
+                this.permissionUsers = Array.isArray(result?.users) ? result.users : [];
+                this.renderPermissionUsersTable();
+            } catch (error) {
+                this.permissionUsers = [];
+                this.showNotification(this.localizeAuthMessage(String(error?.message || error || '读取用户列表失败。')) || '读取用户列表失败。', 'error');
+            }
+        } finally {
+            this.permissionListLoading = false;
+            this.renderPermissionUsersTable();
+        }
+    }
+
+    /**
+     * 渲染权限管理用户表格。
+     * @returns {void}
+     */
+    renderPermissionUsersTable() {
+        if (!this.permissionUsersTbody) {
+            return;
+        }
+        if (this.permissionListLoading) {
+            this.permissionUsersTbody.innerHTML = '<tr><td colspan="5" class="permission-table-empty">正在加载用户列表...</td></tr>';
+            return;
+        }
+        if (!this.permissionUsers.length) {
+            this.permissionUsersTbody.innerHTML = '<tr><td colspan="5" class="permission-table-empty">未搜索到匹配账号</td></tr>';
+            return;
+        }
+        this.permissionUsersTbody.innerHTML = this.permissionUsers.map((user) => {
+            const roleKey = String(user?.role || 'user').toLowerCase();
+            const roleClass = roleKey.replace(/_/g, '-');
+            const roleLabel = this.mapRoleLabel(roleKey);
+            const createdText = this.formatDateTime(String(user?.createdAt || '')) || '-';
+            const email = this.escapeHtml(String(user?.email || '-'));
+            const displayName = this.escapeHtml(String(user?.displayName || '-') || '-');
+            const userId = this.escapeHtml(String(user?.id || ''));
+            const disablePromote = roleKey === 'admin' || roleKey === 'super_admin' || this.permissionUpdatingUserIds.has(String(user?.id || ''));
+            const disableDemote = roleKey === 'user' || roleKey === 'super_admin' || this.permissionUpdatingUserIds.has(String(user?.id || ''));
+            const actionButtons = roleKey === 'super_admin'
+                ? '<span style="color:#8b2b52;font-size:12px;">超级管理员不可在此变更</span>'
+                : `
+                <button type="button" class="permission-action-btn" data-permission-role-update="1" data-user-id="${userId}" data-user-email="${email}" data-target-role="admin" ${disablePromote ? 'disabled' : ''}>设为管理员</button>
+                <button type="button" class="permission-action-btn" data-permission-role-update="1" data-user-id="${userId}" data-user-email="${email}" data-target-role="user" ${disableDemote ? 'disabled' : ''}>设为用户</button>
+                `;
+            return `
+                <tr>
+                    <td>${email}</td>
+                    <td>${displayName}</td>
+                    <td><span class="permission-role-chip role-${this.escapeHtml(roleClass)}">${this.escapeHtml(roleLabel)}</span></td>
+                    <td>${this.escapeHtml(createdText)}</td>
+                    <td>${actionButtons}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    /**
+     * 超级管理员修改用户角色。
+     * @param {string} userId
+     * @param {string} role
+     * @param {string} email
+     * @returns {Promise<void>}
+     */
+    async handlePermissionRoleUpdate(userId, role, email) {
+        const normalizedUserId = String(userId || '').trim();
+        const targetRole = String(role || '').trim().toLowerCase();
+        if (!normalizedUserId || !['user', 'admin'].includes(targetRole)) {
+            return;
+        }
+        if (!window.electronAPI?.supabaseUpdateUserRoleBySuperAdmin) {
+            this.showNotification('当前环境不支持角色管理。', 'warning');
+            return;
+        }
+        if (this.permissionUpdatingUserIds.has(normalizedUserId)) {
+            return;
+        }
+        const confirmed = window.confirm(`确认将 ${email || '该账号'} 设置为 ${this.mapRoleLabel(targetRole)} 吗？`);
+        if (!confirmed) {
+            return;
+        }
+        this.permissionUpdatingUserIds.add(normalizedUserId);
+        this.renderPermissionUsersTable();
+        try {
+            const result = await window.electronAPI.supabaseUpdateUserRoleBySuperAdmin({
+                userId: normalizedUserId,
+                role: targetRole
+            });
+            if (!result?.success) {
+                this.showNotification(this.formatResultError(result, '角色更新失败。'), 'error');
+                return;
+            }
+            this.showNotification(String(result?.message || '角色更新成功。'), 'success');
+            await this.refreshPermissionManagement();
+            await this.refreshAuthState();
+        } finally {
+            this.permissionUpdatingUserIds.delete(normalizedUserId);
+            this.renderPermissionUsersTable();
+        }
+    }
+
+    /**
+     * @param {string} projectPath
+     * @param {string} projectName
+     * @param {string} description
+     * @returns {void}
+     */
+    openMarketplacePublishModal(projectPath, projectName, description) {
+        if (!this.authState?.isAuthenticated) {
+            this.showNotification('请先登录后再发布到创客集市。', 'warning');
+            this.switchMainTab('personal-center');
+            this.switchSubTab('account-settings');
+            return;
+        }
+        this.marketplacePublishContext = {
+            projectPath: String(projectPath || '').trim(),
+            projectName: String(projectName || '').trim() || '未命名项目',
+            defaultDescription: String(description || '').trim()
+        };
+        if (this.marketplacePublishDescriptionInput) {
+            this.marketplacePublishDescriptionInput.value = this.marketplacePublishContext.defaultDescription;
+        }
+        this.renderMarketplacePublishPreviewCard();
+        this.marketplacePublishModal?.classList.add('show');
+    }
+
+    /**
+     * @returns {void}
+     */
+    closeMarketplacePublishModal() {
+        this.marketplacePublishModal?.classList.remove('show');
+        this.setMarketplacePublishButtonLoading(false);
+        this.marketplacePublishContext = null;
+    }
+
+    /**
+     * 预览描述优先使用输入框内容，输入为空时回退到项目默认描述。
+     * @returns {void}
+     */
+    renderMarketplacePublishPreviewCard() {
+        if (!this.marketplacePublishPreview || !this.marketplacePublishContext) {
+            return;
+        }
+        const inputDescription = String(this.marketplacePublishDescriptionInput?.value || '').trim();
+        const fallbackDescription = String(this.marketplacePublishContext.defaultDescription || '').trim();
+        const finalDescription = inputDescription || fallbackDescription || '暂无描述';
+        this.marketplacePublishPreview.innerHTML = `
+            <article class="marketplace-card">
+                <div class="marketplace-card-head">
+                    <strong>${this.escapeHtml(this.marketplacePublishContext.projectName)}</strong>
+                    <span>发布时间：待审核通过后写入</span>
+                </div>
+                <div class="marketplace-card-body">
+                    <p class="marketplace-card-desc">${this.escapeHtml(finalDescription)}</p>
+                    <div class="marketplace-card-actions">
+                        <span class="marketplace-icon-btn"><img src="" alt="" data-icon="thumbs-up">0</span>
+                        <span class="marketplace-icon-btn"><img src="" alt="" data-icon="star">0</span>
+                        <span class="marketplace-icon-btn"><img src="" alt="" data-icon="git-branch">0</span>
+                    </div>
+                </div>
+            </article>
+        `;
+        this.initializeIconsForScope(this.marketplacePublishPreview);
+    }
+
+    /**
+     * @param {boolean} loading
+     * @returns {void}
+     */
+    setMarketplacePublishButtonLoading(loading) {
+        if (!this.marketplacePublishConfirmBtn) {
+            return;
+        }
+        this.marketplacePublishConfirmBtn.setAttribute('aria-busy', loading ? 'true' : 'false');
+        this.marketplacePublishConfirmBtn.classList.toggle('is-uploading', loading);
+    }
+
+    /**
+     * @returns {Promise<void>}
+     */
+    async confirmMarketplacePublish() {
+        if (this.marketplacePublishConfirmBtn?.classList.contains('is-uploading')) {
+            return;
+        }
+        if (!this.marketplacePublishContext?.projectPath) {
+            this.showNotification('缺少项目路径，无法发布。', 'warning');
+            return;
+        }
+        if (!window.electronAPI?.supabasePublishMarketplacePost) {
+            this.showNotification('当前环境不支持项目发布。', 'warning');
+            return;
+        }
+        const inputDescription = String(this.marketplacePublishDescriptionInput?.value || '').trim();
+        const description = inputDescription || String(this.marketplacePublishContext.defaultDescription || '').trim();
+        this.setMarketplacePublishButtonLoading(true);
+        try {
+            const result = await window.electronAPI.supabasePublishMarketplacePost({
+                projectPath: this.marketplacePublishContext.projectPath,
+                projectName: this.marketplacePublishContext.projectName,
+                description
+            });
+            if (!result?.success) {
+                this.showNotification(this.formatResultError(result, '发布失败，请稍后重试。'), 'error');
+                return;
+            }
+            this.showNotification(String(result?.message || '发布成功，等待审核。'), 'success');
+            this.closeMarketplacePublishModal();
+            await this.refreshMarketplacePendingPosts();
+            await this.refreshMarketplaceApprovedPosts();
+        } finally {
+            this.setMarketplacePublishButtonLoading(false);
+        }
+    }
+
+    /**
+     * @returns {Promise<void>}
+     */
+    async refreshMarketplacePendingPosts() {
+        if (!window.electronAPI?.supabaseListMarketplacePendingPosts || !this.communityTabPanel) {
+            return;
+        }
+        const roleKey = String(this.authState?.role || '').toLowerCase();
+        if (roleKey !== 'admin' && roleKey !== 'super_admin') {
+            return;
+        }
+        const result = await window.electronAPI.supabaseListMarketplacePendingPosts();
+        if (!result?.success) {
+            this.showNotification(this.formatResultError(result, '读取待审核列表失败。'), 'error');
+            return;
+        }
+        this.marketplacePendingPosts = Array.isArray(result?.posts) ? result.posts : [];
+        if (this.communityPendingContainer) {
+            this.communityPendingContainer.innerHTML = this.renderPendingMarketplaceCards();
+        }
+    }
+
+    /**
+     * @returns {string}
+     */
+    renderPendingMarketplaceCards() {
+        if (!this.marketplacePendingPosts.length) {
+            return '<div class="account-empty-state">暂无待审核项目。</div>';
+        }
+        return `
+            <div class="marketplace-grid">
+                ${this.marketplacePendingPosts.map((post) => `
+                    <article class="marketplace-card marketplace-card--pending-review" data-pending-post-id="${this.escapeHtml(String(post.id || ''))}">
+                        <div class="marketplace-card-head">
+                            <strong>${this.escapeHtml(String(post.project_name || ''))}</strong>
+                            <span>提交时间：${this.escapeHtml(this.formatDateTime(String(post.created_at || '')))}</span>
+                        </div>
+                        <div class="marketplace-card-body">
+                            <p class="marketplace-card-desc">${this.escapeHtml(String(post.description || ''))}</p>
+                            <div class="marketplace-card-actions"><span class="marketplace-icon-btn">待审核</span></div>
+                        </div>
+                    </article>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    /**
+     * @returns {Promise<void>}
+     */
+    async refreshMarketplaceApprovedPosts() {
+        if (!this.marketplaceGrid || !window.electronAPI?.supabaseListMarketplaceApprovedPosts) {
+            return;
+        }
+        if (!this.authState?.isAuthenticated) {
+            this.marketplaceGrid.innerHTML = '<div class="account-empty-state">请先登录后查看创客集市。</div>';
+            return;
+        }
+        const query = String(this.marketplaceSearchInput?.value || '').trim();
+        const sortBy = String(this.marketplaceSortSelect?.value || 'likes').trim();
+        const result = await window.electronAPI.supabaseListMarketplaceApprovedPosts({ query, sortBy });
+        if (!result?.success) {
+            this.marketplaceGrid.innerHTML = `<div class="account-empty-state">${this.escapeHtml(this.formatResultError(result, '读取创客集市失败。'))}</div>`;
+            return;
+        }
+        this.marketplacePosts = Array.isArray(result?.posts) ? result.posts : [];
+        if (!this.marketplacePosts.length) {
+            this.marketplaceGrid.innerHTML = '<div class="account-empty-state">暂无已发布项目。</div>';
+            return;
+        }
+        this.marketplaceGrid.innerHTML = this.marketplacePosts.map((post) => `
+            <article class="marketplace-card" data-marketplace-post-id="${this.escapeHtml(String(post.id || ''))}">
+                <div class="marketplace-card-head">
+                    <strong>${this.escapeHtml(String(post.project_name || ''))}</strong>
+                    <span>发布时间：${this.escapeHtml(this.formatDateTime(String(post.published_at || '')))}</span>
+                </div>
+                <div class="marketplace-card-body">
+                    <p class="marketplace-card-desc">${this.escapeHtml(String(post.description || ''))}</p>
+                    <div class="marketplace-card-actions">
+                        <button type="button" class="marketplace-icon-btn" data-marketplace-interact="like" data-post-id="${this.escapeHtml(String(post.id || ''))}"><img src="" alt="" data-icon="thumbs-up">${Number(post.likes_count || 0)}</button>
+                        <button type="button" class="marketplace-icon-btn" data-marketplace-interact="favorite" data-post-id="${this.escapeHtml(String(post.id || ''))}"><img src="" alt="" data-icon="star">${Number(post.favorites_count || 0)}</button>
+                        <button type="button" class="marketplace-icon-btn" data-marketplace-interact="remix" data-post-id="${this.escapeHtml(String(post.id || ''))}"><img src="" alt="" data-icon="git-branch">${Number(post.remixes_count || 0)}</button>
+                    </div>
+                </div>
+            </article>
+        `).join('');
+        this.initializeIconsForScope(this.marketplaceGrid);
+    }
+
+    /**
+     * 对动态渲染区域补充 data-icon 路径解析。
+     * @param {ParentNode} scope
+     * @returns {Promise<void>}
+     */
+    async initializeIconsForScope(scope) {
+        if (!scope || !window.electronAPI?.getAssetsPath) {
+            return;
+        }
+        if (!this.assetsPathCache) {
+            this.assetsPathCache = await window.electronAPI.getAssetsPath();
+        }
+        const iconImages = scope.querySelectorAll?.('img[data-icon]');
+        iconImages?.forEach?.((img) => {
+            const iconName = String(img?.dataset?.icon || '').trim();
+            if (!iconName) return;
+            img.src = `file://${this.assetsPathCache}/icon-${iconName}.svg`;
+        });
+    }
+
+    /**
+     * 待审卡片打开模态时的加载态（遮罩 + 禁用点击）。
+     * @param {string} postId
+     * @param {boolean} loading
+     * @returns {void}
+     */
+    setPendingReviewCardLoading(postId, loading) {
+        if (!this.communityPendingContainer || !postId) {
+            return;
+        }
+        const card = this.communityPendingContainer.querySelector(`[data-pending-post-id="${postId}"]`);
+        card?.classList.toggle('is-opening', Boolean(loading));
+    }
+
+    /**
+     * @param {string} postId
+     * @param {boolean} reviewMode
+     * @param {{ fromSessionReopen?: boolean }} [options]
+     * @returns {Promise<void>}
+     */
+    async openMarketplacePostDetail(postId, reviewMode, options = {}) {
+        const fromSessionReopen = Boolean(options?.fromSessionReopen);
+        if (!postId || !window.electronAPI?.supabaseGetMarketplacePostDetail) {
+            return;
+        }
+        const hasCachedDetail = Boolean(this.marketplacePostDetailCache.get(postId)?.success);
+        const useCardLoading = Boolean(reviewMode) && !fromSessionReopen && !hasCachedDetail;
+        if (useCardLoading) {
+            this.setPendingReviewCardLoading(postId, true);
+        }
+        try {
+            let result = this.marketplacePostDetailCache.get(postId);
+            if (!result?.success) {
+                result = await window.electronAPI.supabaseGetMarketplacePostDetail({ postId });
+                if (result?.success) {
+                    this.marketplacePostDetailCache.set(postId, result);
+                }
+            }
+            if (!result?.success) {
+                this.showNotification(this.formatResultError(result, '读取项目详情失败。'), 'error');
+                return;
+            }
+            this.marketplaceDetailReviewMode = Boolean(reviewMode);
+            const detail = result.detail || {};
+            this.populateMarketplaceDetailModal(detail, postId, reviewMode);
+            this.marketplaceDetailModal?.classList.add('show');
+            await this.loadMarketplaceModalPreviewCanvas(String(postId || '').trim() || String(detail.id || '').trim());
+        } finally {
+            if (useCardLoading) {
+                this.setPendingReviewCardLoading(postId, false);
+            }
+        }
+    }
+
+    /**
+     * 填充集市项目详情模态（标题、预览、操作区）。
+     * @param {Record<string, unknown>} detail
+     * @param {string} postId
+     * @param {boolean} reviewMode
+     * @returns {void}
+     */
+    populateMarketplaceDetailModal(detail, postId, reviewMode) {
+        this.teardownMarketplacePreviewCanvas();
+        if (this.marketplaceDetailTitle) {
+            this.marketplaceDetailTitle.textContent = String(detail.projectName || '项目预览');
+        }
+        if (this.marketplaceDetailDescription) {
+            this.marketplaceDetailDescription.textContent = String(detail.description || '');
+        }
+        this.drawMarketplacePreviewPlaceholder('加载预览中…');
+        if (this.marketplaceDetailActions) {
+            this.marketplaceDetailActions.innerHTML = '';
+            /** 与拉取详情的 postId 一致，避免 detail.id 与入口参数不一致时重复开签 */
+            const bundleOpenPostId = String(postId || '').trim() || String(detail.id || '').trim();
+            const detailBtn = document.createElement('button');
+            detailBtn.type = 'button';
+            detailBtn.className = 'btn btn-secondary marketplace-detail-open-btn';
+            detailBtn.innerHTML =
+                '<span class="marketplace-btn-label">查看细节</span><span class="marketplace-btn-spinner" aria-hidden="true"></span>';
+            detailBtn.setAttribute('data-marketplace-open-detail', '1');
+            detailBtn.addEventListener('click', async () => {
+                await this.openMarketplaceDetailInCanvas(bundleOpenPostId);
+            });
+            this.marketplaceDetailActions.appendChild(detailBtn);
+            if (reviewMode) {
+                const rejectBtn = document.createElement('button');
+                rejectBtn.type = 'button';
+                rejectBtn.className = 'btn marketplace-publish-btn marketplace-review-btn--reject';
+                rejectBtn.innerHTML =
+                    '<span class="marketplace-btn-label">拒绝</span><span class="marketplace-btn-spinner" aria-hidden="true"></span>';
+                rejectBtn.addEventListener('click', async () => {
+                    await this.reviewMarketplacePost(postId, 'reject', '', rejectBtn);
+                });
+                const approveBtn = document.createElement('button');
+                approveBtn.type = 'button';
+                approveBtn.className = 'btn btn-primary marketplace-publish-btn';
+                approveBtn.innerHTML =
+                    '<span class="marketplace-btn-label">通过</span><span class="marketplace-btn-spinner" aria-hidden="true"></span>';
+                approveBtn.addEventListener('click', async () => {
+                    await this.reviewMarketplacePost(postId, 'approve', '', approveBtn);
+                });
+                this.marketplaceDetailActions.appendChild(rejectBtn);
+                this.marketplaceDetailActions.appendChild(approveBtn);
+            } else {
+                ['like', 'favorite', 'remix'].forEach((action) => {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'btn btn-secondary';
+                    btn.textContent = action === 'like' ? '点赞' : action === 'favorite' ? '收藏' : '复刻';
+                    btn.addEventListener('click', async () => {
+                        await this.interactMarketplacePost(postId, action);
+                    });
+                    this.marketplaceDetailActions.appendChild(btn);
+                });
+            }
+        }
+    }
+
+    /**
+     * @returns {void}
+     */
+    closeMarketplaceDetailModal() {
+        this.marketplaceDetailModal?.classList.remove('show');
+        this.teardownMarketplacePreviewCanvas();
+        this.marketplaceDetailReviewSession = null;
+        this.marketplaceDetailReviewMode = false;
+    }
+
+    /**
+     * 在详情模态的 canvas 上绘制占位文案（拉取 bundle 前或失败时）。
+     * @param {string} message
+     * @returns {void}
+     */
+    drawMarketplacePreviewPlaceholder(message) {
+        const canvas = this.marketplaceDetailPreviewCanvas;
+        if (!canvas) {
+            return;
+        }
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            return;
+        }
+        const W = canvas.width || 420;
+        const H = canvas.height || 260;
+        ctx.fillStyle = '#f1f4fb';
+        ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = '#7a869c';
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(message || ''), W / 2, H / 2);
+        ctx.textAlign = 'start';
+    }
+
+    /**
+     * 关闭模态时销毁预览用 CanvasManager，避免监听泄漏。
+     * @returns {void}
+     */
+    teardownMarketplacePreviewCanvas() {
+        if (this._marketplacePreviewResizeObs) {
+            try {
+                this._marketplacePreviewResizeObs.disconnect();
+            } catch {
+                /* ignore */
+            }
+            this._marketplacePreviewResizeObs = null;
+        }
+        if (this._marketplacePreviewCanvasMgr && typeof this._marketplacePreviewCanvasMgr.destroyReadOnlyPreview === 'function') {
+            this._marketplacePreviewCanvasMgr.destroyReadOnlyPreview();
+        }
+        this._marketplacePreviewCanvasMgr = null;
+    }
+
+    /**
+     * 懒创建集市详情内的只读画布实例（与主电路同一 CanvasManager 类）。
+     * @returns {boolean}
+     */
+    ensureMarketplacePreviewCanvasManager() {
+        if (this._marketplacePreviewCanvasMgr) {
+            return true;
+        }
+        const el = this.marketplaceDetailPreviewCanvas;
+        if (!el || typeof window.CanvasManager !== 'function') {
+            return false;
+        }
+        this._marketplacePreviewCanvasMgr = new window.CanvasManager({
+            canvasElement: el,
+            isReadOnlyPreview: true
+        });
+        const wrap = this.marketplaceDetailPreviewWrap || el.parentElement;
+        if (wrap && typeof ResizeObserver === 'function' && !this._marketplacePreviewResizeObs) {
+            this._marketplacePreviewResizeObs = new ResizeObserver(() => {
+                if (this._marketplacePreviewCanvasMgr && typeof this._marketplacePreviewCanvasMgr.resizeCanvas === 'function') {
+                    this._marketplacePreviewCanvasMgr.resizeCanvas();
+                }
+            });
+            this._marketplacePreviewResizeObs.observe(wrap);
+        }
+        return true;
+    }
+
+    /**
+     * 拉取与「查看细节」相同的 bundle，用主程序渲染管线绘制到模态内预览画布。
+     * @param {string} postId
+     * @returns {Promise<void>}
+     */
+    async loadMarketplaceModalPreviewCanvas(postId) {
+        const id = String(postId || '').trim();
+        if (!id) {
+            return;
+        }
+        if (!window.electronAPI?.supabaseGetMarketplaceProjectBundle) {
+            this.drawMarketplacePreviewPlaceholder('当前环境无法加载预览');
+            return;
+        }
+        await new Promise((r) => requestAnimationFrame(() => r()));
+        if (!this.ensureMarketplacePreviewCanvasManager()) {
+            this.drawMarketplacePreviewPlaceholder('画布引擎未就绪，请稍后重试');
+            return;
+        }
+        await new Promise((r) => setTimeout(r, 40));
+        const mgr = this._marketplacePreviewCanvasMgr;
+        try {
+            const bundleResult = await window.electronAPI.supabaseGetMarketplaceProjectBundle({ postId: id });
+            if (!bundleResult?.success || !bundleResult?.bundle) {
+                this.drawMarketplacePreviewPlaceholder(
+                    this.formatResultError(bundleResult, '无法加载项目包，预览不可用。')
+                );
+                return;
+            }
+            const main = window.mainApp;
+            if (!main || typeof main.buildProjectDataFromMarketplaceBundle !== 'function') {
+                this.drawMarketplacePreviewPlaceholder('应用未就绪');
+                return;
+            }
+            const projectData = main.buildProjectDataFromMarketplaceBundle(bundleResult.bundle, id);
+            if (typeof main.renderProjectToCanvasManager !== 'function') {
+                this.drawMarketplacePreviewPlaceholder('渲染接口不可用');
+                return;
+            }
+            await main.renderProjectToCanvasManager(mgr, projectData);
+            await new Promise((r) => requestAnimationFrame(() => r()));
+            if (mgr.canvas && mgr.canvas.parentElement) {
+                mgr.resizeCanvas();
+            }
+            await new Promise((r) => requestAnimationFrame(() => r()));
+            if (typeof mgr.resetView === 'function') {
+                mgr.resetView();
+            }
+            mgr.forceRender();
+        } catch (err) {
+            const msg = err && typeof err === 'object' && 'message' in err ? String(err.message) : String(err);
+            this.drawMarketplacePreviewPlaceholder(`预览失败：${msg}`);
+        }
+    }
+
+    /**
+     * 从 Storage 拉取单文件 bundle，在内存中反序列化并由电路页打开（不写 temp）。
+     * 审核态下保留会话以便返回后继续操作。
+     * @param {string} postId
+     * @returns {Promise<void>}
+     */
+    async openMarketplaceDetailInCanvas(postId) {
+        if (!postId) {
+            return;
+        }
+        const detailBtn = this.marketplaceDetailActions?.querySelector('[data-marketplace-open-detail]');
+        if (!window.electronAPI?.supabaseGetMarketplaceProjectBundle) {
+            this.showNotification('当前环境不支持查看细节。', 'warning');
+            return;
+        }
+        detailBtn?.classList.add('is-uploading');
+        try {
+            const bundleResult = await window.electronAPI.supabaseGetMarketplaceProjectBundle({ postId });
+            if (!bundleResult?.success || !bundleResult?.bundle) {
+                this.showNotification(this.formatResultError(bundleResult, '读取项目包失败。'), 'error');
+                return;
+            }
+            if (!window.mainApp || typeof window.mainApp.openProjectFromMarketplaceBundle !== 'function') {
+                return;
+            }
+            await window.mainApp.switchTab('circuit-design');
+            await window.mainApp.openProjectFromMarketplaceBundle({
+                postId: String(postId),
+                bundle: bundleResult.bundle
+            });
+            if (this.marketplaceDetailReviewMode) {
+                this.marketplaceDetailReviewSession = {
+                    postId: String(postId),
+                    reopenPending: true
+                };
+            }
+            this.marketplaceDetailModal?.classList.remove('show');
+        } catch (err) {
+            const msg = err && typeof err === 'object' && 'message' in err ? String(err.message) : String(err);
+            this.showNotification(`打开项目失败：${msg}`, 'error');
+        } finally {
+            detailBtn?.classList.remove('is-uploading');
+        }
+    }
+
+    /**
+     * @param {string} postId
+     * @param {'approve'|'reject'} action
+     * @param {string} [rejectReason]
+     * @param {HTMLButtonElement | null} [clickedBtn]
+     * @returns {Promise<void>}
+     */
+    async reviewMarketplacePost(postId, action, rejectReason = '', clickedBtn = null) {
+        if (!window.electronAPI?.supabaseReviewMarketplacePost) {
+            return;
+        }
+        this.marketplaceDetailActions?.classList.add('is-reviewing');
+        clickedBtn?.classList.add('is-uploading');
+        try {
+            const result = await window.electronAPI.supabaseReviewMarketplacePost({ postId, action, rejectReason });
+            if (!result?.success) {
+                this.showNotification(this.formatResultError(result, '审核操作失败。'), 'error');
+                return;
+            }
+            this.showNotification(String(result?.message || '审核完成。'), 'success');
+            this.marketplacePostDetailCache.delete(postId);
+            if (this.marketplaceDetailReviewSession?.postId === postId) {
+                this.marketplaceDetailReviewSession = null;
+            }
+            this.closeMarketplaceDetailModal();
+            await this.refreshMarketplacePendingPosts();
+            await this.refreshMarketplaceApprovedPosts();
+        } finally {
+            this.marketplaceDetailActions?.classList.remove('is-reviewing');
+            clickedBtn?.classList.remove('is-uploading');
+        }
+    }
+
+    /**
+     * @param {string} postId
+     * @param {'like'|'favorite'|'remix'} action
+     * @returns {Promise<void>}
+     */
+    async interactMarketplacePost(postId, action) {
+        if (!window.electronAPI?.supabaseInteractMarketplacePost) return;
+        const result = await window.electronAPI.supabaseInteractMarketplacePost({ postId, action });
+        if (!result?.success) {
+            this.showNotification(this.formatResultError(result, '互动失败。'), 'error');
+            return;
+        }
+        await this.refreshMarketplaceApprovedPosts();
     }
 
     /**

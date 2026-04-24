@@ -16,7 +16,14 @@ const PROJECT_BACKUP_BUCKET = 'project-backups';
 const PROJECT_BACKUP_TABLE = 'project_backups';
 const PROJECT_BACKUP_LIMIT_PER_USER = 10;
 const PROJECT_BACKUP_MAX_BYTES = 5 * 1024 * 1024;
-const PROJECT_BACKUP_MANIFEST_NAME = '__manifest__.json';
+/** 创客集市：单文件序列化项目（仅含 .json / .ino，与目录结构），便于一次下载完成预览与解压 */
+const MARKETPLACE_PROJECT_BUNDLE_NAME = 'project.bundle.json';
+const MARKETPLACE_PROJECT_BUNDLE_FORMAT = 'fast-hardware-marketplace-project-v1';
+const MARKETPLACE_PENDING_BUCKET = 'marketplace-pending';
+const MARKETPLACE_PUBLIC_BUCKET = 'marketplace-public';
+const MARKETPLACE_POST_TABLE = 'marketplace_posts';
+const MARKETPLACE_DAILY_UPLOAD_TABLE = 'daily_marketplace_uploads';
+const MARKETPLACE_DAILY_UPLOAD_LIMIT = 3;
 
 /**
  * @returns {string}
@@ -349,6 +356,29 @@ async function tryReadProfile(client, userId) {
 }
 
 /**
+ * 从数据库授权真源读取当前用户角色（user_roles）。
+ * @param {import('@supabase/supabase-js').SupabaseClient} client
+ * @returns {Promise<string>}
+ */
+async function tryReadCurrentUserRole(client) {
+  try {
+    const { data, error } = await client.rpc('current_user_role');
+    if (error) {
+      return 'user';
+    }
+    if (typeof data === 'string' && data.trim()) {
+      return data.trim().toLowerCase();
+    }
+    if (Array.isArray(data) && data[0] && typeof data[0].current_user_role === 'string') {
+      return String(data[0].current_user_role || 'user').trim().toLowerCase() || 'user';
+    }
+    return 'user';
+  } catch {
+    return 'user';
+  }
+}
+
+/**
  * @param {import('@supabase/supabase-js').User | null | undefined} user
  * @param {{ displayName?: string, avatarUrl?: string, role?: string, provider?: string }} [profile]
  * @returns {{ isAuthenticated: boolean, email: string, id: string, displayName: string, role: string, provider: string, avatarUrl: string }}
@@ -359,7 +389,7 @@ function normalizeUserState(user, profile = {}) {
     email: String(user?.email || ''),
     id: String(user?.id || ''),
     displayName: String(profile.displayName || user?.user_metadata?.display_name || user?.email || ''),
-    role: String(profile.role || user?.app_metadata?.role || 'user'),
+    role: String(profile.role || 'user'),
     provider: String(profile.provider || user?.app_metadata?.provider || 'email'),
     avatarUrl: String(profile.avatarUrl || user?.user_metadata?.avatar_url || '')
   };
@@ -378,6 +408,7 @@ async function getAuthState() {
     console.warn('[supabase] getUser 失败:', error.message);
   }
   const profile = await tryReadProfile(client, String(data?.user?.id || ''));
+  profile.role = await tryReadCurrentUserRole(client);
   return normalizeUserState(data?.user, profile);
 }
 
@@ -408,6 +439,7 @@ async function signUpWithPassword(payload) {
   }
   writeSessionPreference(buildSessionPreference(rememberMe));
   const profile = await tryReadProfile(client, String(data?.user?.id || ''));
+  profile.role = await tryReadCurrentUserRole(client);
   return {
     success: true,
     message: rememberMe ? '账号已创建并自动登录成功，30 天内将保持登录。' : '账号已创建并自动登录成功。',
@@ -438,6 +470,7 @@ async function signInWithPassword(payload) {
   }
   writeSessionPreference(buildSessionPreference(rememberMe));
   const profile = await tryReadProfile(client, String(data?.user?.id || ''));
+  profile.role = await tryReadCurrentUserRole(client);
   return {
     success: true,
     message: rememberMe ? '登录成功，30 天内将保持登录。' : '登录成功。',
@@ -608,79 +641,59 @@ function normalizeRelativePath(relativePath) {
 }
 
 /**
+ * 读取云端项目备份单文件包（与集市 `project.bundle.json` 同格式）。
  * @param {import('@supabase/supabase-js').SupabaseClient} client
  * @param {string} userId
  * @param {string} projectKey
- * @returns {Promise<{ files: Array<{ originalRelativePath: string, safeRelativePath: string }> } | null>}
+ * @returns {Promise<Record<string, unknown> | null>}
  */
-async function readProjectBackupManifest(client, userId, projectKey) {
-  const manifestObjectPath = `${userId}/${projectKey}/${PROJECT_BACKUP_MANIFEST_NAME}`;
-  const { data, error } = await client.storage.from(PROJECT_BACKUP_BUCKET).download(manifestObjectPath);
+async function readProjectBackupBundle(client, userId, projectKey) {
+  const bundlePath = `${userId}/${projectKey}/${MARKETPLACE_PROJECT_BUNDLE_NAME}`.replace(/\/+/g, '/');
+  const { data, error } = await client.storage.from(PROJECT_BACKUP_BUCKET).download(bundlePath);
   if (error || !data) {
     return null;
   }
-  const text = await data.text();
-  const parsed = JSON.parse(text);
-  if (!parsed || !Array.isArray(parsed.files)) {
+  const parsed = parseMarketplaceProjectBundleJson(await data.text());
+  if (!parsed.ok) {
     return null;
   }
-  return {
-    files: parsed.files
-      .map((item) => ({
-        originalRelativePath: normalizeRelativePath(item?.originalRelativePath || ''),
-        safeRelativePath: normalizeRelativePath(item?.safeRelativePath || '')
-      }))
-      .filter((item) => item.originalRelativePath && item.safeRelativePath)
-  };
+  return parsed.bundle;
 }
 
 /**
+ * 将 bundle 内文本文件写入本地目录（用于从云端恢复备份）。
+ * @param {Record<string, unknown>} bundle
+ * @param {string} targetDir
+ * @returns {Promise<void>}
+ */
+async function writeProjectBundleFilesToDisk(bundle, targetDir) {
+  const files = Array.isArray(bundle.files) ? bundle.files : [];
+  for (const item of files) {
+    const rel = normalizeRelativePath(String(item?.relativePath || ''));
+    if (!rel || rel.split('/').some((s) => s === '..')) {
+      continue;
+    }
+    const text = item?.text != null ? String(item.text) : '';
+    const targetPath = path.join(targetDir, ...rel.split('/'));
+    await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
+    await fs.promises.writeFile(targetPath, text, 'utf8');
+  }
+}
+
+/**
+ * 删除某用户在 Storage 中该项目键下的全部备份对象（含旧版多文件遗留）。
  * @param {import('@supabase/supabase-js').SupabaseClient} client
  * @param {string} userId
  * @param {string} projectKey
  * @returns {Promise<void>}
  */
 async function clearProjectBackupObjects(client, userId, projectKey) {
-  const manifest = await readProjectBackupManifest(client, userId, projectKey).catch(() => null);
-  if (manifest?.files?.length) {
-    const manifestPaths = manifest.files.map(
-      (item) => `${userId}/${projectKey}/${item.safeRelativePath}`
-    );
-    manifestPaths.push(`${userId}/${projectKey}/${PROJECT_BACKUP_MANIFEST_NAME}`);
-    const { error: removeByManifestError } = await client.storage
-      .from(PROJECT_BACKUP_BUCKET)
-      .remove(manifestPaths);
-    if (!removeByManifestError) {
-      return;
-    }
-  }
-
-  const folderPath = `${userId}/${projectKey}`;
-  const toRemove = [];
-  let offset = 0;
-  for (;;) {
-    const { data, error } = await client.storage.from(PROJECT_BACKUP_BUCKET).list(folderPath, {
-      limit: 100,
-      offset,
-      sortBy: { column: 'name', order: 'asc' }
-    });
-    if (error) {
-      throw new Error(`读取备份文件列表失败：${error.message}`);
-    }
-    const rows = Array.isArray(data) ? data : [];
-    for (const row of rows) {
-      if (!row?.name) continue;
-      toRemove.push(`${folderPath}/${row.name}`);
-    }
-    if (rows.length < 100) {
-      break;
-    }
-    offset += rows.length;
-  }
-  if (toRemove.length === 0) {
+  const folderPath = `${userId}/${projectKey}`.replace(/\/+/g, '/');
+  const keys = await listStorageFilesByPrefix(client, PROJECT_BACKUP_BUCKET, folderPath);
+  if (!keys.length) {
     return;
   }
-  const { error: removeError } = await client.storage.from(PROJECT_BACKUP_BUCKET).remove(toRemove);
+  const { error: removeError } = await client.storage.from(PROJECT_BACKUP_BUCKET).remove(keys);
   if (removeError) {
     throw new Error(`删除备份文件失败：${removeError.message}`);
   }
@@ -724,6 +737,7 @@ async function finalizeOAuthUser(user) {
   }
   writeSessionPreference(buildSessionPreference(consumePendingOAuthPreference()));
   const profile = await tryReadProfile(client, userId);
+  profile.role = await tryReadCurrentUserRole(client);
   return normalizeUserState(user, profile);
 }
 
@@ -858,6 +872,7 @@ async function updateProfile(payload) {
     avatarUrl: String(user.user_metadata?.avatar_url || '').trim()
   });
   const profile = await tryReadProfile(client, user.id);
+  profile.role = await tryReadCurrentUserRole(client);
   return {
     success: true,
     message: '昵称已更新。',
@@ -916,6 +931,7 @@ async function uploadAvatar(payload) {
     avatarUrl
   });
   const profile = await tryReadProfile(client, user.id);
+  profile.role = await tryReadCurrentUserRole(client);
   return {
     success: true,
     message: '头像更新成功。',
@@ -1013,14 +1029,6 @@ async function uploadProjectBackup(payload) {
   if (!files.length) {
     return { success: false, error: '项目目录为空，暂无可备份文件。' };
   }
-  let totalBytes = 0;
-  for (const file of files) {
-    const stat = await fs.promises.stat(file.absolutePath);
-    totalBytes += Number(stat?.size || 0);
-  }
-  if (totalBytes > PROJECT_BACKUP_MAX_BYTES) {
-    return { success: false, error: '文件太大，单次上传备份需小于 5MB。' };
-  }
 
   const projectKey = buildProjectKey(projectPath);
   const projectName = String(payload?.projectName || path.basename(projectPathRaw)).trim() || '未命名项目';
@@ -1052,43 +1060,50 @@ async function uploadProjectBackup(payload) {
     return { success: false, error: error?.message || String(error) };
   }
 
-  const manifestFiles = [];
+  /** @type {{ relativePath: string, text: string }[]} */
+  const bundleFiles = [];
   for (const file of files) {
-    const safeRelativePath = encodeStorageRelativePath(file.relativePath);
-    const objectPath = `${user.id}/${projectKey}/${safeRelativePath}`;
-    const fileBuffer = await fs.promises.readFile(file.absolutePath);
-    const { error: uploadError } = await client.storage.from(PROJECT_BACKUP_BUCKET).upload(objectPath, fileBuffer, {
-      upsert: true,
-      contentType: 'application/octet-stream'
-    });
-    if (uploadError) {
-      return {
-        success: false,
-        error: `上传备份文件失败（${file.relativePath}）：${uploadError.message}`
-      };
+    const ext = path.extname(file.absolutePath).toLowerCase();
+    if (ext !== '.json' && ext !== '.ino') {
+      continue;
     }
-    manifestFiles.push({
-      originalRelativePath: normalizeRelativePath(file.relativePath),
-      safeRelativePath: normalizeRelativePath(safeRelativePath)
-    });
+    try {
+      const text = await fs.promises.readFile(file.absolutePath, 'utf8');
+      bundleFiles.push({
+        relativePath: normalizeRelativePath(file.relativePath),
+        text
+      });
+    } catch {
+      return { success: false, error: `无法读取文件：${file.relativePath}` };
+    }
   }
-  const manifestObjectPath = `${user.id}/${projectKey}/${PROJECT_BACKUP_MANIFEST_NAME}`;
-  const manifestText = JSON.stringify({
-    version: 1,
-    generatedAt: new Date().toISOString(),
+  if (!bundleFiles.some((f) => f.relativePath === 'circuit_config.json')) {
+    return { success: false, error: '项目中需包含 circuit_config.json；云备份仅序列化 .json 与 .ino 文件。' };
+  }
+  const bundleObject = {
+    format: MARKETPLACE_PROJECT_BUNDLE_FORMAT,
     projectName,
-    files: manifestFiles
-  });
-  const { error: manifestUploadError } = await client.storage.from(PROJECT_BACKUP_BUCKET).upload(
-    manifestObjectPath,
-    Buffer.from(manifestText, 'utf8'),
+    description: '',
+    sourceProjectPath: projectPath,
+    generatedAt: new Date().toISOString(),
+    files: bundleFiles
+  };
+  const bundleText = JSON.stringify(bundleObject);
+  const bundleBytes = Buffer.byteLength(bundleText, 'utf8');
+  if (bundleBytes > PROJECT_BACKUP_MAX_BYTES) {
+    return { success: false, error: '文件太大，单次上传备份需小于 5MB。' };
+  }
+  const bundleObjectPath = `${user.id}/${projectKey}/${MARKETPLACE_PROJECT_BUNDLE_NAME}`.replace(/\/+/g, '/');
+  const { error: bundleUploadError } = await client.storage.from(PROJECT_BACKUP_BUCKET).upload(
+    bundleObjectPath,
+    Buffer.from(bundleText, 'utf8'),
     {
       upsert: true,
       contentType: 'application/json'
     }
   );
-  if (manifestUploadError) {
-    return { success: false, error: `上传备份清单失败：${manifestUploadError.message}` };
+  if (bundleUploadError) {
+    return { success: false, error: `上传备份包失败：${bundleUploadError.message}` };
   }
 
   const backupAt = new Date().toISOString();
@@ -1100,7 +1115,7 @@ async function uploadProjectBackup(payload) {
         project_key: projectKey,
         project_name: projectName,
         project_path: projectPath,
-        file_count: files.length,
+        file_count: bundleFiles.length,
         backup_at: backupAt,
         updated_at: backupAt,
         last_modified: String(payload?.lastModified || '').trim() || null
@@ -1116,11 +1131,12 @@ async function uploadProjectBackup(payload) {
     success: true,
     message: '项目备份上传成功。',
     backupAt,
-    fileCount: files.length
+    fileCount: bundleFiles.length
   };
 }
 
 /**
+ * 从云端读取 `project.bundle.json`，反序列化后在「项目存储根目录」下重建完整项目文件夹（与上传备份格式一致）。
  * @param {{ projectKey?: string, projectName?: string, storagePath?: string }} payload
  * @returns {Promise<{ success: boolean, message?: string, restoredPath?: string, error?: string }>}
  */
@@ -1129,42 +1145,37 @@ async function downloadProjectBackup(payload) {
   const { data: userData, error: userError } = await client.auth.getUser();
   const user = userData?.user || null;
   if (userError || !user?.id) {
-    return { success: false, error: userError?.message || '当前未登录，无法下载备份。' };
+    return { success: false, error: userError?.message || '当前未登录，无法恢复备份。' };
   }
   const projectKey = String(payload?.projectKey || '').trim();
   const projectName = String(payload?.projectName || '').trim() || '恢复项目';
   const storagePath = String(payload?.storagePath || '').trim();
   if (!projectKey || !storagePath) {
-    return { success: false, error: '缺少备份标识或本地存储路径。' };
+    return { success: false, error: '缺少备份标识或项目存储根路径。' };
   }
-  const manifest = await readProjectBackupManifest(client, user.id, projectKey);
-  if (!manifest?.files?.length) {
-    return { success: false, error: '该备份版本不包含恢复清单，请重新上传后再下载。' };
+  const bundle = await readProjectBackupBundle(client, user.id, projectKey);
+  if (!bundle) {
+    return { success: false, error: '该备份不包含有效的 project.bundle.json，请重新上传备份后再恢复。' };
   }
 
-  const safeFolderName = projectName.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim() || `restored-${projectKey.slice(0, 8)}`;
-  let restoredPath = path.join(storagePath, safeFolderName);
+  const nameFromBundle = String(bundle?.projectName || '').trim();
+  const rawFolderBase = (nameFromBundle || projectName || '')
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
+    .trim();
+  const folderBase = rawFolderBase || `restored-${projectKey.slice(0, 8)}`;
+  let restoredPath = path.join(storagePath, folderBase);
   if (fs.existsSync(restoredPath)) {
-    restoredPath = path.join(storagePath, `${safeFolderName}-恢复-${Date.now()}`);
+    restoredPath = path.join(storagePath, `${folderBase}-恢复-${Date.now()}`);
   }
+  await fs.promises.mkdir(storagePath, { recursive: true });
   await fs.promises.mkdir(restoredPath, { recursive: true });
 
-  for (const item of manifest.files) {
-    const objectPath = `${user.id}/${projectKey}/${item.safeRelativePath}`;
-    const { data, error } = await client.storage.from(PROJECT_BACKUP_BUCKET).download(objectPath);
-    if (error || !data) {
-      return { success: false, error: `下载备份文件失败（${item.originalRelativePath}）：${error?.message || 'unknown_error'}` };
-    }
-    const safeRelative = item.originalRelativePath;
-    if (!safeRelative || safeRelative.includes('..') || path.isAbsolute(safeRelative)) {
-      continue;
-    }
-    const targetPath = path.join(restoredPath, ...safeRelative.split('/'));
-    await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
-    const buffer = Buffer.from(await data.arrayBuffer());
-    await fs.promises.writeFile(targetPath, buffer);
-  }
-  return { success: true, message: '云端备份已下载到本地。', restoredPath };
+  await writeProjectBundleFilesToDisk(bundle, restoredPath);
+  return {
+    success: true,
+    message: `已在项目存储目录下恢复项目文件夹：${restoredPath}`,
+    restoredPath
+  };
 }
 
 /**
@@ -1208,6 +1219,820 @@ async function deleteProjectBackup(payload) {
   return { success: true, message: '已撤销当前项目备份。' };
 }
 
+/**
+ * @returns {Promise<{ success: boolean, stats?: { totalUsers: number, adminCount: number, superAdminCount: number }, error?: string }>}
+ */
+async function getPermissionManagementStats() {
+  const client = getAuthClient();
+  const { data, error } = await client.rpc('get_permission_management_stats');
+  if (error) {
+    return { success: false, error: error.message };
+  }
+  const row = Array.isArray(data) ? (data[0] || {}) : (data || {});
+  return {
+    success: true,
+    stats: {
+      totalUsers: Number(row.total_users || 0),
+      adminCount: Number(row.admin_count || 0),
+      superAdminCount: Number(row.super_admin_count || 0)
+    }
+  };
+}
+
+/**
+ * @param {{ query?: string, page?: number, pageSize?: number }} payload
+ * @returns {Promise<{ success: boolean, users?: Array<{ id: string, email: string, displayName: string, role: string, createdAt: string }>, total?: number, page?: number, pageSize?: number, error?: string }>}
+ */
+async function listUsersForPermissionManagement(payload) {
+  const client = getAuthClient();
+  const queryText = String(payload?.query || '').trim();
+  const page = Math.max(1, Number(payload?.page || 1));
+  const pageSize = Math.min(100, Math.max(1, Number(payload?.pageSize || 20)));
+  const { data, error } = await client.rpc('list_users_for_permission_management', {
+    p_query: queryText,
+    p_page: page,
+    p_page_size: pageSize
+  });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+  const rows = Array.isArray(data) ? data : [];
+  const total = Number(rows[0]?.total_count || 0);
+  return {
+    success: true,
+    total,
+    page,
+    pageSize,
+    users: rows.map((row) => ({
+      id: String(row.user_id || ''),
+      email: String(row.email || ''),
+      displayName: String(row.display_name || ''),
+      role: String(row.role || 'user'),
+      createdAt: String(row.created_at || '')
+    }))
+  };
+}
+
+/**
+ * @param {{ userId?: string, role?: 'user'|'admin' }} payload
+ * @returns {Promise<{ success: boolean, message?: string, error?: string }>}
+ */
+async function updateUserRoleBySuperAdmin(payload) {
+  const client = getAuthClient();
+  const userId = String(payload?.userId || '').trim();
+  const role = String(payload?.role || '').trim().toLowerCase();
+  if (!userId || !role) {
+    return { success: false, error: '缺少用户标识或目标角色。' };
+  }
+  if (!['user', 'admin'].includes(role)) {
+    return { success: false, error: '仅支持设置为 user 或 admin。' };
+  }
+  const { data, error } = await client.rpc('set_user_role_by_super_admin', {
+    p_user_id: userId,
+    p_role: role
+  });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+  const row = Array.isArray(data) ? (data[0] || {}) : (data || {});
+  return {
+    success: Boolean(row?.ok),
+    message: String(row?.message || (row?.ok ? '角色更新成功。' : '角色更新失败。')),
+    error: row?.ok ? undefined : String(row?.message || '角色更新失败。')
+  };
+}
+
+/**
+ * @param {string} projectPath
+ * @returns {Promise<string>}
+ */
+async function readProjectCodeSnippet(projectPath) {
+  try {
+    const entries = await fs.promises.readdir(projectPath, { withFileTypes: true });
+    const ino = entries.find((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.ino'));
+    if (!ino) return '';
+    const fullPath = path.join(projectPath, ino.name);
+    const text = await fs.promises.readFile(fullPath, 'utf8');
+    return String(text || '').slice(0, 20000);
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * @param {string} filePath
+ * @returns {string}
+ */
+function getContentTypeByPath(filePath) {
+  const ext = path.extname(String(filePath || '')).toLowerCase();
+  if (ext === '.json') return 'application/json';
+  if (ext === '.ino' || ext === '.txt' || ext === '.md') return 'text/plain';
+  if (ext === '.png') return 'image/png';
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+  if (ext === '.webp') return 'image/webp';
+  return 'application/octet-stream';
+}
+
+/**
+ * @param {string} rootDir
+ * @returns {Promise<string[]>}
+ */
+async function listLocalFilesRecursively(rootDir) {
+  const result = [];
+  /**
+   * @param {string} currentDir
+   * @returns {Promise<void>}
+   */
+  async function walk(currentDir) {
+    const entries = await fs.promises.readdir(currentDir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === '.git' || entry.name === 'node_modules') {
+          continue;
+        }
+        await walk(fullPath);
+        continue;
+      }
+      result.push(fullPath);
+    }
+  }
+  await walk(rootDir);
+  return result;
+}
+
+/**
+ * @param {import('@supabase/supabase-js').SupabaseClient} client
+ * @param {string} bucket
+ * @param {string} prefix
+ * @returns {Promise<string[]>}
+ */
+async function listStorageFilesByPrefix(client, bucket, prefix) {
+  const normalizedPrefix = String(prefix || '').replace(/\\/g, '/').replace(/\/+$/, '');
+  if (!normalizedPrefix) return [];
+  const queue = [normalizedPrefix];
+  const files = [];
+  const visited = new Set();
+  while (queue.length) {
+    const currentPrefix = String(queue.shift() || '');
+    if (!currentPrefix || visited.has(currentPrefix)) continue;
+    visited.add(currentPrefix);
+    let offset = 0;
+    while (true) {
+      const { data, error } = await client.storage.from(bucket).list(currentPrefix, {
+        limit: 100,
+        offset,
+        sortBy: { column: 'name', order: 'asc' }
+      });
+      if (error) {
+        throw new Error(`列出对象失败(${bucket}/${currentPrefix})：${error.message}`);
+      }
+      const rows = Array.isArray(data) ? data : [];
+      for (const row of rows) {
+        const name = String(row?.name || '').trim();
+        if (!name) continue;
+        const fullPath = `${currentPrefix}/${name}`.replace(/\/+/g, '/');
+        const isFolder = !row?.id && !row?.metadata;
+        if (isFolder) {
+          queue.push(fullPath);
+          continue;
+        }
+        files.push(fullPath);
+      }
+      if (rows.length < 100) break;
+      offset += rows.length;
+    }
+  }
+  return files;
+}
+
+/**
+ * @param {string} objectKey
+ * @returns {string}
+ */
+function getPrefixByObjectKey(objectKey) {
+  const key = String(objectKey || '').trim().replace(/\\/g, '/');
+  const index = key.lastIndexOf('/');
+  if (index < 1) return '';
+  return key.slice(0, index);
+}
+
+/**
+ * @param {unknown} snapshot
+ * @returns {boolean}
+ */
+function marketplaceSnapshotHasCircuit(snapshot) {
+  return Boolean(
+    snapshot &&
+      typeof snapshot === 'object' &&
+      (Array.isArray(snapshot.components) || Array.isArray(snapshot.connections))
+  );
+}
+
+/**
+ * @param {string} text
+ * @returns {{ ok: true, bundle: Record<string, unknown> } | { ok: false, error: string }}
+ */
+function parseMarketplaceProjectBundleJson(text) {
+  try {
+    const bundle = JSON.parse(String(text || ''));
+    if (!bundle || typeof bundle !== 'object') {
+      return { ok: false, error: 'invalid' };
+    }
+    if (String(bundle.format || '') !== MARKETPLACE_PROJECT_BUNDLE_FORMAT) {
+      return { ok: false, error: 'format' };
+    }
+    if (!Array.isArray(bundle.files)) {
+      return { ok: false, error: 'files' };
+    }
+    return { ok: true, bundle };
+  } catch {
+    return { ok: false, error: 'json' };
+  }
+}
+
+/**
+ * 从 bundle 中提取画布用 circuit_config 对象与首份 .ino 源码。
+ * @param {Record<string, unknown>} bundle
+ * @returns {{ snapshot: Record<string, unknown>, codeSnippet: string }}
+ */
+function extractSnapshotAndCodeFromBundle(bundle) {
+  const files = Array.isArray(bundle.files) ? bundle.files : [];
+  /** @type {Record<string, unknown>} */
+  let snapshot = {};
+  let codeSnippet = '';
+  const configItem = files.find((f) => normalizeRelativePath(String(f?.relativePath || '')) === 'circuit_config.json');
+  if (configItem && typeof configItem.text === 'string') {
+    try {
+      snapshot = JSON.parse(configItem.text);
+    } catch {
+      snapshot = {};
+    }
+  }
+  const inoItem = files.find((f) => String(f?.relativePath || '').toLowerCase().endsWith('.ino'));
+  if (inoItem && typeof inoItem.text === 'string') {
+    codeSnippet = inoItem.text;
+  }
+  return { snapshot, codeSnippet };
+}
+
+/**
+ * 从 Storage 下载单个 bundle 并解析出快照与代码片段。
+ * @param {import('@supabase/supabase-js').SupabaseClient} client
+ * @param {string} bucket
+ * @param {string} bundleKey
+ * @returns {Promise<{ snapshot: Record<string, unknown>, codeSnippet: string } | null>}
+ */
+async function loadMarketplaceSnapshotFromBundleKey(client, bucket, bundleKey) {
+  const bk = String(bundleKey || '').trim().replace(/\\/g, '/');
+  if (!bk) {
+    return null;
+  }
+  const { data: blob, error } = await client.storage.from(bucket).download(bk);
+  if (error || !blob) {
+    return null;
+  }
+  const parsed = parseMarketplaceProjectBundleJson(await blob.text());
+  if (!parsed.ok) {
+    return null;
+  }
+  return extractSnapshotAndCodeFromBundle(parsed.bundle);
+}
+
+/**
+ * 从帖子行推断待审/已发布项目在 Storage 中的项目目录前缀（兼容 DB 与对象键不一致）。
+ * @param {{ id?: string, author_id?: string, status?: string, pending_snapshot_key?: string, public_snapshot_key?: string }} row
+ * @returns {string}
+ */
+function resolveMarketplaceProjectStoragePrefix(row) {
+  const status = String(row?.status || '');
+  const snapshotKey = String(status === 'approved' ? row?.public_snapshot_key : row?.pending_snapshot_key || '').trim();
+  let prefix = getPrefixByObjectKey(snapshotKey.replace(/\\/g, '/'));
+  const authorId = String(row?.author_id || '').trim();
+  const postId = String(row?.id || '').trim();
+  const bundleSuffix = `/${MARKETPLACE_PROJECT_BUNDLE_NAME}`;
+  const normalizedKey = snapshotKey.replace(/\\/g, '/');
+  if (!prefix && normalizedKey.endsWith(bundleSuffix)) {
+    prefix = normalizedKey.slice(0, -bundleSuffix.length);
+  }
+  if (!prefix && authorId && postId) {
+    prefix = `${authorId}/${postId}/project`.replace(/\/+/g, '/');
+  }
+  return String(prefix || '').replace(/\/+$/, '');
+}
+
+/**
+ * 读取创客集市帖子在 Storage 中的电路快照与代码片段（仅支持 project.bundle.json）。
+ * @param {import('@supabase/supabase-js').SupabaseClient} client
+ * @param {string} bucket
+ * @param {{ id?: string, author_id?: string, status?: string, pending_snapshot_key?: string, public_snapshot_key?: string, pending_code_key?: string, public_code_key?: string }} row
+ * @returns {Promise<{ snapshot: any, codeSnippet: string, error?: string }>}
+ */
+async function loadMarketplaceSnapshotForDisplay(client, bucket, row) {
+  const isApproved = String(row?.status || '') === 'approved';
+  const storedKey = String(isApproved ? row?.public_snapshot_key : row?.pending_snapshot_key || '').trim().replace(/\\/g, '/');
+  const authorId = String(row?.author_id || '').trim();
+  const postId = String(row?.id || '').trim();
+
+  const bundleTryKeys = [];
+  if (storedKey && storedKey.endsWith(MARKETPLACE_PROJECT_BUNDLE_NAME)) {
+    bundleTryKeys.push(storedKey);
+  }
+  if (authorId && postId) {
+    const guessedBundle = `${authorId}/${postId}/project/${MARKETPLACE_PROJECT_BUNDLE_NAME}`.replace(/\/+/g, '/');
+    if (!bundleTryKeys.includes(guessedBundle)) {
+      bundleTryKeys.push(guessedBundle);
+    }
+  }
+  for (const bk of bundleTryKeys) {
+    const got = await loadMarketplaceSnapshotFromBundleKey(client, bucket, bk);
+    if (!got) {
+      continue;
+    }
+    if (marketplaceSnapshotHasCircuit(got.snapshot) || String(got.codeSnippet || '').trim()) {
+      return { snapshot: got.snapshot || {}, codeSnippet: got.codeSnippet || '' };
+    }
+  }
+
+  return {
+    snapshot: {},
+    codeSnippet: '',
+    error: '读取项目快照失败：未找到有效的 project.bundle.json。'
+  };
+}
+
+/**
+ * @param {{ projectPath?: string, projectName?: string, description?: string }} payload
+ * @returns {Promise<{ success: boolean, message?: string, error?: string, postId?: string }>}
+ */
+async function publishMarketplacePost(payload) {
+  const client = getAuthClient();
+  const { data: userData, error: userError } = await client.auth.getUser();
+  const user = userData?.user || null;
+  if (userError || !user?.id) {
+    return { success: false, error: userError?.message || '当前未登录，无法发布项目。' };
+  }
+  const projectPathRaw = String(payload?.projectPath || '').trim();
+  if (!projectPathRaw) {
+    return { success: false, error: '项目路径无效，无法发布。' };
+  }
+  let configRaw = '';
+  try {
+    configRaw = await fs.promises.readFile(path.join(projectPathRaw, 'circuit_config.json'), 'utf8');
+  } catch {
+    return { success: false, error: '未找到项目配置文件，无法发布。' };
+  }
+  let config;
+  try {
+    config = JSON.parse(configRaw);
+  } catch {
+    return { success: false, error: '项目配置格式无效，无法发布。' };
+  }
+
+  const nowDate = new Date().toISOString().slice(0, 10);
+  const { data: uploadCounter, error: counterError } = await client
+    .from(MARKETPLACE_DAILY_UPLOAD_TABLE)
+    .select('upload_count')
+    .eq('user_id', user.id)
+    .eq('upload_date', nowDate)
+    .maybeSingle();
+  if (counterError) {
+    return { success: false, error: `读取发布配额失败：${counterError.message}` };
+  }
+  const currentCount = Number(uploadCounter?.upload_count || 0);
+  if (currentCount >= MARKETPLACE_DAILY_UPLOAD_LIMIT) {
+    return { success: false, error: `今日发布次数已达上限（${MARKETPLACE_DAILY_UPLOAD_LIMIT} 次）。` };
+  }
+
+  const projectName = String(
+    payload?.projectName || config?.projectName || path.basename(projectPathRaw)
+  ).trim() || '未命名项目';
+  const description = String(payload?.description || config?.description || '').trim();
+  const projectPathNormalized = normalizePathForKey(projectPathRaw);
+  const projectKey = buildProjectKey(projectPathNormalized);
+  const postId = crypto.randomUUID();
+
+  const pendingProjectPrefix = `${user.id}/${postId}/project`.replace(/\/+/g, '/');
+  const localFiles = await listLocalFilesRecursively(projectPathRaw);
+  if (!localFiles.length) {
+    return { success: false, error: '项目目录为空，无法发布。' };
+  }
+  /** @type {{ relativePath: string, text: string }[]} */
+  const bundleFiles = [];
+  for (const absoluteFile of localFiles) {
+    const relativePath = path.relative(projectPathRaw, absoluteFile).replace(/\\/g, '/');
+    if (!relativePath || relativePath.startsWith('..')) {
+      continue;
+    }
+    const ext = path.extname(absoluteFile).toLowerCase();
+    if (ext !== '.json' && ext !== '.ino') {
+      continue;
+    }
+    try {
+      const text = await fs.promises.readFile(absoluteFile, 'utf8');
+      bundleFiles.push({
+        relativePath: normalizeRelativePath(relativePath),
+        text
+      });
+    } catch {
+      return { success: false, error: `无法读取文件：${relativePath}` };
+    }
+  }
+  if (!bundleFiles.some((f) => f.relativePath === 'circuit_config.json')) {
+    return { success: false, error: '项目中需包含 circuit_config.json；集市仅序列化 .json 与 .ino 文件。' };
+  }
+  const bundleObject = {
+    format: MARKETPLACE_PROJECT_BUNDLE_FORMAT,
+    projectName,
+    description,
+    sourceProjectPath: projectPathNormalized,
+    generatedAt: new Date().toISOString(),
+    files: bundleFiles
+  };
+  const bundleKey = `${pendingProjectPrefix}/${MARKETPLACE_PROJECT_BUNDLE_NAME}`.replace(/\/+/g, '/');
+  const bundleText = JSON.stringify(bundleObject);
+  const { error: bundleUploadError } = await client.storage
+    .from(MARKETPLACE_PENDING_BUCKET)
+    .upload(bundleKey, Buffer.from(bundleText, 'utf8'), {
+      upsert: true,
+      contentType: 'application/json'
+    });
+  if (bundleUploadError) {
+    return { success: false, error: `上传项目包失败：${bundleUploadError.message}` };
+  }
+
+  const nowIso = new Date().toISOString();
+  const { error: postInsertError } = await client
+    .from(MARKETPLACE_POST_TABLE)
+    .insert({
+      id: postId,
+      author_id: user.id,
+      project_key: projectKey,
+      project_name: projectName,
+      description,
+      status: 'pending',
+      pending_snapshot_key: bundleKey,
+      pending_code_key: null,
+      created_at: nowIso,
+      updated_at: nowIso
+    });
+  if (postInsertError) {
+    return { success: false, error: `写入发布记录失败：${postInsertError.message}` };
+  }
+
+  const nextCount = currentCount + 1;
+  const { error: countUpsertError } = await client
+    .from(MARKETPLACE_DAILY_UPLOAD_TABLE)
+    .upsert({
+      user_id: user.id,
+      upload_date: nowDate,
+      upload_count: nextCount,
+      updated_at: nowIso
+    });
+  if (countUpsertError) {
+    return { success: false, error: `更新发布计数失败：${countUpsertError.message}` };
+  }
+
+  return { success: true, message: '发布成功，等待审核。', postId };
+}
+
+/**
+ * @returns {Promise<{ success: boolean, posts?: any[], error?: string }>}
+ */
+async function listMarketplacePendingPosts() {
+  const client = getAuthClient();
+  const role = await tryReadCurrentUserRole(client);
+  if (role !== 'admin' && role !== 'super_admin') {
+    return { success: false, error: '权限不足，无法读取待审核项目。' };
+  }
+  const { data, error } = await client
+    .from(MARKETPLACE_POST_TABLE)
+    .select('id, author_id, project_name, description, status, created_at, pending_snapshot_key, pending_code_key')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+  return { success: true, posts: Array.isArray(data) ? data : [] };
+}
+
+/**
+ * @param {{ query?: string, sortBy?: 'likes'|'favorites'|'remixes' }} payload
+ * @returns {Promise<{ success: boolean, posts?: any[], error?: string }>}
+ */
+async function listMarketplaceApprovedPosts(payload) {
+  const client = getAuthClient();
+  const { data: userData, error: userError } = await client.auth.getUser();
+  if (userError || !userData?.user?.id) {
+    return { success: false, error: '请先登录后查看创客集市。' };
+  }
+  const query = String(payload?.query || '').trim().toLowerCase();
+  const sortBy = String(payload?.sortBy || 'likes').trim().toLowerCase();
+  const sortColumn =
+    sortBy === 'favorites' ? 'favorites_count' : sortBy === 'remixes' ? 'remixes_count' : 'likes_count';
+  let request = client
+    .from(MARKETPLACE_POST_TABLE)
+    .select('id, project_name, description, likes_count, favorites_count, remixes_count, published_at, public_snapshot_key, public_code_key')
+    .eq('status', 'approved')
+    .order(sortColumn, { ascending: false })
+    .order('published_at', { ascending: false });
+  if (query) {
+    request = request.or(`project_name.ilike.%${query}%,description.ilike.%${query}%`);
+  }
+  const { data, error } = await request.limit(120);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+  return { success: true, posts: Array.isArray(data) ? data : [] };
+}
+
+/**
+ * 校验当前登录用户是否可读指定集市帖子（详情与本地准备共用）。
+ * @param {import('@supabase/supabase-js').SupabaseClient} client
+ * @param {string} postId
+ * @returns {Promise<{ ok: true, data: Record<string, unknown> } | { ok: false, error: string }>}
+ */
+async function assertMarketplacePostReadable(client, postId) {
+  const { data: userData, error: userError } = await client.auth.getUser();
+  const user = userData?.user || null;
+  if (userError || !user?.id) {
+    return { ok: false, error: '当前未登录，无法查看项目详情。' };
+  }
+  const normalizedId = String(postId || '').trim();
+  if (!normalizedId) {
+    return { ok: false, error: '项目标识无效。' };
+  }
+  const role = await tryReadCurrentUserRole(client);
+  const { data, error } = await client
+    .from(MARKETPLACE_POST_TABLE)
+    .select('*')
+    .eq('id', normalizedId)
+    .maybeSingle();
+  if (error || !data) {
+    return { ok: false, error: error?.message || '未找到项目记录。' };
+  }
+  const isReviewer = role === 'admin' || role === 'super_admin';
+  if (data.status !== 'approved' && !isReviewer && String(data.author_id || '') !== user.id) {
+    return { ok: false, error: '无权查看该项目详情。' };
+  }
+  return { ok: true, data };
+}
+
+/**
+ * @param {{ postId?: string }} payload
+ * @returns {Promise<{ success: boolean, detail?: any, error?: string }>}
+ */
+async function getMarketplacePostDetail(payload) {
+  const client = getAuthClient();
+  const postId = String(payload?.postId || '').trim();
+  const gate = await assertMarketplacePostReadable(client, postId);
+  if (!gate.ok) {
+    return { success: false, error: gate.error };
+  }
+  const data = gate.data;
+  const bucket = data.status === 'approved' ? MARKETPLACE_PUBLIC_BUCKET : MARKETPLACE_PENDING_BUCKET;
+  const loaded = await loadMarketplaceSnapshotForDisplay(client, bucket, data);
+  if (loaded.error) {
+    if (!marketplaceSnapshotHasCircuit(loaded.snapshot) && !String(loaded.codeSnippet || '').trim()) {
+      return { success: false, error: loaded.error };
+    }
+  }
+  const snapshot = loaded.snapshot || {};
+  const codeSnippet = String(loaded.codeSnippet || '');
+  return {
+    success: true,
+    detail: {
+      id: String(data.id || ''),
+      projectName: String(data.project_name || ''),
+      description: String(data.description || ''),
+      status: String(data.status || ''),
+      likesCount: Number(data.likes_count || 0),
+      favoritesCount: Number(data.favorites_count || 0),
+      remixesCount: Number(data.remixes_count || 0),
+      createdAt: String(data.created_at || ''),
+      publishedAt: String(data.published_at || ''),
+      snapshot,
+      codeSnippet
+    }
+  };
+}
+
+/**
+ * 下载并解析集市项目单文件包（仅内存 JSON，不写本地 temp）。
+ * @param {{ postId?: string }} payload
+ * @returns {Promise<{ success: boolean, bundle?: Record<string, unknown>, bundleKey?: string, projectName?: string, error?: string }>}
+ */
+async function getMarketplaceProjectBundle(payload) {
+  const client = getAuthClient();
+  const postId = String(payload?.postId || '').trim();
+  if (!postId) {
+    return { success: false, error: '项目标识无效。' };
+  }
+  const gate = await assertMarketplacePostReadable(client, postId);
+  if (!gate.ok) {
+    return { success: false, error: gate.error };
+  }
+  const row = gate.data;
+  const bucket = row.status === 'approved' ? MARKETPLACE_PUBLIC_BUCKET : MARKETPLACE_PENDING_BUCKET;
+  const storedKey = String(
+    (row.status === 'approved' ? row.public_snapshot_key : row.pending_snapshot_key) || ''
+  )
+    .trim()
+    .replace(/\\/g, '/');
+  const authorId = String(row.author_id || '').trim();
+  const bundleTryKeys = [];
+  if (storedKey && storedKey.endsWith(MARKETPLACE_PROJECT_BUNDLE_NAME)) {
+    bundleTryKeys.push(storedKey);
+  }
+  if (authorId && postId) {
+    const guessedBundle = `${authorId}/${postId}/project/${MARKETPLACE_PROJECT_BUNDLE_NAME}`.replace(/\/+/g, '/');
+    if (!bundleTryKeys.includes(guessedBundle)) {
+      bundleTryKeys.push(guessedBundle);
+    }
+  }
+  for (const bk of bundleTryKeys) {
+    const { data: blob, error } = await client.storage.from(bucket).download(bk);
+    if (error || !blob) {
+      continue;
+    }
+    const parsed = parseMarketplaceProjectBundleJson(await blob.text());
+    if (!parsed.ok) {
+      continue;
+    }
+    return {
+      success: true,
+      bundle: parsed.bundle,
+      bundleKey: bk,
+      projectName: String(row.project_name || '创客集市预览项目')
+    };
+  }
+  return { success: false, error: '未找到 project.bundle.json 或包格式无效。' };
+}
+
+/**
+ * @param {{ postId?: string, action?: 'approve'|'reject', rejectReason?: string }} payload
+ * @returns {Promise<{ success: boolean, message?: string, error?: string }>}
+ */
+async function reviewMarketplacePost(payload) {
+  const client = getAuthClient();
+  const { data: userData, error: userError } = await client.auth.getUser();
+  const user = userData?.user || null;
+  if (userError || !user?.id) {
+    return { success: false, error: '当前未登录，无法审核项目。' };
+  }
+  const role = await tryReadCurrentUserRole(client);
+  if (role !== 'admin' && role !== 'super_admin') {
+    return { success: false, error: '权限不足，无法审核项目。' };
+  }
+  const postId = String(payload?.postId || '').trim();
+  const action = String(payload?.action || '').trim().toLowerCase();
+  if (!postId || !['approve', 'reject'].includes(action)) {
+    return { success: false, error: '审核参数无效。' };
+  }
+  const { data: post, error: postError } = await client
+    .from(MARKETPLACE_POST_TABLE)
+    .select('*')
+    .eq('id', postId)
+    .eq('status', 'pending')
+    .maybeSingle();
+  if (postError || !post) {
+    return { success: false, error: postError?.message || '待审核项目不存在。' };
+  }
+  const nowIso = new Date().toISOString();
+  if (action === 'approve') {
+    const pendingSnapshotKey = String(post.pending_snapshot_key || '');
+    const pendingCodeKey = String(post.pending_code_key || '');
+    const pendingProjectPrefix = getPrefixByObjectKey(pendingSnapshotKey);
+    if (!pendingProjectPrefix) {
+      return { success: false, error: '待审核项目缺少有效快照路径，无法审核。' };
+    }
+    const pendingFiles = await listStorageFilesByPrefix(client, MARKETPLACE_PENDING_BUCKET, pendingProjectPrefix);
+    if (!pendingFiles.length) {
+      return { success: false, error: '待审核项目文件不存在，无法审核通过。' };
+    }
+    const publicProjectPrefix = `${postId}/project`;
+    for (const pendingFile of pendingFiles) {
+      const relativePath = pendingFile.slice(pendingProjectPrefix.length + 1);
+      const publicFile = `${publicProjectPrefix}/${relativePath}`.replace(/\/+/g, '/');
+      const { data: pendingBlob, error: pendingBlobError } = await client.storage
+        .from(MARKETPLACE_PENDING_BUCKET)
+        .download(pendingFile);
+      if (pendingBlobError || !pendingBlob) {
+        return { success: false, error: `读取待审核文件失败：${pendingBlobError?.message || relativePath}` };
+      }
+      const fileBuffer = Buffer.from(await pendingBlob.arrayBuffer());
+      const { error: publicUploadError } = await client.storage
+        .from(MARKETPLACE_PUBLIC_BUCKET)
+        .upload(publicFile, fileBuffer, { upsert: true, contentType: getContentTypeByPath(publicFile) });
+      if (publicUploadError) {
+        return { success: false, error: `写入公开文件失败(${relativePath})：${publicUploadError.message}` };
+      }
+    }
+    await client.storage.from(MARKETPLACE_PENDING_BUCKET).remove(pendingFiles);
+    const tail =
+      pendingProjectPrefix && pendingSnapshotKey.startsWith(`${pendingProjectPrefix}/`)
+        ? pendingSnapshotKey.slice(pendingProjectPrefix.length + 1)
+        : path.basename(pendingSnapshotKey.replace(/\\/g, '/'));
+    const publicSnapshotKey = `${publicProjectPrefix}/${tail}`.replace(/\/+/g, '/');
+    const publicCodeKey = pendingCodeKey
+      ? `${publicProjectPrefix}/${path.basename(pendingCodeKey).replace(/\\/g, '/')}`
+      : null;
+
+    const { error: updateError } = await client
+      .from(MARKETPLACE_POST_TABLE)
+      .update({
+        status: 'approved',
+        public_snapshot_key: publicSnapshotKey,
+        public_code_key: publicCodeKey,
+        published_at: nowIso,
+        reviewed_at: nowIso,
+        reviewer_id: user.id,
+        reject_reason: null,
+        pending_snapshot_key: null,
+        pending_code_key: null,
+        updated_at: nowIso
+      })
+      .eq('id', postId);
+    if (updateError) {
+      return { success: false, error: `更新审核状态失败：${updateError.message}` };
+    }
+    return { success: true, message: '审核通过，项目已发布到创客集市。' };
+  }
+
+  const pendingPrefix = getPrefixByObjectKey(String(post.pending_snapshot_key || ''));
+  const removeKeys = pendingPrefix
+    ? await listStorageFilesByPrefix(client, MARKETPLACE_PENDING_BUCKET, pendingPrefix)
+    : [String(post.pending_snapshot_key || ''), String(post.pending_code_key || '')].filter(Boolean);
+  if (removeKeys.length) {
+    await client.storage.from(MARKETPLACE_PENDING_BUCKET).remove(removeKeys);
+  }
+  const { error: rejectError } = await client
+    .from(MARKETPLACE_POST_TABLE)
+    .update({
+      status: 'rejected',
+      reviewed_at: nowIso,
+      reviewer_id: user.id,
+      reject_reason: String(payload?.rejectReason || '').trim() || null,
+      pending_snapshot_key: null,
+      pending_code_key: null,
+      updated_at: nowIso
+    })
+    .eq('id', postId);
+  if (rejectError) {
+    return { success: false, error: `写入拒绝结果失败：${rejectError.message}` };
+  }
+  return { success: true, message: '已拒绝该项目投稿。' };
+}
+
+/**
+ * @param {{ postId?: string, action?: 'like'|'favorite'|'remix' }} payload
+ * @returns {Promise<{ success: boolean, message?: string, error?: string }>}
+ */
+async function interactMarketplacePost(payload) {
+  const client = getAuthClient();
+  const { data: userData, error: userError } = await client.auth.getUser();
+  const user = userData?.user || null;
+  if (userError || !user?.id) {
+    return { success: false, error: '请先登录后再执行互动操作。' };
+  }
+  const postId = String(payload?.postId || '').trim();
+  const action = String(payload?.action || '').trim().toLowerCase();
+  if (!postId || !['like', 'favorite', 'remix'].includes(action)) {
+    return { success: false, error: '互动参数无效。' };
+  }
+  const tableMap = {
+    like: 'marketplace_post_likes',
+    favorite: 'marketplace_post_favorites',
+    remix: 'marketplace_post_remixes'
+  };
+  const countColumnMap = {
+    like: 'likes_count',
+    favorite: 'favorites_count',
+    remix: 'remixes_count'
+  };
+  const table = tableMap[action];
+  const countColumn = countColumnMap[action];
+  const { data: existing } = await client.from(table).select('post_id').eq('user_id', user.id).eq('post_id', postId).maybeSingle();
+  if (existing) {
+    return { success: true, message: '已记录该操作。' };
+  }
+  const { error: insertError } = await client.from(table).insert({ user_id: user.id, post_id: postId });
+  if (insertError) {
+    return { success: false, error: insertError.message };
+  }
+  const { data: postData } = await client
+    .from(MARKETPLACE_POST_TABLE)
+    .select(countColumn)
+    .eq('id', postId)
+    .maybeSingle();
+  const current = Number(postData?.[countColumn] || 0);
+  await client
+    .from(MARKETPLACE_POST_TABLE)
+    .update({ [countColumn]: current + 1, updated_at: new Date().toISOString() })
+    .eq('id', postId);
+  return { success: true, message: '操作成功。' };
+}
+
 module.exports = {
   getAuthState,
   getOAuthRedirectUrl,
@@ -1219,6 +2044,16 @@ module.exports = {
   uploadProjectBackup,
   deleteProjectBackup,
   downloadProjectBackup,
+  getPermissionManagementStats,
+  listUsersForPermissionManagement,
+  updateUserRoleBySuperAdmin,
+  publishMarketplacePost,
+  listMarketplacePendingPosts,
+  listMarketplaceApprovedPosts,
+  getMarketplacePostDetail,
+  getMarketplaceProjectBundle,
+  reviewMarketplacePost,
+  interactMarketplacePost,
   signUpWithPassword,
   signInWithPassword,
   signOut

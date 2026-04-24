@@ -46,6 +46,11 @@ class TabManager {
             button: document.querySelector('[data-tab="personal-center"]')
         });
 
+        this.tabs.set('maker-marketplace', {
+            element: document.getElementById('maker-marketplace-tab'),
+            button: document.querySelector('[data-tab="maker-marketplace"]')
+        });
+
         // 注册二级标签页
         this.subTabs.set('preview', {
             element: document.getElementById('preview-sub-tab'),

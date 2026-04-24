@@ -110,10 +110,16 @@ class ProjectTabsManager {
         const projectId = this.generateProjectId();
         const defaultView = this.getDefaultCanvasView();
         
+        const postKey =
+            projectData && typeof projectData.marketplacePostId === 'string'
+                ? String(projectData.marketplacePostId).trim().toLowerCase()
+                : '';
         const project = {
             id: projectId,
             name: projectData.projectName || '未命名项目',
             path: projectData.path,
+            /** 与集市帖 id 一致（小写），用于防重复打开同一待审/已发布内存项目 */
+            marketplacePostId: postKey || undefined,
             isModified: false,
             isSaved: true,
             // 保存完整的projectData供渲染使用
@@ -156,6 +162,42 @@ class ProjectTabsManager {
         return this.projects.find((project) =>
             this.normalizeProjectPathKey(project?.path || '') === targetKey
         ) || null;
+    }
+
+    /**
+     * 按集市帖 id 查找已打开的内存会话项目（与 findProjectByPath 互补，避免 path 未写入或与 projectData 不一致时重复开签）。
+     * @param {string} postId
+     * @returns {Object|null}
+     */
+    findOpenMarketplaceSessionByPostId(postId) {
+        const key = String(postId || '').trim().toLowerCase();
+        if (!key) {
+            return null;
+        }
+        const wantPathKey = this.normalizeProjectPathKey(`marketplace-session://${key}`);
+        return (
+            this.projects.find((project) => {
+                if (this.normalizeProjectPathKey(project?.path || '') === wantPathKey) {
+                    return true;
+                }
+                const pd = project?.projectData && typeof project.projectData === 'object' ? project.projectData : null;
+                if (pd && this.normalizeProjectPathKey(String(pd.path || '')) === wantPathKey) {
+                    return true;
+                }
+                const sid = String(project.marketplacePostId ?? pd?.marketplacePostId ?? '')
+                    .trim()
+                    .toLowerCase();
+                if (sid && sid === key) {
+                    return true;
+                }
+                const rawPath = String(project?.path || '').trim();
+                const m = /^marketplace-session:\/\/(.+)$/i.exec(rawPath);
+                if (m && String(m[1]).trim().toLowerCase() === key) {
+                    return true;
+                }
+                return false;
+            }) || null
+        );
     }
 
     /**
