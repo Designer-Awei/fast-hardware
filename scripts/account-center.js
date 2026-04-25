@@ -2,6 +2,15 @@
  * Fast Hardware - 个人中心 / 账号设置
  */
 
+/** localStorage：我的项目卡片摘要（按账号 ownerKey，不含整页 HTML） */
+const FH_LS_MY_PROJECTS_SUMMARIES = 'fh.account.myProjectsSummaries.v1';
+/** localStorage：创客集市已通过列表卡片摘要（按 ownerKey + 搜索/排序 cacheKey） */
+const FH_LS_MARKETPLACE_APPROVED_SUMMARIES = 'fh.account.marketplaceApprovedSummaries.v1';
+/** 兼容旧版整页 HTML 缓存（读出后不再写回） */
+const FH_LS_MY_PROJECTS_HTML_LEGACY = 'fh.account.myProjectsHtml.v1';
+/** 兼容旧版集市已通过全量 posts 缓存 */
+const FH_LS_MARKETPLACE_APPROVED_LEGACY = 'fh.account.marketplaceApproved.v1';
+
 class AccountCenterManager {
     constructor() {
         this.authState = {
@@ -21,13 +30,33 @@ class AccountCenterManager {
         this.permissionUpdatingUserIds = new Set();
         this.marketplacePublishContext = null;
         this.marketplacePosts = [];
+        /** @type {Array<Record<string, unknown>>} 当前筛选下与已发布列表一并展示的共享备份卡片数据 */
+        this.marketplaceSharedCardsForGrid = [];
+        /** @type {string} 最近一次已通过列表对应的 cacheKey（query::sortBy） */
+        this._marketplaceLastApprovedCacheKey = '';
         this.marketplacePendingPosts = [];
+        this.marketplaceHasLoaded = false;
+        this.marketplaceListCacheState = {
+            approved: {
+                key: '',
+                ts: 0
+            },
+            pending: {
+                key: 'admin',
+                ts: 0
+            }
+        };
+        this.marketplaceListStaleMs = 5 * 60 * 1000;
         /** @type {Map<string, { success: boolean, detail?: Record<string, unknown>, error?: string }>} */
         this.marketplacePostDetailCache = new Map();
         /** @type {{ postId: string, reopenPending: boolean } | null} */
         this.marketplaceDetailReviewSession = null;
         /** @type {boolean} */
         this.marketplaceDetailReviewMode = false;
+        /** @type {string} 当前集市详情模态对应的帖子 ID（删帖时用于判断是否关闭模态） */
+        this.marketplaceDetailOpenPostId = '';
+        /** @type {Set<string>} 点赞/收藏写入中的锁，避免连点产生竞态 */
+        this.marketplaceInteractPending = new Set();
         /** @type {any} */
         this._marketplacePreviewCanvasMgr = null;
         /** @type {ResizeObserver | null} */
@@ -63,6 +92,7 @@ class AccountCenterManager {
         this.avatarTrigger = document.getElementById('account-profile-avatar-trigger');
         this.editProfileBtn = document.getElementById('account-edit-profile-btn');
         this.profileNameInput = document.getElementById('account-profile-name-input');
+        this.profileSaveBtn = document.getElementById('account-profile-save-btn');
         this.profileModal = document.getElementById('account-profile-modal');
         this.avatarFileInput = document.getElementById('account-avatar-file-input');
         this.avatarModal = document.getElementById('account-avatar-modal');
@@ -85,6 +115,7 @@ class AccountCenterManager {
         this.marketplaceSearchInput = document.getElementById('marketplace-search-input');
         this.marketplaceSortSelect = document.getElementById('marketplace-sort-select');
         this.marketplaceSearchBtn = document.getElementById('marketplace-search-btn');
+        this.marketplaceHomeBtn = document.getElementById('marketplace-home-btn');
         this.marketplacePublishModal = document.getElementById('marketplace-publish-modal');
         this.marketplacePublishDescriptionInput = document.getElementById('marketplace-publish-description');
         this.marketplacePublishPreview = document.getElementById('marketplace-publish-preview');
@@ -100,9 +131,23 @@ class AccountCenterManager {
         this.docModalBody = document.getElementById('account-doc-modal-body');
         this.avatarCropState = null;
         this.projectBackupMap = new Map();
+        this.marketplacePublishStatusMap = new Map();
         this.uploadingProjectPaths = new Set();
         this.revokingProjectPaths = new Set();
         this.lastProjectStoragePath = '';
+        this.myProjectsCacheOwnerKey = '';
+        /** @type {Array<Record<string, unknown>> | null} 与磁盘摘要同步的卡片摘要（用于首屏与持久化） */
+        this.myProjectsSummaries = null;
+        this.myProjectsHasLoaded = false;
+        this.myProjectsCacheDirty = true;
+        /** 本会话内「我的项目」是否已完成首次后台全量同步 */
+        this._sessionMyProjectsInitialSyncDone = false;
+        /** @type {Promise<void> | null} */
+        this._sessionMyProjectsInitialSyncPromise = null;
+        /** 本会话内创客集市已通过列表是否已完成首次后台全量同步 */
+        this._sessionMarketplaceInitialSyncDone = false;
+        /** @type {Promise<void> | null} */
+        this._sessionMarketplaceInitialSyncPromise = null;
     }
 
     /**
@@ -228,13 +273,19 @@ class AccountCenterManager {
             await this.handlePermissionRoleUpdate(userId, role, email);
         });
         this.marketplaceSearchBtn?.addEventListener('click', async () => {
-            await this.refreshMarketplaceApprovedPosts();
+            await this.executeMarketplaceSearchAction();
         });
         this.marketplaceSearchInput?.addEventListener('keydown', async (event) => {
             if (event.key === 'Enter') {
                 event.preventDefault();
-                await this.refreshMarketplaceApprovedPosts();
+                await this.executeMarketplaceSearchAction();
             }
+        });
+        this.marketplaceHomeBtn?.addEventListener('click', async () => {
+            if (this.marketplaceSearchInput) {
+                this.marketplaceSearchInput.value = '';
+            }
+            await this.executeMarketplaceSearchAction();
         });
         document.getElementById('close-marketplace-publish-modal')?.addEventListener('click', () => {
             this.closeMarketplacePublishModal();
@@ -249,6 +300,11 @@ class AccountCenterManager {
             await this.confirmMarketplacePublish();
         });
         this.marketplacePublishDescriptionInput?.addEventListener('input', () => {
+            const limit = 79;
+            const raw = String(this.marketplacePublishDescriptionInput?.value || '');
+            if (raw.length > limit && this.marketplacePublishDescriptionInput) {
+                this.marketplacePublishDescriptionInput.value = raw.slice(0, limit);
+            }
             this.renderMarketplacePublishPreviewCard();
         });
         document.getElementById('close-marketplace-post-detail-modal')?.addEventListener('click', () => {
@@ -258,11 +314,27 @@ class AccountCenterManager {
             this.closeMarketplaceDetailModal();
         });
         this.marketplaceGrid?.addEventListener('click', async (event) => {
+            const sharedRemixBtn = event.target?.closest?.('[data-marketplace-backup-remix]');
+            if (sharedRemixBtn) {
+                const projectKey = String(sharedRemixBtn.getAttribute('data-project-key') || '').trim();
+                await this.openSharedBackupByProjectKey(projectKey, sharedRemixBtn);
+                return;
+            }
+            const adminDeleteBtn = event.target?.closest?.('[data-marketplace-admin-delete]');
+            if (adminDeleteBtn) {
+                event.stopPropagation();
+                const delPostId = String(adminDeleteBtn.getAttribute('data-post-id') || '').trim();
+                await this.confirmAndDeleteMarketplacePublishedPost(delPostId);
+                return;
+            }
             const actionBtn = event.target?.closest?.('[data-marketplace-interact]');
             if (actionBtn) {
                 const postId = String(actionBtn.getAttribute('data-post-id') || '').trim();
                 const action = String(actionBtn.getAttribute('data-marketplace-interact') || '').trim();
-                await this.interactMarketplacePost(postId, action);
+                if (action === 'remix') {
+                    return;
+                }
+                await this.interactMarketplacePost(postId, action, actionBtn);
                 return;
             }
             const card = event.target?.closest?.('[data-marketplace-post-id]');
@@ -278,26 +350,35 @@ class AccountCenterManager {
         });
 
         this.projectsGrid?.addEventListener('click', async (event) => {
+            const copyProjectKeyBtn = event.target?.closest?.('[data-project-key-copy]');
+            if (copyProjectKeyBtn) {
+                const projectKey = String(copyProjectKeyBtn.getAttribute('data-project-key') || '').trim();
+                await this.copyProjectKeyToClipboard(projectKey);
+                return;
+            }
             const shareBtn = event.target?.closest?.('[data-project-share]');
             if (shareBtn) {
                 const projectPath = String(shareBtn.getAttribute('data-project-path') || '').trim();
+                const projectUuid = String(shareBtn.getAttribute('data-project-uuid') || '').trim();
                 const projectName = String(shareBtn.getAttribute('data-project-name') || '').trim() || '当前项目';
                 const projectDescription = String(shareBtn.getAttribute('data-project-description') || '').trim();
-                this.openMarketplacePublishModal(projectPath, projectName, projectDescription);
+                this.openMarketplacePublishModal(projectPath, projectName, projectDescription, projectUuid);
                 return;
             }
             const backupBtn = event.target?.closest?.('[data-project-backup]');
             if (backupBtn) {
                 const projectPath = String(backupBtn.getAttribute('data-project-path') || '').trim();
+                const projectUuid = String(backupBtn.getAttribute('data-project-uuid') || '').trim();
                 const projectName = String(backupBtn.getAttribute('data-project-name') || '').trim();
-                await this.uploadProjectBackup(projectPath, projectName);
+                await this.uploadProjectBackup(projectPath, projectName, projectUuid);
                 return;
             }
             const revokeBtn = event.target?.closest?.('[data-project-backup-delete]');
             if (revokeBtn) {
                 const projectPath = String(revokeBtn.getAttribute('data-project-path') || '').trim();
+                const projectUuid = String(revokeBtn.getAttribute('data-project-uuid') || '').trim();
                 const projectName = String(revokeBtn.getAttribute('data-project-name') || '').trim();
-                await this.deleteProjectBackup(projectPath, projectName);
+                await this.deleteProjectBackup(projectPath, projectName, projectUuid);
                 return;
             }
             const openBtn = event.target?.closest?.('[data-project-open]');
@@ -323,17 +404,30 @@ class AccountCenterManager {
             this.switchMainTab('personal-center');
             this.switchSubTab('account-settings');
         });
+        window.electronAPI?.onSupabaseMarketplaceChanged?.(async (payload) => {
+            this.invalidateMarketplaceApprovedClientCache();
+            if (!this.authState?.isAuthenticated) {
+                return;
+            }
+            const changedType = String(payload?.type || '').trim().toLowerCase();
+            if (['review', 'publish', 'delete-approved'].includes(changedType)) {
+                await this.resyncMyProjectsPublishStatusesOnly();
+            }
+            if (this.currentSubTab === 'community-management') {
+                await this.refreshMarketplacePendingPosts();
+            }
+        });
 
         document.addEventListener('tabSwitched', async (e) => {
             const tabName = e?.detail?.tabName;
             if (tabName === 'personal-center') {
                 await this.refreshAuthState();
                 if (this.currentSubTab === 'my-projects') {
-                    await this.refreshMyProjects();
+                    await this.presentMyProjectsTab();
                 }
             }
             if (tabName === 'maker-marketplace') {
-                await this.refreshMarketplaceApprovedPosts();
+                await this.presentMakerMarketplaceTab();
             }
         });
     }
@@ -381,7 +475,7 @@ class AccountCenterManager {
             panel.classList.toggle('active', panel.id === `${subTabName}-sub-tab`);
         });
         if (subTabName === 'my-projects') {
-            await this.refreshMyProjects();
+            await this.presentMyProjectsTab();
         }
         if (subTabName === 'community-management') {
             await this.refreshMarketplacePendingPosts();
@@ -574,7 +668,31 @@ class AccountCenterManager {
         if (!window.electronAPI?.getSupabaseAuthState) {
             return;
         }
+        const prevOwnerKey = String(this.myProjectsCacheOwnerKey || '');
         const state = await window.electronAPI.getSupabaseAuthState();
+        console.log('[account-center] refreshAuthState', {
+            isAuthenticated: Boolean(state?.isAuthenticated),
+            userId: String(state?.id || ''),
+            email: String(state?.email || ''),
+            prevOwnerKey
+        });
+        const nextOwnerKey = Boolean(state?.isAuthenticated)
+            ? String(state?.id || state?.email || 'authenticated').trim().toLowerCase()
+            : 'anonymous';
+        /** 构造后首次同步：prev 为空字符串时不视为换账号，避免误删 localStorage 摘要导致首屏无缓存 */
+        const ownerKeyInitialized = Boolean(prevOwnerKey);
+        if (ownerKeyInitialized && prevOwnerKey !== nextOwnerKey) {
+            /** 从匿名态登录时保留磁盘摘要，仅清内存；登出或换账号仍删盘 */
+            const clearDiskCache = !(prevOwnerKey === 'anonymous' && nextOwnerKey !== 'anonymous');
+            console.log('[account-center] owner changed -> reset caches', {
+                prevOwnerKey,
+                nextOwnerKey,
+                clearDiskCache
+            });
+            this.resetMyProjectsCacheState(clearDiskCache);
+            this.resetMarketplaceViewState(clearDiskCache);
+        }
+        this.myProjectsCacheOwnerKey = nextOwnerKey;
         this.authState = {
             isAuthenticated: Boolean(state?.isAuthenticated),
             email: String(state?.email || ''),
@@ -588,9 +706,63 @@ class AccountCenterManager {
     }
 
     /**
+     * 登录身份切换时清空“我的项目”相关缓存与派生映射，避免沿用旧账号数据。
+     * @param {boolean} [clearDiskCache=true] 为 false 时保留 localStorage 摘要（如从匿名登录后立即首屏读盘）。
+     * @returns {void}
+     */
+    resetMyProjectsCacheState(clearDiskCache = true) {
+        this.projectBackupMap = new Map();
+        this.marketplacePublishStatusMap = new Map();
+        this.myProjectsSummaries = null;
+        this.myProjectsHasLoaded = false;
+        this.myProjectsCacheDirty = true;
+        this._sessionMyProjectsInitialSyncDone = false;
+        this._sessionMyProjectsInitialSyncPromise = null;
+        this.uploadingProjectPaths.clear();
+        this.revokingProjectPaths.clear();
+        if (!clearDiskCache) {
+            return;
+        }
+        try {
+            localStorage.removeItem(FH_LS_MY_PROJECTS_SUMMARIES);
+            localStorage.removeItem(FH_LS_MY_PROJECTS_HTML_LEGACY);
+        } catch {
+            /* ignore */
+        }
+    }
+
+    /**
+     * 登录身份切换时重置创客集市视图状态，避免沿用“需登录”旧视图缓存。
+     * @param {boolean} [clearDiskCache=true] 为 false 时保留已通过列表的 localStorage 摘要。
+     * @returns {void}
+     */
+    resetMarketplaceViewState(clearDiskCache = true) {
+        this.marketplacePosts = [];
+        this.marketplaceSharedCardsForGrid = [];
+        this._marketplaceLastApprovedCacheKey = '';
+        this.marketplacePendingPosts = [];
+        this.marketplaceHasLoaded = false;
+        this._sessionMarketplaceInitialSyncDone = false;
+        this._sessionMarketplaceInitialSyncPromise = null;
+        this.invalidateMarketplaceApprovedClientCache();
+        if (!clearDiskCache) {
+            return;
+        }
+        try {
+            localStorage.removeItem(FH_LS_MARKETPLACE_APPROVED_SUMMARIES);
+            localStorage.removeItem(FH_LS_MARKETPLACE_APPROVED_LEGACY);
+        } catch {
+            /* ignore */
+        }
+    }
+
+    /**
      * @returns {Promise<void>}
      */
     async handleDisplayNameSave() {
+        if (this.profileSaveBtn?.classList.contains('is-uploading')) {
+            return;
+        }
         if (!window.electronAPI?.supabaseUpdateProfile) {
             this.showNotification('当前环境不支持昵称更新。', 'warning');
             return;
@@ -600,6 +772,7 @@ class AccountCenterManager {
             this.showNotification('昵称不能为空。', 'warning');
             return;
         }
+        this.setProfileSaveButtonLoading(true);
         try {
             const result = await window.electronAPI.supabaseUpdateProfile({ displayName });
             if (!result?.success) {
@@ -613,7 +786,24 @@ class AccountCenterManager {
         } catch (error) {
             const message = this.localizeAuthMessage(String(error?.message || error || ''));
             this.showNotification(message || '昵称更新失败，请稍后重试。', 'error');
+        } finally {
+            this.setProfileSaveButtonLoading(false);
         }
+    }
+
+    /**
+     * 编辑资料弹窗“保存资料”按钮加载态（进度扫描 + 中心转圈 + 防抖禁用）。
+     * @param {boolean} loading
+     * @returns {void}
+     */
+    setProfileSaveButtonLoading(loading) {
+        if (!this.profileSaveBtn) {
+            return;
+        }
+        const busy = Boolean(loading);
+        this.profileSaveBtn.classList.toggle('is-uploading', busy);
+        this.profileSaveBtn.setAttribute('aria-busy', busy ? 'true' : 'false');
+        this.profileSaveBtn.disabled = busy;
     }
 
     /**
@@ -1052,6 +1242,23 @@ class AccountCenterManager {
     }
 
     /**
+     * 判断是否为“登录态可能过期/未同步”类错误（用于生产环境冷启动后的一次性重试）。
+     * @param {string} message
+     * @returns {boolean}
+     */
+    isAuthStateLikelyStaleError(message) {
+        const text = String(message || '').trim().toLowerCase();
+        if (!text) return false;
+        return (
+            text.includes('未登录') ||
+            text.includes('jwt') ||
+            text.includes('token') ||
+            text.includes('session') ||
+            text.includes('auth')
+        );
+    }
+
+    /**
      * @param {string} role
      * @returns {string}
      */
@@ -1115,23 +1322,414 @@ class AccountCenterManager {
     }
 
     /**
-     * 读取本地项目列表。
+     * 「我的项目」首屏：磁盘摘要立即渲染；本会话仅在后台静默全量同步一次。
      * @returns {Promise<void>}
      */
-    async refreshMyProjects() {
-        if (!window.electronAPI?.getSettings || !window.electronAPI?.readDirectory) {
+    async presentMyProjectsTab() {
+        if (!window.electronAPI?.getSettings || !window.electronAPI?.readDirectory || !this.projectsGrid) {
             return;
+        }
+        await this.refreshAuthState();
+        if (!this.authState?.isAuthenticated) {
+            this.projectsGrid.innerHTML = '<div class="account-empty-state">请先登录后查看我的项目。</div>';
+            return;
+        }
+        this.tryRestoreMyProjectsSummariesFromLocalStorage();
+        if (Array.isArray(this.myProjectsSummaries) && this.myProjectsSummaries.length) {
+            await this.renderMyProjectsFromSummaries(this.myProjectsSummaries);
+        }
+        void this.ensureMyProjectsSessionInitialBackgroundSync();
+    }
+
+    /**
+     * 本会话首次进入「我的项目」时在后台静默全量同步一次（目录扫描 + 备份/发布态）。
+     * @returns {Promise<void>}
+     */
+    async ensureMyProjectsSessionInitialBackgroundSync() {
+        if (this._sessionMyProjectsInitialSyncDone) {
+            return;
+        }
+        if (this._sessionMyProjectsInitialSyncPromise) {
+            await this._sessionMyProjectsInitialSyncPromise;
+            return;
+        }
+        this._sessionMyProjectsInitialSyncPromise = (async () => {
+            try {
+                await this.runMyProjectsFullScanFromDisk({ showLoading: false });
+                this._sessionMyProjectsInitialSyncDone = true;
+            } finally {
+                this._sessionMyProjectsInitialSyncPromise = null;
+            }
+        })();
+        await this._sessionMyProjectsInitialSyncPromise;
+    }
+
+    /**
+     * 手动全量重扫（如从云端恢复备份后目录结构变化）。
+     * @param {{ showLoading?: boolean }} [options]
+     * @returns {Promise<void>}
+     */
+    async refreshMyProjectsFullRescan(options = {}) {
+        await this.runMyProjectsFullScanFromDisk(options);
+    }
+
+    /**
+     * 从 localStorage 恢复「我的项目」卡片摘要（仅 ownerKey 匹配）。
+     * @returns {boolean}
+     */
+    tryRestoreMyProjectsSummariesFromLocalStorage() {
+        if (Array.isArray(this.myProjectsSummaries) && this.myProjectsSummaries.length) {
+            return true;
+        }
+        const ownerKey = String(this.myProjectsCacheOwnerKey || '').trim();
+        if (!ownerKey || ownerKey === 'anonymous') {
+            return false;
+        }
+        try {
+            const raw = localStorage.getItem(FH_LS_MY_PROJECTS_SUMMARIES);
+            if (!raw) {
+                return false;
+            }
+            const parsed = JSON.parse(raw);
+            if (String(parsed?.ownerKey || '') !== ownerKey) {
+                return false;
+            }
+            const items = Array.isArray(parsed?.items) ? parsed.items : [];
+            this.myProjectsSummaries = items;
+            this.myProjectsHasLoaded = items.length > 0;
+            this.myProjectsCacheDirty = false;
+            return items.length > 0;
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * 持久化「我的项目」卡片摘要（非整页 HTML）。
+     * @returns {void}
+     */
+    persistMyProjectsSummariesToLocalStorage() {
+        const ownerKey = String(this.myProjectsCacheOwnerKey || '').trim();
+        if (!ownerKey || ownerKey === 'anonymous') {
+            return;
+        }
+        const items = Array.isArray(this.myProjectsSummaries) ? this.myProjectsSummaries : [];
+        try {
+            localStorage.setItem(
+                FH_LS_MY_PROJECTS_SUMMARIES,
+                JSON.stringify({
+                    ownerKey,
+                    items,
+                    ts: Date.now()
+                })
+            );
+        } catch {
+            /* quota 等忽略 */
+        }
+    }
+
+    /**
+     * @param {Record<string, unknown>} s
+     * @returns {Record<string, unknown>}
+     */
+    summaryToMyProjectViewModel(s) {
+        const isCloudOnly = Boolean(s.isCloudOnly);
+        const pathKey = this.normalizeProjectPath(String(s.path || ''));
+        const uuidKey = this.normalizeProjectUuid(String(s.projectUuid || ''));
+        const projectName = String(s.projectName || '').trim() || '未命名';
+        const description = String(s.description || '').trim();
+        const componentCount = Number(s.componentCount || 0);
+        const connectionCount = Number(s.connectionCount || 0);
+        const lastModified = String(s.lastModified || '').trim();
+        const timeText = lastModified
+            ? new Date(lastModified).toLocaleString('zh-CN', { hour12: false })
+            : '未记录';
+        const hasBackup = Boolean(s.hasBackup && String(s.backupAt || '').trim());
+        const projectKeyText = String(s.projectKey || '').trim() || '暂无project_key';
+        const backupText = hasBackup
+            ? `备份状态：已备份 - ${this.escapeHtml(this.formatDateTime(String(s.backupAt || '')))}`
+            : '备份状态：无备份';
+        const backupBtnText = hasBackup ? '更新备份' : '上传备份';
+        const backupIcon = hasBackup ? 'refresh' : 'upload-cloud';
+        const revokeDisabled = hasBackup ? '' : 'disabled';
+        const backupButtonDisabled = isCloudOnly ? 'disabled' : '';
+        const openButtonDisabled = isCloudOnly ? 'disabled' : '';
+        const publishKey = String(s.publishStatusKey || 'unpublished').toLowerCase();
+        const publishStatus =
+            publishKey === 'approved'
+                ? { key: 'approved', text: '已发布' }
+                : publishKey === 'pending'
+                  ? { key: 'pending', text: '待审核' }
+                  : publishKey === 'rejected'
+                    ? { key: 'rejected', text: '已拒绝' }
+                    : { key: 'unpublished', text: '未发布' };
+        return {
+            isCloudOnly,
+            pathKey,
+            uuidKey,
+            projectName,
+            description,
+            componentCount,
+            connectionCount,
+            timeText,
+            hasBackup,
+            projectKeyText,
+            backupText,
+            backupBtnText,
+            backupIcon,
+            revokeDisabled,
+            backupButtonDisabled,
+            openButtonDisabled,
+            publishStatus,
+            projectKeyForDownload: String(s.projectKey || '').trim()
+        };
+    }
+
+    /**
+     * @param {Record<string, unknown>} vm
+     * @returns {string}
+     */
+    buildMyProjectCardHtmlFromViewModel(vm) {
+        const isCloudOnly = Boolean(vm.isCloudOnly);
+        const pathKey = String(vm.pathKey || '');
+        const uuidKey = String(vm.uuidKey || '');
+        const projectName = String(vm.projectName || '');
+        const description = String(vm.description || '');
+        const publishStatus = /** @type {{ key: string, text: string }} */ (vm.publishStatus || {
+            key: 'unpublished',
+            text: '未发布'
+        });
+        return `
+                    <article
+                        class="my-project-card ${isCloudOnly ? 'my-project-card-cloud-only' : ''}"
+                        data-project-path="${this.escapeHtml(pathKey)}"
+                        data-project-uuid="${this.escapeHtml(uuidKey)}"
+                    >
+                        <div class="my-project-card-thumb">
+                            <button
+                                type="button"
+                                class="my-project-card-share-btn"
+                                data-project-share="1"
+                                data-project-name="${this.escapeHtml(projectName)}"
+                                data-project-description="${this.escapeHtml(description)}"
+                                data-project-path="${this.escapeHtml(pathKey)}"
+                                data-project-uuid="${this.escapeHtml(uuidKey)}"
+                                title="分享（预留）"
+                                aria-label="分享（预留）"
+                            >
+                                <img src="" alt="" width="22" height="22" data-icon="share-2">
+                            </button>
+                            <strong>${this.escapeHtml(projectName)}</strong>
+                            <div class="my-project-card-thumb-meta-row">
+                                <span>${Number(vm.componentCount || 0)} 个元件 · ${Number(vm.connectionCount || 0)} 条连线</span>
+                                <span class="my-project-card-publish-status my-project-card-publish-status--${publishStatus.key}">
+                                    <span class="my-project-card-publish-status-dot" aria-hidden="true"></span>
+                                    <span>${this.escapeHtml(publishStatus.text)}</span>
+                                </span>
+                            </div>
+                        </div>
+                        <div class="my-project-card-body">
+                            <h4>${vm.backupText}</h4>
+                            <p>描述：${this.escapeHtml(description)}</p>
+                            <div class="my-project-card-project-key-line">
+                                <span class="my-project-card-project-key-label">项目编号：</span>
+                                <span class="my-project-card-project-key-value">${this.escapeHtml(String(vm.projectKeyText || ''))}</span>
+                                ${vm.hasBackup ? `
+                                <button
+                                    type="button"
+                                    class="inline-icon-button my-project-card-project-key-copy-btn"
+                                    data-project-key-copy="1"
+                                    data-project-key="${this.escapeHtml(String(vm.projectKeyText || ''))}"
+                                    title="复制项目编号"
+                                    aria-label="复制项目编号"
+                                >
+                                    <img src="" alt="" width="14" height="14" data-icon="copy">
+                                </button>
+                                ` : ''}
+                            </div>
+                            <div class="my-project-card-meta">
+                                <span>更新时间：${this.escapeHtml(String(vm.timeText || ''))}</span>
+                            </div>
+                            <div class="my-project-card-actions">
+                                <button
+                                    type="button"
+                                    class="my-project-card-backup-btn"
+                                    data-project-backup="1"
+                                    data-project-name="${this.escapeHtml(projectName)}"
+                                    data-project-path="${this.escapeHtml(pathKey)}"
+                                    data-project-uuid="${this.escapeHtml(uuidKey)}"
+                                    ${vm.backupButtonDisabled || ''}
+                                >
+                                    <img src="" alt="" width="18" height="18" data-icon="${this.escapeHtml(String(vm.backupIcon || 'upload-cloud'))}">
+                                    <span class="my-project-card-btn-label">${this.escapeHtml(String(vm.backupBtnText || ''))}</span>
+                                    <span class="my-project-card-btn-spinner" aria-hidden="true"></span>
+                                </button>
+                                <button
+                                    type="button"
+                                    class="my-project-card-revoke-btn"
+                                    data-project-backup-delete="1"
+                                    data-project-name="${this.escapeHtml(projectName)}"
+                                    data-project-path="${this.escapeHtml(pathKey)}"
+                                    data-project-uuid="${this.escapeHtml(uuidKey)}"
+                                    ${vm.revokeDisabled || ''}
+                                >
+                                    <img src="" alt="" width="18" height="18" data-icon="trash-2">
+                                    <span class="my-project-card-btn-label">撤销备份</span>
+                                    <span class="my-project-card-btn-spinner" aria-hidden="true"></span>
+                                </button>
+                                ${isCloudOnly ? `
+                                <button
+                                    type="button"
+                                    class="my-project-card-download-btn"
+                                    data-project-backup-download="1"
+                                    data-project-key="${this.escapeHtml(String(vm.projectKeyForDownload || ''))}"
+                                    data-project-name="${this.escapeHtml(projectName)}"
+                                    title="在项目存储根目录下从 bundle 反序列化并创建项目文件夹"
+                                >
+                                    <img src="" alt="" width="18" height="18" data-icon="download">
+                                    <span>下载备份</span>
+                                </button>
+                                ` : `
+                                <button
+                                    type="button"
+                                    class="my-project-card-open-btn"
+                                    data-project-open="1"
+                                    data-project-path="${this.escapeHtml(pathKey)}"
+                                    ${vm.openButtonDisabled || ''}
+                                >
+                                    <img src="" alt="" width="18" height="18" data-icon="folder-open">
+                                    <span>打开项目</span>
+                                </button>
+                                `}
+                            </div>
+                        </div>
+                    </article>
+                `;
+    }
+
+    /**
+     * @param {Array<Record<string, unknown>>} summaries
+     * @returns {void}
+     */
+    applyMyProjectsMapsFromSummaries(summaries) {
+        this.projectBackupMap = new Map();
+        this.marketplacePublishStatusMap = new Map();
+        for (const raw of summaries || []) {
+            const s = raw && typeof raw === 'object' ? raw : {};
+            const pathKey = this.normalizeProjectPath(String(s.path || ''));
+            const uuidKey = this.normalizeProjectUuid(String(s.projectUuid || ''));
+            const publishKey = String(s.publishStatusKey || 'unpublished').toLowerCase();
+            if (pathKey) {
+                this.marketplacePublishStatusMap.set(pathKey, publishKey);
+            }
+            if (uuidKey) {
+                this.marketplacePublishStatusMap.set(`uuid:${uuidKey}`, publishKey);
+            }
+            if (s.hasBackup && String(s.backupAt || '').trim()) {
+                const info = {
+                    backupAt: String(s.backupAt || ''),
+                    fileCount: Number(s.fileCount || 0),
+                    projectName: String(s.projectName || ''),
+                    projectKey: String(s.projectKey || ''),
+                    lastModified: String(s.lastModified || ''),
+                    projectPath: pathKey,
+                    projectUuid: uuidKey
+                };
+                if (pathKey) {
+                    this.projectBackupMap.set(pathKey, info);
+                }
+                if (uuidKey) {
+                    this.projectBackupMap.set(`uuid:${uuidKey}`, info);
+                }
+                const nameKey = String(s.projectName || '').trim().toLowerCase();
+                if (nameKey && !this.projectBackupMap.has(nameKey)) {
+                    this.projectBackupMap.set(nameKey, info);
+                }
+            }
+        }
+    }
+
+    /**
+     * @param {Array<Record<string, unknown>>} summaries
+     * @returns {Promise<void>}
+     */
+    async renderMyProjectsFromSummaries(summaries) {
+        if (!this.projectsGrid) {
+            return;
+        }
+        const list = Array.isArray(summaries) ? summaries : [];
+        this.applyMyProjectsMapsFromSummaries(list);
+        this.projectsGrid.innerHTML = list
+            .map((s) => this.buildMyProjectCardHtmlFromViewModel(this.summaryToMyProjectViewModel(s)))
+            .join('');
+        if (window.mainApp && typeof window.mainApp.initializeIconPaths === 'function') {
+            await window.mainApp.initializeIconPaths();
+        }
+        await this.initializeIconsForScope(this.projectsGrid);
+    }
+
+    /**
+     * 由全量扫描结果生成卡片摘要列表。
+     * @param {Array<Record<string, unknown>>} allCards
+     * @returns {Array<Record<string, unknown>>}
+     */
+    buildMyProjectsSummariesFromAllCards(allCards) {
+        const list = Array.isArray(allCards) ? allCards : [];
+        return list.map((project) => {
+            const pathKey = this.normalizeProjectPath(project.path);
+            const uuidKey = this.normalizeProjectUuid(project.projectUuid);
+            const backupInfo =
+                (uuidKey && this.projectBackupMap.get(`uuid:${uuidKey}`)) || this.projectBackupMap.get(pathKey) || null;
+            const hasBackup = Boolean(backupInfo?.backupAt);
+            const projectKey = String(backupInfo?.projectKey || project.projectKey || '').trim();
+            const ps = this.getMyProjectPublishStatus(project.path, project.projectUuid);
+            return {
+                path: pathKey,
+                projectUuid: uuidKey,
+                projectName: String(project.projectName || ''),
+                description: String(project.description || ''),
+                componentCount: Number(project.componentCount || 0),
+                connectionCount: Number(project.connectionCount || 0),
+                lastModified: String(project.lastModified || ''),
+                isCloudOnly: Boolean(project.isCloudOnly),
+                projectKey,
+                hasBackup,
+                backupAt: String(backupInfo?.backupAt || ''),
+                fileCount: Number(backupInfo?.fileCount || 0),
+                publishStatusKey: ps.key
+            };
+        });
+    }
+
+    /**
+     * 目录扫描 + 云端备份/发布态，刷新网格并写入摘要缓存。
+     * @param {{ showLoading?: boolean }} [options]
+     * @returns {Promise<void>}
+     */
+    async runMyProjectsFullScanFromDisk(options = {}) {
+        if (!window.electronAPI?.getSettings || !window.electronAPI?.readDirectory || !this.projectsGrid) {
+            return;
+        }
+        const showLoading = Boolean(options?.showLoading);
+        if (!this.authState?.isAuthenticated) {
+            return;
+        }
+        const hasSummaryPaint = Array.isArray(this.myProjectsSummaries) && this.myProjectsSummaries.length;
+        if (showLoading && !hasSummaryPaint && this.projectsGrid) {
+            await this.renderAccountLoadingState(this.projectsGrid);
         }
         const storagePath = String((await window.electronAPI.getSettings('storagePath')) || '').trim();
         this.lastProjectStoragePath = storagePath;
         if (!storagePath) {
-            this.renderProjectsEmpty('请先在系统设置中配置项目文件夹路径。');
+            this.myProjectsSummaries = [];
+            this.renderProjectsEmpty('请先在系统设置中配置项目文件夹路径。', { cacheResult: true });
+            this.persistMyProjectsSummariesToLocalStorage();
             return;
         }
 
         const result = await window.electronAPI.readDirectory(storagePath);
         if (!result?.success) {
-            this.renderProjectsEmpty(result?.error || '读取项目目录失败。');
+            this.renderProjectsEmpty(result?.error || '读取项目目录失败。', { cacheResult: false });
             return;
         }
 
@@ -1144,6 +1742,7 @@ class AccountCenterManager {
                 cards.push({
                     folderName: dir.name,
                     path: dir.path,
+                    projectUuid: this.normalizeProjectUuid(String(config?.uuid || '')),
                     projectName: String(config?.projectName || dir.name),
                     description: String(config?.description || '本地硬件方案项目').trim(),
                     componentCount: Array.isArray(config?.components) ? config.components.length : 0,
@@ -1154,6 +1753,7 @@ class AccountCenterManager {
                 cards.push({
                     folderName: dir.name,
                     path: dir.path,
+                    projectUuid: '',
                     projectName: dir.name,
                     description: '未找到标准项目配置，暂按普通项目文件夹展示。',
                     componentCount: 0,
@@ -1164,144 +1764,453 @@ class AccountCenterManager {
         }
 
         if (!cards.length) {
-            this.renderProjectsEmpty('当前项目目录下还没有可展示的本地项目。');
+            this.myProjectsSummaries = [];
+            this.renderProjectsEmpty('当前项目目录下还没有可展示的本地项目。', { cacheResult: true });
+            this.persistMyProjectsSummariesToLocalStorage();
             return;
         }
-        // 拉取账号下全部云备份，才能列出「本地已删、仅云端有备份」的项目卡片
-        this.projectBackupMap = await this.fetchProjectBackupMap([]);
-        const cloudOnlyCards = this.buildCloudOnlyBackupCards(cards);
+        const localProjectRefs = cards.map((item) => ({
+            projectPath: String(item?.path || ''),
+            projectUuid: String(item?.projectUuid || '')
+        }));
+        this.projectBackupMap = await this.fetchProjectBackupMap(localProjectRefs);
+        const allBackupsMap = await this.fetchProjectBackupMap([]);
+        const backupMapForCloudOnly = allBackupsMap.size ? allBackupsMap : this.projectBackupMap;
+        const cloudOnlyCards = this.buildCloudOnlyBackupCards(cards, backupMapForCloudOnly);
+        const allCards = [...cards, ...cloudOnlyCards];
+        this.marketplacePublishStatusMap = await this.fetchMarketplacePublishStatusMap(localProjectRefs);
 
-        this.projectsGrid.innerHTML = [...cards, ...cloudOnlyCards]
-            .map((project) => {
-                const isCloudOnly = Boolean(project.isCloudOnly);
-                const timeText = project.lastModified
-                    ? new Date(project.lastModified).toLocaleString('zh-CN', { hour12: false })
-                    : '未记录';
-                const backupInfo = this.projectBackupMap.get(this.normalizeProjectPath(project.path)) || null;
-                const hasBackup = Boolean(backupInfo?.backupAt);
-                const backupText = hasBackup
-                    ? `备份状态：已备份 - ${this.escapeHtml(this.formatDateTime(backupInfo.backupAt))}`
-                    : '备份状态：无备份';
-                const backupBtnText = hasBackup ? '更新备份' : '上传备份';
-                const backupIcon = hasBackup ? 'refresh' : 'upload-cloud';
-                const revokeDisabled = hasBackup ? '' : 'disabled';
-                const backupButtonDisabled = isCloudOnly ? 'disabled' : '';
-                const openButtonDisabled = isCloudOnly ? 'disabled' : '';
-                return `
-                    <article class="my-project-card ${isCloudOnly ? 'my-project-card-cloud-only' : ''}">
-                        <div class="my-project-card-thumb">
-                            <button
-                                type="button"
-                                class="my-project-card-share-btn"
-                                data-project-share="1"
-                                data-project-name="${this.escapeHtml(project.projectName)}"
-                                data-project-description="${this.escapeHtml(project.description)}"
-                                data-project-path="${this.escapeHtml(project.path)}"
-                                title="分享（预留）"
-                                aria-label="分享（预留）"
-                            >
-                                <img src="" alt="" width="22" height="22" data-icon="share-2">
-                            </button>
-                            <strong>${this.escapeHtml(project.projectName)}</strong>
-                            <span>${project.componentCount} 个元件 · ${project.connectionCount} 条连线</span>
-                        </div>
-                        <div class="my-project-card-body">
-                            <h4>${backupText}</h4>
-                            <p>描述：${this.escapeHtml(project.description)}</p>
-                            <div class="my-project-card-meta">
-                                <span>更新时间：${this.escapeHtml(timeText)}</span>
-                            </div>
-                            <div class="my-project-card-actions">
-                                <button
-                                    type="button"
-                                    class="my-project-card-backup-btn"
-                                    data-project-backup="1"
-                                    data-project-name="${this.escapeHtml(project.projectName)}"
-                                    data-project-path="${this.escapeHtml(project.path)}"
-                                    ${backupButtonDisabled}
-                                >
-                                    <img src="" alt="" width="18" height="18" data-icon="${backupIcon}">
-                                    <span class="my-project-card-btn-label">${backupBtnText}</span>
-                                    <span class="my-project-card-btn-spinner" aria-hidden="true"></span>
-                                </button>
-                                <button
-                                    type="button"
-                                    class="my-project-card-revoke-btn"
-                                    data-project-backup-delete="1"
-                                    data-project-name="${this.escapeHtml(project.projectName)}"
-                                    data-project-path="${this.escapeHtml(project.path)}"
-                                    ${revokeDisabled}
-                                >
-                                    <img src="" alt="" width="18" height="18" data-icon="trash-2">
-                                    <span class="my-project-card-btn-label">撤销备份</span>
-                                    <span class="my-project-card-btn-spinner" aria-hidden="true"></span>
-                                </button>
-                                ${isCloudOnly ? `
-                                <button
-                                    type="button"
-                                    class="my-project-card-download-btn"
-                                    data-project-backup-download="1"
-                                    data-project-key="${this.escapeHtml(String(project.projectKey || ''))}"
-                                    data-project-name="${this.escapeHtml(project.projectName)}"
-                                    title="在项目存储根目录下从 bundle 反序列化并创建项目文件夹"
-                                >
-                                    <img src="" alt="" width="18" height="18" data-icon="download">
-                                    <span>下载备份</span>
-                                </button>
-                                ` : `
-                                <button
-                                    type="button"
-                                    class="my-project-card-open-btn"
-                                    data-project-open="1"
-                                    data-project-path="${this.escapeHtml(project.path)}"
-                                    ${openButtonDisabled}
-                                >
-                                    <img src="" alt="" width="18" height="18" data-icon="folder-open">
-                                    <span>打开项目</span>
-                                </button>
-                                `}
-                            </div>
-                        </div>
-                    </article>
-                `;
-            })
-            .join('');
-        if (window.mainApp && typeof window.mainApp.initializeIconPaths === 'function') {
-            await window.mainApp.initializeIconPaths();
+        this.myProjectsSummaries = this.buildMyProjectsSummariesFromAllCards(allCards);
+        await this.renderMyProjectsFromSummaries(this.myProjectsSummaries);
+        this.myProjectsHasLoaded = true;
+        this.myProjectsCacheDirty = false;
+        this.persistMyProjectsSummariesToLocalStorage();
+    }
+
+    /**
+     * 合并单项目备份映射后刷新该卡片与摘要（上传/更新备份成功）。
+     * @param {string} projectPath
+     * @param {string} projectUuid
+     * @returns {Promise<void>}
+     */
+    async mergeMyProjectBackupAfterUpload(projectPath, projectUuid = '') {
+        const normalizedPath = this.normalizeProjectPath(projectPath);
+        const normalizedUuid = this.normalizeProjectUuid(projectUuid);
+        const slice = await this.fetchProjectBackupMap([
+            { projectPath: normalizedPath, projectUuid: normalizedUuid }
+        ]);
+        for (const [k, v] of slice.entries()) {
+            this.projectBackupMap.set(k, v);
         }
+        const backupInfo =
+            (normalizedUuid && this.projectBackupMap.get(`uuid:${normalizedUuid}`)) ||
+            this.projectBackupMap.get(normalizedPath) ||
+            null;
+        if (!backupInfo?.backupAt) {
+            await this.refreshMyProjectsFullRescan({ showLoading: false });
+            return;
+        }
+        const list = Array.isArray(this.myProjectsSummaries) ? this.myProjectsSummaries : [];
+        const idx = list.findIndex(
+            (row) =>
+                this.normalizeProjectPath(String(row?.path || '')) === normalizedPath ||
+                (normalizedUuid && this.normalizeProjectUuid(String(row?.projectUuid || '')) === normalizedUuid)
+        );
+        if (idx < 0) {
+            await this.refreshMyProjectsFullRescan({ showLoading: false });
+            return;
+        }
+        if (backupInfo?.backupAt) {
+            list[idx] = {
+                ...list[idx],
+                hasBackup: true,
+                backupAt: String(backupInfo.backupAt || ''),
+                projectKey: String(backupInfo.projectKey || list[idx].projectKey || ''),
+                fileCount: Number(backupInfo.fileCount || 0)
+            };
+        }
+        if (this.projectsGrid) {
+            const vm = this.summaryToMyProjectViewModel(list[idx]);
+            const sel = normalizedUuid
+                ? `[data-project-uuid="${this.escapeHtmlAttribute(normalizedUuid)}"]`
+                : `[data-project-path="${this.escapeHtmlAttribute(normalizedPath)}"]`;
+            const el = this.projectsGrid.querySelector(sel);
+            if (el?.parentNode) {
+                const wrap = document.createElement('div');
+                wrap.innerHTML = this.buildMyProjectCardHtmlFromViewModel(vm).trim();
+                const next = wrap.firstElementChild;
+                if (next) {
+                    el.replaceWith(next);
+                    await this.initializeIconsForScope(this.projectsGrid);
+                }
+            }
+        }
+        this.persistMyProjectsSummariesToLocalStorage();
+    }
+
+    /**
+     * 撤销备份后更新映射、卡片与摘要。
+     * @param {string} projectPath
+     * @param {string} projectUuid
+     * @returns {Promise<void>}
+     */
+    async applyMyProjectBackupAfterRevoke(projectPath, projectUuid = '') {
+        const normalizedPath = this.normalizeProjectPath(projectPath);
+        const normalizedUuid = this.normalizeProjectUuid(projectUuid);
+        const keysToDelete = new Set([normalizedPath, normalizedUuid ? `uuid:${normalizedUuid}` : ''].filter(Boolean));
+        for (const k of keysToDelete) {
+            this.projectBackupMap.delete(k);
+        }
+        const list = Array.isArray(this.myProjectsSummaries) ? this.myProjectsSummaries : [];
+        const idx = list.findIndex(
+            (row) =>
+                this.normalizeProjectPath(String(row?.path || '')) === normalizedPath ||
+                (normalizedUuid && this.normalizeProjectUuid(String(row?.projectUuid || '')) === normalizedUuid)
+        );
+        if (idx < 0) {
+            await this.refreshMyProjectsFullRescan({ showLoading: false });
+            return;
+        }
+        list[idx] = {
+            ...list[idx],
+            hasBackup: false,
+            backupAt: '',
+            projectKey: '',
+            fileCount: 0
+        };
+        if (this.projectsGrid) {
+            const vm = this.summaryToMyProjectViewModel(list[idx]);
+            const sel = normalizedUuid
+                ? `[data-project-uuid="${this.escapeHtmlAttribute(normalizedUuid)}"]`
+                : `[data-project-path="${this.escapeHtmlAttribute(normalizedPath)}"]`;
+            const el = this.projectsGrid.querySelector(sel);
+            if (el?.parentNode) {
+                const wrap = document.createElement('div');
+                wrap.innerHTML = this.buildMyProjectCardHtmlFromViewModel(vm).trim();
+                const next = wrap.firstElementChild;
+                if (next) {
+                    el.replaceWith(next);
+                    await this.initializeIconsForScope(this.projectsGrid);
+                }
+            }
+        }
+        this.persistMyProjectsSummariesToLocalStorage();
+    }
+
+    /**
+     * 仅根据当前摘要重新拉取集市发布态并更新卡片（无目录全量扫描）。
+     * @returns {Promise<void>}
+     */
+    async resyncMyProjectsPublishStatusesOnly() {
+        const list = Array.isArray(this.myProjectsSummaries) ? this.myProjectsSummaries : [];
+        const refs = list
+            .filter((s) => !s.isCloudOnly && this.normalizeProjectPath(String(s.path || '')))
+            .map((s) => ({
+                projectPath: this.normalizeProjectPath(String(s.path || '')),
+                projectUuid: this.normalizeProjectUuid(String(s.projectUuid || ''))
+            }));
+        if (!refs.length) {
+            return;
+        }
+        this.marketplacePublishStatusMap = await this.fetchMarketplacePublishStatusMap(refs);
+        let changed = false;
+        for (let i = 0; i < list.length; i += 1) {
+            const s = list[i];
+            if (s.isCloudOnly) {
+                continue;
+            }
+            const ps = this.getMyProjectPublishStatus(String(s.path || ''), String(s.projectUuid || ''));
+            if (String(s.publishStatusKey || '') !== ps.key) {
+                list[i] = { ...s, publishStatusKey: ps.key };
+                this.patchMyProjectPublishStatus(String(s.path || ''), String(s.projectUuid || ''), ps.key);
+                changed = true;
+            }
+        }
+        if (changed) {
+            this.persistMyProjectsSummariesToLocalStorage();
+        }
+    }
+
+    /**
+     * 批量查询“我的项目”在创客集市中的发布状态。
+     * @param {Array<string|{ projectPath?: string, projectUuid?: string }>} projectRefs
+     * @returns {Promise<Map<string, 'unpublished'|'pending'|'approved'>>}
+     */
+    async fetchMarketplacePublishStatusMap(projectRefs) {
+        const map = new Map();
+        if (!window.electronAPI?.supabaseGetMarketplacePublishStatuses) {
+            return map;
+        }
+        const refs = Array.isArray(projectRefs)
+            ? projectRefs
+                .map((item) =>
+                    typeof item === 'string'
+                        ? {
+                              projectPath: this.normalizeProjectPath(item),
+                              projectUuid: ''
+                          }
+                        : {
+                              projectPath: this.normalizeProjectPath(item?.projectPath || ''),
+                              projectUuid: this.normalizeProjectUuid(item?.projectUuid || '')
+                          }
+                )
+                .filter((item) => item.projectPath || item.projectUuid)
+            : [];
+        if (!refs.length) {
+            return map;
+        }
+        console.log('[account-center] fetchMarketplacePublishStatusMap:req', {
+            pathCount: refs.length,
+            samplePaths: refs.slice(0, 3)
+        });
+        try {
+            let result = await window.electronAPI.supabaseGetMarketplacePublishStatuses({ projectRefs: refs });
+            console.log('[account-center] fetchMarketplacePublishStatusMap:resp', {
+                success: Boolean(result?.success),
+                statusesCount: Array.isArray(result?.statuses) ? result.statuses.length : 0,
+                error: String(result?.error || '')
+            });
+            if (
+                !result?.success &&
+                this.isAuthStateLikelyStaleError(result?.error) &&
+                this.authState?.isAuthenticated
+            ) {
+                await this.refreshAuthState();
+                result = await window.electronAPI.supabaseGetMarketplacePublishStatuses({ projectRefs: refs });
+                console.log('[account-center] fetchMarketplacePublishStatusMap:retry-resp', {
+                    success: Boolean(result?.success),
+                    statusesCount: Array.isArray(result?.statuses) ? result.statuses.length : 0,
+                    error: String(result?.error || '')
+                });
+            }
+            if (!result?.success || !Array.isArray(result.statuses)) {
+                if (this.authState?.isAuthenticated && result?.error) {
+                    this.showNotification(`发布状态读取失败：${this.localizeAuthMessage(String(result.error))}`, 'warning');
+                }
+                return map;
+            }
+            result.statuses.forEach((item) => {
+                const pathKey = this.normalizeProjectPath(String(item?.projectPath || ''));
+                if (!pathKey) return;
+                const raw = String(item?.status || '').trim().toLowerCase();
+                const status =
+                    raw === 'approved'
+                        ? 'approved'
+                        : raw === 'pending'
+                          ? 'pending'
+                          : raw === 'rejected'
+                            ? 'rejected'
+                            : 'unpublished';
+                map.set(pathKey, status);
+                const uuidKey = this.normalizeProjectUuid(String(item?.projectUuid || ''));
+                if (uuidKey) {
+                    map.set(`uuid:${uuidKey}`, status);
+                }
+            });
+        } catch (error) {
+            if (this.authState?.isAuthenticated) {
+                const msg = this.localizeAuthMessage(String(error?.message || error || ''));
+                this.showNotification(`发布状态读取失败：${msg}`, 'warning');
+            }
+            return map;
+        }
+        return map;
+    }
+
+    /**
+     * @param {string} projectPath
+     * @returns {{ key: 'unpublished'|'pending'|'approved'|'rejected', text: string }}
+     */
+    getMyProjectPublishStatus(projectPath, projectUuid = '') {
+        const normalizedPath = this.normalizeProjectPath(projectPath);
+        const uuidKey = this.normalizeProjectUuid(projectUuid);
+        const raw = String(
+            (uuidKey && this.marketplacePublishStatusMap.get(`uuid:${uuidKey}`)) ||
+                this.marketplacePublishStatusMap.get(normalizedPath) ||
+                ''
+        )
+            .trim()
+            .toLowerCase();
+        if (raw === 'approved') {
+            return { key: 'approved', text: '已发布' };
+        }
+        if (raw === 'pending') {
+            return { key: 'pending', text: '待审核' };
+        }
+        if (raw === 'rejected') {
+            return { key: 'rejected', text: '已拒绝' };
+        }
+        return { key: 'unpublished', text: '未发布' };
+    }
+
+    /**
+     * 发布成功后，对“我的项目”卡片发布状态进行增量热更新。
+     * @param {string} projectPath
+     * @param {string} projectUuid
+     * @param {'unpublished'|'pending'|'approved'|'rejected'} status
+     * @returns {void}
+     */
+    patchMyProjectPublishStatus(projectPath, projectUuid = '', status = 'pending') {
+        const nextStatus =
+            status === 'approved'
+                ? 'approved'
+                : status === 'pending'
+                  ? 'pending'
+                  : status === 'rejected'
+                    ? 'rejected'
+                    : 'unpublished';
+        const normalizedPath = this.normalizeProjectPath(projectPath || '');
+        const uuidKey = this.normalizeProjectUuid(projectUuid || '');
+        if (uuidKey) {
+            this.marketplacePublishStatusMap.set(`uuid:${uuidKey}`, nextStatus);
+        }
+        if (normalizedPath) {
+            this.marketplacePublishStatusMap.set(normalizedPath, nextStatus);
+        }
+        if (!this.projectsGrid) {
+            return;
+        }
+        const selectors = [];
+        if (uuidKey) {
+            selectors.push(`[data-project-uuid="${this.escapeHtmlAttribute(uuidKey)}"]`);
+        }
+        if (normalizedPath) {
+            selectors.push(`[data-project-path="${this.escapeHtmlAttribute(normalizedPath)}"]`);
+        }
+        if (!selectors.length) {
+            return;
+        }
+        const card = this.projectsGrid.querySelector(selectors.join(', '));
+        if (!card) {
+            return;
+        }
+        const statusNode = card.querySelector('.my-project-card-publish-status');
+        const textNode = statusNode?.querySelector('span:last-child');
+        if (!statusNode || !textNode) {
+            return;
+        }
+        const statusMeta =
+            nextStatus === 'approved'
+                ? { key: 'approved', text: '已发布' }
+                : nextStatus === 'pending'
+                  ? { key: 'pending', text: '待审核' }
+                  : nextStatus === 'rejected'
+                    ? { key: 'rejected', text: '已拒绝' }
+                    : { key: 'unpublished', text: '未发布' };
+        statusNode.classList.remove(
+            'my-project-card-publish-status--unpublished',
+            'my-project-card-publish-status--pending',
+            'my-project-card-publish-status--approved',
+            'my-project-card-publish-status--rejected'
+        );
+        statusNode.classList.add(`my-project-card-publish-status--${statusMeta.key}`);
+        textNode.textContent = statusMeta.text;
+        const list = Array.isArray(this.myProjectsSummaries) ? this.myProjectsSummaries : [];
+        const idx = list.findIndex(
+            (row) =>
+                this.normalizeProjectPath(String(row?.path || '')) === normalizedPath ||
+                (uuidKey && this.normalizeProjectUuid(String(row?.projectUuid || '')) === uuidKey)
+        );
+        if (idx >= 0) {
+            list[idx] = { ...list[idx], publishStatusKey: nextStatus };
+            this.persistMyProjectsSummariesToLocalStorage();
+        }
+        this.myProjectsHasLoaded = true;
+        this.myProjectsCacheDirty = false;
     }
 
     /**
      * @param {string} message
+     * @param {{ cacheResult?: boolean }} [options]
      */
-    renderProjectsEmpty(message) {
+    renderProjectsEmpty(message, options = {}) {
         if (!this.projectsGrid) {
             return;
         }
         this.projectsGrid.innerHTML = `<div class="account-empty-state">${this.escapeHtml(message)}</div>`;
+        if (options?.cacheResult === false) {
+            this.myProjectsCacheDirty = true;
+            return;
+        }
+        this.myProjectsSummaries = [];
+        this.persistMyProjectsSummariesToLocalStorage();
+        this.myProjectsHasLoaded = true;
+        this.myProjectsCacheDirty = false;
     }
 
     /**
-     * @param {string[]} projectPaths
+     * 渲染统一的账户页居中加载态（旋转刷新图标）。
+     * @param {HTMLElement | null} container
+     * @returns {Promise<void>}
+     */
+    async renderAccountLoadingState(container) {
+        if (!container) {
+            return;
+        }
+        container.innerHTML = `
+            <div class="account-loading-state" role="status" aria-live="polite" aria-label="正在加载">
+                <img src="" alt="" data-icon="refresh">
+            </div>
+        `;
+        await this.initializeIconsForScope(container);
+    }
+
+    /**
+     * @param {Array<string|{ projectPath?: string, projectUuid?: string }>} projectRefs
      * @returns {Promise<Map<string, { backupAt: string, fileCount: number }>>}
      */
-    async fetchProjectBackupMap(projectPaths) {
+    async fetchProjectBackupMap(projectRefs) {
         if (!window.electronAPI?.supabaseListProjectBackups) {
             return new Map();
         }
         try {
-            const normalizedPaths = Array.isArray(projectPaths)
-                ? projectPaths.map((item) => this.normalizeProjectPath(item)).filter(Boolean)
+            const refs = Array.isArray(projectRefs)
+                ? projectRefs
+                    .map((item) =>
+                        typeof item === 'string'
+                            ? {
+                                  projectPath: this.normalizeProjectPath(item),
+                                  projectUuid: ''
+                              }
+                            : {
+                                  projectPath: this.normalizeProjectPath(item?.projectPath || ''),
+                                  projectUuid: this.normalizeProjectUuid(item?.projectUuid || '')
+                              }
+                    )
+                    .filter((item) => item.projectPath || item.projectUuid)
                 : [];
-            const result = await window.electronAPI.supabaseListProjectBackups(
-                normalizedPaths.length ? { projectPaths: normalizedPaths } : {}
-            );
+            console.log('[account-center] fetchProjectBackupMap:req', {
+                pathCount: refs.length
+            });
+            let result = await window.electronAPI.supabaseListProjectBackups(refs.length ? { projectRefs: refs } : {});
+            console.log('[account-center] fetchProjectBackupMap:resp', {
+                success: Boolean(result?.success),
+                backupsCount: Array.isArray(result?.backups) ? result.backups.length : 0,
+                error: String(result?.error || '')
+            });
+            if (
+                !result?.success &&
+                this.isAuthStateLikelyStaleError(result?.error) &&
+                this.authState?.isAuthenticated
+            ) {
+                await this.refreshAuthState();
+                result = await window.electronAPI.supabaseListProjectBackups(refs.length ? { projectRefs: refs } : {});
+                console.log('[account-center] fetchProjectBackupMap:retry-resp', {
+                    success: Boolean(result?.success),
+                    backupsCount: Array.isArray(result?.backups) ? result.backups.length : 0,
+                    error: String(result?.error || '')
+                });
+            }
             if (!result?.success || !Array.isArray(result.backups)) {
+                if (this.authState?.isAuthenticated && result?.error) {
+                    this.showNotification(`备份状态读取失败：${this.localizeAuthMessage(String(result.error))}`, 'warning');
+                }
                 return new Map();
             }
             const map = new Map();
             for (const item of result.backups) {
                 const normalizedPath = this.normalizeProjectPath(item?.projectPath);
+                const normalizedUuid = this.normalizeProjectUuid(String(item?.projectUuid || ''));
                 const nameKey = String(item?.projectName || '').trim().toLowerCase();
                 const backupInfo = {
                     backupAt: String(item?.backupAt || ''),
@@ -1309,26 +2218,35 @@ class AccountCenterManager {
                     projectName: String(item?.projectName || '').trim(),
                     projectKey: String(item?.projectKey || '').trim(),
                     lastModified: String(item?.lastModified || '').trim(),
-                    projectPath: normalizedPath
+                    projectPath: normalizedPath,
+                    projectUuid: normalizedUuid
                 };
                 if (normalizedPath) {
                     map.set(normalizedPath, backupInfo);
+                }
+                if (normalizedUuid) {
+                    map.set(`uuid:${normalizedUuid}`, backupInfo);
                 }
                 if (nameKey && !map.has(nameKey)) {
                     map.set(nameKey, backupInfo);
                 }
             }
             return map;
-        } catch {
+        } catch (error) {
+            if (this.authState?.isAuthenticated) {
+                const msg = this.localizeAuthMessage(String(error?.message || error || ''));
+                this.showNotification(`备份状态读取失败：${msg}`, 'warning');
+            }
             return new Map();
         }
     }
 
     /**
      * @param {Array<{ projectName: string, path: string }>} localCards
+     * @param {Map<string, any>} [backupMap]
      * @returns {Array<{ folderName: string, path: string, projectName: string, description: string, componentCount: number, connectionCount: number, lastModified: string, projectKey?: string, isCloudOnly: boolean }>}
      */
-    buildCloudOnlyBackupCards(localCards) {
+    buildCloudOnlyBackupCards(localCards, backupMap = this.projectBackupMap) {
         const localNameSet = new Set(
             localCards
                 .map((item) => String(item?.projectName || '').trim().toLowerCase())
@@ -1336,7 +2254,7 @@ class AccountCenterManager {
         );
         const cloudCards = [];
         const seenProjectKeys = new Set();
-        for (const backupInfo of this.projectBackupMap.values()) {
+        for (const backupInfo of backupMap.values()) {
             const projectName = String(backupInfo?.projectName || '').trim();
             const projectKey = String(backupInfo?.projectKey || '').trim();
             if (!projectName || !projectKey || seenProjectKeys.has(projectKey)) {
@@ -1364,9 +2282,13 @@ class AccountCenterManager {
     /**
      * @param {string} projectPath
      * @param {string} projectName
+     * @param {string} [projectUuid]
      * @returns {Promise<void>}
      */
-    async uploadProjectBackup(projectPath, projectName) {
+    async uploadProjectBackup(projectPath, projectName, projectUuid = '') {
+        if (!this.ensureBackupOperationAllowed()) {
+            return;
+        }
         const normalizedPath = this.normalizeProjectPath(projectPath);
         if (!normalizedPath) {
             this.showNotification('项目路径无效，无法上传备份。', 'warning');
@@ -1379,13 +2301,18 @@ class AccountCenterManager {
         if (this.uploadingProjectPaths.has(normalizedPath)) {
             return;
         }
+        const normalizedUuid = this.normalizeProjectUuid(projectUuid);
         this.uploadingProjectPaths.add(normalizedPath);
         this.setBackupButtonLoading(normalizedPath, true);
-        const existing = this.projectBackupMap.get(normalizedPath) || this.projectBackupMap.get(String(projectName || '').trim().toLowerCase());
+        const existing =
+            (normalizedUuid && this.projectBackupMap.get(`uuid:${normalizedUuid}`)) ||
+            this.projectBackupMap.get(normalizedPath) ||
+            this.projectBackupMap.get(String(projectName || '').trim().toLowerCase());
         this.showNotification(existing?.backupAt ? '正在更新备份，请稍候...' : '正在上传备份，请稍候...', 'info');
         try {
             const result = await window.electronAPI.supabaseUploadProjectBackup({
                 projectPath: normalizedPath,
+                projectUuid: normalizedUuid || undefined,
                 projectName: String(projectName || '').trim() || undefined
             });
             if (!result?.success) {
@@ -1393,7 +2320,7 @@ class AccountCenterManager {
                 return;
             }
             this.showNotification(String(result?.message || '项目备份上传成功。'), 'success');
-            await this.refreshMyProjects();
+            await this.mergeMyProjectBackupAfterUpload(normalizedPath, normalizedUuid);
         } finally {
             this.uploadingProjectPaths.delete(normalizedPath);
             this.setBackupButtonLoading(normalizedPath, false);
@@ -1403,15 +2330,23 @@ class AccountCenterManager {
     /**
      * @param {string} projectPath
      * @param {string} projectName
+     * @param {string} [projectUuid]
      * @returns {Promise<void>}
      */
-    async deleteProjectBackup(projectPath, projectName) {
+    async deleteProjectBackup(projectPath, projectName, projectUuid = '') {
+        if (!this.ensureBackupOperationAllowed()) {
+            return;
+        }
         const normalizedPath = this.normalizeProjectPath(projectPath);
         if (!normalizedPath) {
             this.showNotification('项目路径无效，无法撤销备份。', 'warning');
             return;
         }
-        const existing = this.projectBackupMap.get(normalizedPath) || this.projectBackupMap.get(String(projectName || '').trim().toLowerCase());
+        const normalizedUuid = this.normalizeProjectUuid(projectUuid);
+        const existing =
+            (normalizedUuid && this.projectBackupMap.get(`uuid:${normalizedUuid}`)) ||
+            this.projectBackupMap.get(normalizedPath) ||
+            this.projectBackupMap.get(String(projectName || '').trim().toLowerCase());
         if (!existing?.backupAt) {
             this.showNotification('当前项目暂无云端备份。', 'info');
             return;
@@ -1431,13 +2366,16 @@ class AccountCenterManager {
         this.setRevokeButtonLoading(normalizedPath, true);
         this.showNotification('正在撤销云端备份，请稍候...', 'info');
         try {
-            const result = await window.electronAPI.supabaseDeleteProjectBackup({ projectPath: normalizedPath });
+            const result = await window.electronAPI.supabaseDeleteProjectBackup({
+                projectPath: normalizedPath,
+                projectUuid: normalizedUuid || undefined
+            });
             if (!result?.success) {
                 this.showNotification(this.formatResultError(result, '撤销备份失败，请稍后重试。'), 'error');
                 return;
             }
             this.showNotification(String(result?.message || '已撤销当前项目备份。'), 'success');
-            await this.refreshMyProjects();
+            await this.applyMyProjectBackupAfterRevoke(normalizedPath, normalizedUuid);
         } finally {
             this.revokingProjectPaths.delete(normalizedPath);
             this.setRevokeButtonLoading(normalizedPath, false);
@@ -1480,7 +2418,54 @@ class AccountCenterManager {
             String(result?.message || '已从备份在项目存储目录下恢复项目文件夹。'),
             'success'
         );
-        await this.refreshMyProjects();
+        await this.refreshMyProjectsFullRescan({ showLoading: false });
+    }
+
+    /**
+     * 备份相关操作（上传/更新/撤销）的统一登录态校验。
+     * @returns {boolean}
+     */
+    ensureBackupOperationAllowed() {
+        if (this.authState?.isAuthenticated) {
+            return true;
+        }
+        this.showNotification('请先登录后再对备份进行操作。', 'warning');
+        return false;
+    }
+
+    /**
+     * 复制项目编号到剪贴板（复用 settings 模态的邀请码复制体验）。
+     * @param {string} projectKey
+     * @returns {Promise<void>}
+     */
+    async copyProjectKeyToClipboard(projectKey) {
+        const value = String(projectKey || '').trim();
+        if (!value || value === '暂无project_key') {
+            this.showNotification('当前项目暂无可复制的项目编号，请先上传备份。', 'info');
+            return;
+        }
+        try {
+            if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+                throw new Error('clipboard_unavailable');
+            }
+            await navigator.clipboard.writeText(value);
+            this.showNotification('项目编号已复制。', 'success');
+        } catch {
+            try {
+                const textarea = document.createElement('textarea');
+                textarea.value = value;
+                textarea.setAttribute('readonly', 'readonly');
+                textarea.style.position = 'fixed';
+                textarea.style.opacity = '0';
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                this.showNotification('项目编号已复制。', 'success');
+            } catch {
+                this.showNotification('复制失败，请手动复制项目编号。', 'error');
+            }
+        }
     }
 
     /**
@@ -1559,6 +2544,15 @@ class AccountCenterManager {
      */
     normalizeProjectPath(value) {
         return String(value || '').trim().replace(/\\/g, '/');
+    }
+
+    /**
+     * @param {string} value
+     * @returns {string}
+     */
+    normalizeProjectUuid(value) {
+        const v = String(value || '').trim().toLowerCase();
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v) ? v : '';
     }
 
     /**
@@ -1751,9 +2745,10 @@ class AccountCenterManager {
      * @param {string} projectPath
      * @param {string} projectName
      * @param {string} description
+     * @param {string} [projectUuid]
      * @returns {void}
      */
-    openMarketplacePublishModal(projectPath, projectName, description) {
+    openMarketplacePublishModal(projectPath, projectName, description, projectUuid = '') {
         if (!this.authState?.isAuthenticated) {
             this.showNotification('请先登录后再发布到创客集市。', 'warning');
             this.switchMainTab('personal-center');
@@ -1762,6 +2757,7 @@ class AccountCenterManager {
         }
         this.marketplacePublishContext = {
             projectPath: String(projectPath || '').trim(),
+            projectUuid: this.normalizeProjectUuid(projectUuid),
             projectName: String(projectName || '').trim() || '未命名项目',
             defaultDescription: String(description || '').trim()
         };
@@ -1792,6 +2788,7 @@ class AccountCenterManager {
         const inputDescription = String(this.marketplacePublishDescriptionInput?.value || '').trim();
         const fallbackDescription = String(this.marketplacePublishContext.defaultDescription || '').trim();
         const finalDescription = inputDescription || fallbackDescription || '暂无描述';
+        const authorName = this.getMarketplaceAuthorLabel(this.authState?.displayName || this.authState?.email || '');
         this.marketplacePublishPreview.innerHTML = `
             <article class="marketplace-card">
                 <div class="marketplace-card-head">
@@ -1799,7 +2796,8 @@ class AccountCenterManager {
                     <span>发布时间：待审核通过后写入</span>
                 </div>
                 <div class="marketplace-card-body">
-                    <p class="marketplace-card-desc">${this.escapeHtml(finalDescription)}</p>
+                    <p class="marketplace-card-desc">项目描述：${this.escapeHtml(finalDescription)}</p>
+                    <p class="marketplace-card-meta">项目作者：${this.escapeHtml(authorName)}</p>
                     <div class="marketplace-card-actions">
                         <span class="marketplace-icon-btn"><img src="" alt="" data-icon="thumbs-up">0</span>
                         <span class="marketplace-icon-btn"><img src="" alt="" data-icon="star">0</span>
@@ -1812,6 +2810,16 @@ class AccountCenterManager {
     }
 
     /**
+     * 统一计算创客集市卡片的“项目作者”展示文案。
+     * @param {string} rawName
+     * @returns {string}
+     */
+    getMarketplaceAuthorLabel(rawName) {
+        const name = String(rawName || '').trim();
+        return name || '未知发布者';
+    }
+
+    /**
      * @param {boolean} loading
      * @returns {void}
      */
@@ -1821,6 +2829,441 @@ class AccountCenterManager {
         }
         this.marketplacePublishConfirmBtn.setAttribute('aria-busy', loading ? 'true' : 'false');
         this.marketplacePublishConfirmBtn.classList.toggle('is-uploading', loading);
+    }
+
+    /**
+     * @param {boolean} loading
+     * @returns {void}
+     */
+    setMarketplaceSearchButtonLoading(loading) {
+        if (!this.marketplaceSearchBtn) {
+            return;
+        }
+        const busy = Boolean(loading);
+        this.marketplaceSearchBtn.setAttribute('aria-busy', busy ? 'true' : 'false');
+        this.marketplaceSearchBtn.classList.toggle('is-uploading', busy);
+    }
+
+    /**
+     * 统一处理“搜索 / 回到首页”动作，复用搜索按钮加载态。
+     * @returns {Promise<void>}
+     */
+    async executeMarketplaceSearchAction() {
+        this.setMarketplaceSearchButtonLoading(true);
+        try {
+            await this.refreshMarketplaceApprovedPosts({ allowNetworkFetch: true, showLoading: false });
+        } finally {
+            this.setMarketplaceSearchButtonLoading(false);
+        }
+    }
+
+    /**
+     * @param {'approved'|'pending'} type
+     * @param {string} key
+     * @returns {boolean}
+     */
+    isMarketplaceListCacheFresh(type, key) {
+        const state = this.marketplaceListCacheState?.[type];
+        if (!state) {
+            return false;
+        }
+        if (String(state.key || '') !== String(key || '')) {
+            return false;
+        }
+        const ts = Number(state.ts || 0);
+        if (!Number.isFinite(ts) || ts <= 0) {
+            return false;
+        }
+        return Date.now() - ts < this.marketplaceListStaleMs;
+    }
+
+    /**
+     * @param {'approved'|'pending'} type
+     * @param {string} key
+     * @returns {void}
+     */
+    touchMarketplaceListCache(type, key) {
+        if (!this.marketplaceListCacheState?.[type]) {
+            return;
+        }
+        this.marketplaceListCacheState[type].key = String(key || '');
+        this.marketplaceListCacheState[type].ts = Date.now();
+    }
+
+    /**
+     * 仅失效已通过集市的内存 TTL 与详情缓存，不删磁盘摘要、不触发列表拉取。
+     * @returns {void}
+     */
+    invalidateMarketplaceApprovedClientCache() {
+        this.marketplaceListCacheState.approved.ts = 0;
+        this.marketplacePostDetailCache.clear();
+    }
+
+    /**
+     * 待审列表等需整体失效时使用（含 pending TTL）。
+     * @returns {void}
+     */
+    invalidateMarketplaceCaches() {
+        this.invalidateMarketplaceApprovedClientCache();
+        this.marketplaceListCacheState.pending.ts = 0;
+    }
+
+    /**
+     * 供 CSS 属性选择器使用的转义（优先 CSS.escape）。
+     * @param {string} value
+     * @returns {string}
+     */
+    cssEscapeSelectorValue(value) {
+        const s = String(value || '');
+        if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+            return CSS.escape(s);
+        }
+        return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    }
+
+    /**
+     * 仅保留卡片展示所需字段，降低 localStorage 体积。
+     * @param {Record<string, unknown>} post
+     * @returns {Record<string, unknown>}
+     */
+    slimMarketplaceApprovedPostForStorage(post) {
+        const p = post && typeof post === 'object' ? post : {};
+        return {
+            id: String(p.id || ''),
+            project_name: p.project_name,
+            description: p.description,
+            published_at: p.published_at,
+            author_name: p.author_name,
+            likes_count: p.likes_count,
+            favorites_count: p.favorites_count,
+            remixes_count: p.remixes_count,
+            viewer_liked: Boolean(p.viewer_liked),
+            viewer_favorited: Boolean(p.viewer_favorited)
+        };
+    }
+
+    /**
+     * @param {Record<string, unknown>} row
+     * @returns {Record<string, unknown>}
+     */
+    slimSharedBackupCardForStorage(row) {
+        const r = row && typeof row === 'object' ? row : {};
+        return {
+            projectKey: String(r.projectKey || '').trim(),
+            projectName: String(r.projectName || '').trim(),
+            backupAt: String(r.backupAt || ''),
+            authorName: String(r.authorName || '')
+        };
+    }
+
+    /**
+     * 创客集市首屏：磁盘摘要 + 可选共享备份条；本会话仅后台静默拉取当前筛选下列表一次。
+     * @returns {Promise<void>}
+     */
+    async presentMakerMarketplaceTab() {
+        if (!this.marketplaceGrid || !window.electronAPI?.supabaseListMarketplaceApprovedPosts) {
+            return;
+        }
+        await this.refreshAuthState();
+        if (!this.authState?.isAuthenticated) {
+            this.marketplaceGrid.innerHTML = '<div class="account-empty-state">请先登录后查看创客集市。</div>';
+            this.marketplaceHasLoaded = true;
+            return;
+        }
+        const query = String(this.marketplaceSearchInput?.value || '').trim();
+        const sortBy = String(this.marketplaceSortSelect?.value || 'likes').trim();
+        const approvedCacheKey = `${query}::${sortBy}`;
+        const sharedBackupQuery = String(query || '').trim().toLowerCase();
+        const needSharedBackupSearch = /^[a-f0-9]{24}$/.test(sharedBackupQuery);
+        /** @type {Array<Record<string, unknown>>} */
+        let sharedCards = [];
+        if (needSharedBackupSearch && window.electronAPI?.supabaseSearchSharedBackupProjectsByKey) {
+            const shared = await window.electronAPI.supabaseSearchSharedBackupProjectsByKey({
+                projectKey: sharedBackupQuery
+            });
+            if (shared?.success && Array.isArray(shared.projects)) {
+                sharedCards = shared.projects;
+            }
+        }
+        if (
+            this._sessionMarketplaceInitialSyncDone &&
+            String(this._marketplaceLastApprovedCacheKey || '') === approvedCacheKey &&
+            Array.isArray(this.marketplacePosts)
+        ) {
+            await this.syncMarketplaceApprovedGridDom(
+                sharedCards.length ? sharedCards : this.marketplaceSharedCardsForGrid,
+                this.marketplacePosts
+            );
+            this.marketplaceHasLoaded = true;
+            return;
+        }
+        this.tryRestoreMarketplaceApprovedFromLocalStorage(approvedCacheKey);
+        const sharedForDom = sharedCards.length ? sharedCards : this.marketplaceSharedCardsForGrid;
+        await this.syncMarketplaceApprovedGridDom(
+            sharedForDom,
+            Array.isArray(this.marketplacePosts) ? this.marketplacePosts : []
+        );
+        this.marketplaceHasLoaded = true;
+        void this.ensureMarketplaceSessionInitialBackgroundSync(approvedCacheKey, sharedCards);
+    }
+
+    /**
+     * 本会话首次进入创客集市已通过区时，在后台静默拉取当前搜索/排序下列表一次。
+     * @param {string} approvedCacheKey
+     * @param {Array<Record<string, unknown>>} sharedCardsFromSearch
+     * @returns {Promise<void>}
+     */
+    async ensureMarketplaceSessionInitialBackgroundSync(approvedCacheKey, sharedCardsFromSearch) {
+        if (this._sessionMarketplaceInitialSyncDone) {
+            return;
+        }
+        if (this._sessionMarketplaceInitialSyncPromise) {
+            await this._sessionMarketplaceInitialSyncPromise;
+            return;
+        }
+        this._sessionMarketplaceInitialSyncPromise = (async () => {
+            try {
+                await this.refreshMarketplaceApprovedPosts({
+                    allowNetworkFetch: true,
+                    showLoading: false,
+                    preloadedSharedCards: sharedCardsFromSearch
+                });
+                this._sessionMarketplaceInitialSyncDone = true;
+            } finally {
+                this._sessionMarketplaceInitialSyncPromise = null;
+            }
+        })();
+        await this._sessionMarketplaceInitialSyncPromise;
+    }
+
+    /**
+     * 从 localStorage 恢复创客集市已通过列表摘要（ownerKey + cacheKey 一致）。
+     * @param {string} approvedCacheKey
+     * @returns {boolean}
+     */
+    tryRestoreMarketplaceApprovedFromLocalStorage(approvedCacheKey) {
+        const ownerKey = String(this.myProjectsCacheOwnerKey || '').trim();
+        if (!ownerKey || ownerKey === 'anonymous') {
+            return false;
+        }
+        const key = String(approvedCacheKey || '').trim();
+        if (!key) {
+            return false;
+        }
+        try {
+            let raw = localStorage.getItem(FH_LS_MARKETPLACE_APPROVED_SUMMARIES);
+            if (!raw) {
+                raw = localStorage.getItem(FH_LS_MARKETPLACE_APPROVED_LEGACY);
+                if (!raw) {
+                    return false;
+                }
+                const leg = JSON.parse(raw);
+                if (String(leg?.ownerKey || '') !== ownerKey || String(leg?.cacheKey || '') !== key) {
+                    return false;
+                }
+                const posts = Array.isArray(leg?.posts) ? leg.posts : [];
+                this.marketplacePosts = posts.map((p) => this.slimMarketplaceApprovedPostForStorage(p));
+                this.marketplaceSharedCardsForGrid = [];
+                return true;
+            }
+            const parsed = JSON.parse(raw);
+            if (String(parsed?.ownerKey || '') !== ownerKey || String(parsed?.cacheKey || '') !== key) {
+                return false;
+            }
+            const posts = Array.isArray(parsed?.posts) ? parsed.posts : [];
+            this.marketplacePosts = posts.map((p) => this.slimMarketplaceApprovedPostForStorage(p));
+            const shared = Array.isArray(parsed?.sharedCards) ? parsed.sharedCards : [];
+            this.marketplaceSharedCardsForGrid = shared.map((s) => this.slimSharedBackupCardForStorage(s));
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * 持久化创客集市已通过列表摘要（卡片字段 + 可选共享备份条）。
+     * @param {string} approvedCacheKey
+     * @returns {void}
+     */
+    persistMarketplaceApprovedToLocalStorage(approvedCacheKey) {
+        const ownerKey = String(this.myProjectsCacheOwnerKey || '').trim();
+        if (!ownerKey || ownerKey === 'anonymous') {
+            return;
+        }
+        const key = String(approvedCacheKey || '').trim();
+        try {
+            const posts = (Array.isArray(this.marketplacePosts) ? this.marketplacePosts : []).map((p) =>
+                this.slimMarketplaceApprovedPostForStorage(p)
+            );
+            const sharedCards = (Array.isArray(this.marketplaceSharedCardsForGrid) ? this.marketplaceSharedCardsForGrid : []).map(
+                (s) => this.slimSharedBackupCardForStorage(s)
+            );
+            localStorage.setItem(
+                FH_LS_MARKETPLACE_APPROVED_SUMMARIES,
+                JSON.stringify({
+                    ownerKey,
+                    cacheKey: key,
+                    posts,
+                    sharedCards,
+                    ts: Date.now()
+                })
+            );
+        } catch {
+            /* ignore */
+        }
+    }
+
+    /**
+     * 当前搜索框 + 排序组成的已通过列表缓存键。
+     * @returns {string}
+     */
+    getCurrentMarketplaceApprovedCacheKey() {
+        const query = String(this.marketplaceSearchInput?.value || '').trim();
+        const sortBy = String(this.marketplaceSortSelect?.value || 'likes').trim();
+        return `${query}::${sortBy}`;
+    }
+
+    /**
+     * 已通过列表内存变更后写回 localStorage，供下次冷启动首屏与开发环境一致。
+     * @returns {void}
+     */
+    persistMarketplaceApprovedCacheIfPossible() {
+        if (!this.authState?.isAuthenticated || !this.marketplaceGrid) {
+            return;
+        }
+        this.persistMarketplaceApprovedToLocalStorage(this.getCurrentMarketplaceApprovedCacheKey());
+    }
+
+    /**
+     * 超级管理员删除等：从内存与 DOM 移除单条已发布记录并写回摘要缓存（不拉全量列表）。
+     * @param {string} postId
+     * @param {string} approvedCacheKey
+     * @returns {Promise<void>}
+     */
+    async removeMarketplaceApprovedPostLocally(postId, approvedCacheKey) {
+        const id = String(postId || '').trim();
+        if (!id || !Array.isArray(this.marketplacePosts)) {
+            return;
+        }
+        this.marketplacePosts = this.marketplacePosts.filter((p) => String(p?.id || '').trim() !== id);
+        if (this.marketplaceGrid) {
+            const el = this.marketplaceGrid.querySelector(`[data-marketplace-post-id="${this.cssEscapeSelectorValue(id)}"]`);
+            el?.remove();
+        }
+        this.persistMarketplaceApprovedToLocalStorage(approvedCacheKey);
+        await this.initializeIconsForScope(this.marketplaceGrid);
+    }
+
+    /**
+     * 就地更新已发布集市卡片 DOM（避免整表 innerHTML 闪烁）。
+     * @param {HTMLElement} el
+     * @param {Record<string, unknown>} post
+     * @returns {void}
+     */
+    patchApprovedMarketplaceCardElement(el, post) {
+        const title = String(post.project_name || '').trim();
+        const desc = `项目描述：${String(post.description || '').trim() || '暂无描述'}`;
+        const author = `项目作者：${this.getMarketplaceAuthorLabel(String(post.author_name || ''))}`;
+        const headStrong = el.querySelector('.marketplace-card-head strong');
+        if (headStrong) {
+            headStrong.textContent = title;
+        }
+        const headSpans = el.querySelectorAll('.marketplace-card-head > span');
+        const timeSpan = headSpans.length ? headSpans[headSpans.length - 1] : null;
+        if (timeSpan) {
+            timeSpan.textContent = `发布时间：${this.formatDateTime(String(post.published_at || ''))}`;
+        }
+        const descEl = el.querySelector('.marketplace-card-desc');
+        if (descEl) {
+            descEl.textContent = desc;
+        }
+        const metaEl = el.querySelector('.marketplace-card-meta');
+        if (metaEl) {
+            metaEl.textContent = author;
+        }
+        const counts = el.querySelectorAll('.marketplace-card-actions .marketplace-card-interact-count');
+        if (counts[0]) {
+            counts[0].textContent = String(Number(post.likes_count || 0));
+        }
+        if (counts[1]) {
+            counts[1].textContent = String(Number(post.favorites_count || 0));
+        }
+        if (counts[2]) {
+            counts[2].textContent = String(Number(post.remixes_count || 0));
+        }
+        const liked = Boolean(post.viewer_liked);
+        const favorited = Boolean(post.viewer_favorited);
+        const likeBtn = el.querySelector('[data-marketplace-interact="like"]');
+        if (likeBtn) {
+            likeBtn.classList.toggle('is-active', liked);
+            likeBtn.setAttribute('data-viewer-active', liked ? '1' : '0');
+            const img = likeBtn.querySelector('img[data-icon]');
+            if (img) {
+                img.dataset.icon = liked ? 'thumbs-up-filled' : 'thumbs-up';
+            }
+        }
+        const favBtn = el.querySelector('[data-marketplace-interact="favorite"]');
+        if (favBtn) {
+            favBtn.classList.toggle('is-active', favorited);
+            favBtn.setAttribute('data-viewer-active', favorited ? '1' : '0');
+            const img = favBtn.querySelector('img[data-icon]');
+            if (img) {
+                img.dataset.icon = favorited ? 'star-filled' : 'star';
+            }
+        }
+    }
+
+    /**
+     * 将共享备份条与已发布卡片同步到 DOM（增量：增删改、保持顺序）。
+     * @param {Array<Record<string, unknown>>} sharedCards
+     * @param {Array<Record<string, unknown>>} nextPosts
+     * @returns {Promise<void>}
+     */
+    async syncMarketplaceApprovedGridDom(sharedCards, nextPosts) {
+        if (!this.marketplaceGrid) {
+            return;
+        }
+        const grid = this.marketplaceGrid;
+        grid.querySelectorAll('.marketplace-card--shared-backup').forEach((n) => n.remove());
+        const sharedHtml = (Array.isArray(sharedCards) ? sharedCards : [])
+            .map((item) => this.renderSharedBackupMarketplaceCardHtml(item))
+            .join('');
+        if (sharedHtml) {
+            const wrap = document.createElement('div');
+            wrap.innerHTML = sharedHtml;
+            const nodes = [...wrap.children];
+            nodes.reverse().forEach((ch) => grid.insertBefore(ch, grid.firstChild));
+        }
+        const list = Array.isArray(nextPosts) ? nextPosts : [];
+        const nextIdSet = new Set(list.map((p) => String(p?.id || '').trim()).filter(Boolean));
+        grid.querySelectorAll('[data-marketplace-post-id]').forEach((node) => {
+            const pid = String(node.getAttribute('data-marketplace-post-id') || '').trim();
+            if (!nextIdSet.has(pid)) {
+                node.remove();
+            }
+        });
+        const fragment = document.createDocumentFragment();
+        for (const post of list) {
+            const pid = String(post?.id || '').trim();
+            if (!pid) {
+                continue;
+            }
+            const sel = `[data-marketplace-post-id="${this.cssEscapeSelectorValue(pid)}"]`;
+            let el = /** @type {HTMLElement | null} */ (grid.querySelector(sel));
+            if (!el) {
+                const wrap = document.createElement('div');
+                wrap.innerHTML = this.renderApprovedMarketplaceCardHtml(post).trim();
+                el = /** @type {HTMLElement | null} */ (wrap.firstElementChild);
+                if (!el) {
+                    continue;
+                }
+            } else {
+                this.patchApprovedMarketplaceCardElement(el, post);
+            }
+            fragment.appendChild(el);
+        }
+        grid.appendChild(fragment);
+        await this.initializeIconsForScope(grid);
     }
 
     /**
@@ -1844,6 +3287,7 @@ class AccountCenterManager {
         try {
             const result = await window.electronAPI.supabasePublishMarketplacePost({
                 projectPath: this.marketplacePublishContext.projectPath,
+                projectUuid: this.marketplacePublishContext.projectUuid || undefined,
                 projectName: this.marketplacePublishContext.projectName,
                 description
             });
@@ -1851,10 +3295,13 @@ class AccountCenterManager {
                 this.showNotification(this.formatResultError(result, '发布失败，请稍后重试。'), 'error');
                 return;
             }
+            const savedPath = String(this.marketplacePublishContext.projectPath || '');
+            const savedUuid = String(this.marketplacePublishContext.projectUuid || '');
             this.showNotification(String(result?.message || '发布成功，等待审核。'), 'success');
             this.closeMarketplacePublishModal();
+            this.patchMyProjectPublishStatus(savedPath, savedUuid, 'pending');
+            this.invalidateMarketplaceApprovedClientCache();
             await this.refreshMarketplacePendingPosts();
-            await this.refreshMarketplaceApprovedPosts();
         } finally {
             this.setMarketplacePublishButtonLoading(false);
         }
@@ -1871,12 +3318,20 @@ class AccountCenterManager {
         if (roleKey !== 'admin' && roleKey !== 'super_admin') {
             return;
         }
+        const pendingCacheKey = 'admin';
+        if (this.isMarketplaceListCacheFresh('pending', pendingCacheKey) && Array.isArray(this.marketplacePendingPosts)) {
+            if (this.communityPendingContainer) {
+                this.communityPendingContainer.innerHTML = this.renderPendingMarketplaceCards();
+            }
+            return;
+        }
         const result = await window.electronAPI.supabaseListMarketplacePendingPosts();
         if (!result?.success) {
             this.showNotification(this.formatResultError(result, '读取待审核列表失败。'), 'error');
             return;
         }
         this.marketplacePendingPosts = Array.isArray(result?.posts) ? result.posts : [];
+        this.touchMarketplaceListCache('pending', pendingCacheKey);
         if (this.communityPendingContainer) {
             this.communityPendingContainer.innerHTML = this.renderPendingMarketplaceCards();
         }
@@ -1892,13 +3347,14 @@ class AccountCenterManager {
         return `
             <div class="marketplace-grid">
                 ${this.marketplacePendingPosts.map((post) => `
-                    <article class="marketplace-card marketplace-card--pending-review" data-pending-post-id="${this.escapeHtml(String(post.id || ''))}">
+                    <article class="marketplace-card marketplace-card--pending-review marketplace-card--selectable" data-pending-post-id="${this.escapeHtml(String(post.id || ''))}">
                         <div class="marketplace-card-head">
                             <strong>${this.escapeHtml(String(post.project_name || ''))}</strong>
                             <span>提交时间：${this.escapeHtml(this.formatDateTime(String(post.created_at || '')))}</span>
                         </div>
                         <div class="marketplace-card-body">
-                            <p class="marketplace-card-desc">${this.escapeHtml(String(post.description || ''))}</p>
+                            <p class="marketplace-card-desc">项目描述：${this.escapeHtml(String(post.description || '').trim() || '暂无描述')}</p>
+                            <p class="marketplace-card-meta">项目作者：${this.escapeHtml(this.getMarketplaceAuthorLabel(String(post.author_name || '')))}</p>
                             <div class="marketplace-card-actions"><span class="marketplace-icon-btn">待审核</span></div>
                         </div>
                     </article>
@@ -1908,45 +3364,178 @@ class AccountCenterManager {
     }
 
     /**
-     * @returns {Promise<void>}
+     * 渲染单张已发布集市卡片 HTML（含超级管理员删除入口）。
+     * @param {{ id?: string, project_name?: string, description?: string, published_at?: string, author_name?: string, likes_count?: number, favorites_count?: number, remixes_count?: number, viewer_liked?: boolean, viewer_favorited?: boolean }} post
+     * @returns {string}
      */
-    async refreshMarketplaceApprovedPosts() {
-        if (!this.marketplaceGrid || !window.electronAPI?.supabaseListMarketplaceApprovedPosts) {
-            return;
-        }
-        if (!this.authState?.isAuthenticated) {
-            this.marketplaceGrid.innerHTML = '<div class="account-empty-state">请先登录后查看创客集市。</div>';
-            return;
-        }
-        const query = String(this.marketplaceSearchInput?.value || '').trim();
-        const sortBy = String(this.marketplaceSortSelect?.value || 'likes').trim();
-        const result = await window.electronAPI.supabaseListMarketplaceApprovedPosts({ query, sortBy });
-        if (!result?.success) {
-            this.marketplaceGrid.innerHTML = `<div class="account-empty-state">${this.escapeHtml(this.formatResultError(result, '读取创客集市失败。'))}</div>`;
-            return;
-        }
-        this.marketplacePosts = Array.isArray(result?.posts) ? result.posts : [];
-        if (!this.marketplacePosts.length) {
-            this.marketplaceGrid.innerHTML = '<div class="account-empty-state">暂无已发布项目。</div>';
-            return;
-        }
-        this.marketplaceGrid.innerHTML = this.marketplacePosts.map((post) => `
-            <article class="marketplace-card" data-marketplace-post-id="${this.escapeHtml(String(post.id || ''))}">
+    renderApprovedMarketplaceCardHtml(post) {
+        const id = this.escapeHtml(String(post.id || ''));
+        const isSuperAdmin = String(this.authState?.role || '').toLowerCase() === 'super_admin';
+        const deleteBtn = isSuperAdmin
+            ? `<button type="button" class="marketplace-card-delete-btn" data-marketplace-admin-delete="1" data-post-id="${id}" title="删除项目" aria-label="删除已发布项目"><img src="" alt="" data-icon="trash-2"></button>`
+            : '';
+        const liked = Boolean(post.viewer_liked);
+        const favorited = Boolean(post.viewer_favorited);
+        const likeIcon = liked ? 'thumbs-up-filled' : 'thumbs-up';
+        const favIcon = favorited ? 'star-filled' : 'star';
+        return `
+            <article class="marketplace-card marketplace-card--selectable" data-marketplace-post-id="${id}">
                 <div class="marketplace-card-head">
+                    ${deleteBtn}
                     <strong>${this.escapeHtml(String(post.project_name || ''))}</strong>
                     <span>发布时间：${this.escapeHtml(this.formatDateTime(String(post.published_at || '')))}</span>
                 </div>
                 <div class="marketplace-card-body">
-                    <p class="marketplace-card-desc">${this.escapeHtml(String(post.description || ''))}</p>
+                    <p class="marketplace-card-desc">项目描述：${this.escapeHtml(String(post.description || '').trim() || '暂无描述')}</p>
+                    <p class="marketplace-card-meta">项目作者：${this.escapeHtml(this.getMarketplaceAuthorLabel(String(post.author_name || '')))}</p>
                     <div class="marketplace-card-actions">
-                        <button type="button" class="marketplace-icon-btn" data-marketplace-interact="like" data-post-id="${this.escapeHtml(String(post.id || ''))}"><img src="" alt="" data-icon="thumbs-up">${Number(post.likes_count || 0)}</button>
-                        <button type="button" class="marketplace-icon-btn" data-marketplace-interact="favorite" data-post-id="${this.escapeHtml(String(post.id || ''))}"><img src="" alt="" data-icon="star">${Number(post.favorites_count || 0)}</button>
-                        <button type="button" class="marketplace-icon-btn" data-marketplace-interact="remix" data-post-id="${this.escapeHtml(String(post.id || ''))}"><img src="" alt="" data-icon="git-branch">${Number(post.remixes_count || 0)}</button>
+                        <div class="marketplace-card-interact-inline">
+                            <button type="button" class="marketplace-card-interact-icon-only${liked ? ' is-active' : ''}" data-marketplace-interact="like" data-post-id="${id}" data-viewer-active="${liked ? '1' : '0'}" aria-label="点赞" title="点赞">
+                                <img src="" alt="" data-icon="${likeIcon}">
+                            </button>
+                            <span class="marketplace-card-interact-count">${Number(post.likes_count || 0)}</span>
+                        </div>
+                        <div class="marketplace-card-interact-inline">
+                            <button type="button" class="marketplace-card-interact-icon-only marketplace-card-interact-icon-only--fav${favorited ? ' is-active' : ''}" data-marketplace-interact="favorite" data-post-id="${id}" data-viewer-active="${favorited ? '1' : '0'}" aria-label="收藏" title="收藏">
+                                <img src="" alt="" data-icon="${favIcon}">
+                            </button>
+                            <span class="marketplace-card-interact-count">${Number(post.favorites_count || 0)}</span>
+                        </div>
+                        <div class="marketplace-card-interact-inline marketplace-card-interact-inline--readonly" aria-label="复刻次数">
+                            <span class="marketplace-card-interact-icon-only marketplace-card-interact-icon-only--readonly" aria-hidden="true">
+                                <img src="" alt="" data-icon="git-branch">
+                            </span>
+                            <span class="marketplace-card-interact-count marketplace-card-remix-count">${Number(post.remixes_count || 0)}</span>
+                        </div>
                     </div>
                 </div>
             </article>
-        `).join('');
-        this.initializeIconsForScope(this.marketplaceGrid);
+        `;
+    }
+
+    /**
+     * 通过项目编号命中的共享备份卡片（用于快速复用，不展示点赞/收藏/复刻计数）。
+     * @param {{ projectKey?: string, projectName?: string, backupAt?: string, authorName?: string }} project
+     * @returns {string}
+     */
+    renderSharedBackupMarketplaceCardHtml(project) {
+        const projectKey = this.escapeHtml(String(project.projectKey || '').trim());
+        const authorName = this.getMarketplaceAuthorLabel(String(project.authorName || ''));
+        return `
+            <article class="marketplace-card marketplace-card--shared-backup">
+                <div class="marketplace-card-head">
+                    <strong>${this.escapeHtml(String(project.projectName || '共享备份项目'))}</strong>
+                </div>
+                <div class="marketplace-card-body">
+                    <p class="marketplace-card-meta">项目作者：${this.escapeHtml(authorName)}</p>
+                    <p class="marketplace-card-meta">备份时间：${this.escapeHtml(this.formatDateTime(String(project.backupAt || '')))}</p>
+                    <div class="marketplace-card-actions">
+                        <button
+                            type="button"
+                            class="btn btn-secondary marketplace-detail-remix-open-btn"
+                            data-marketplace-backup-remix="1"
+                            data-project-key="${projectKey}"
+                        >
+                            <img src="" alt="" data-icon="git-branch">
+                            <span class="marketplace-btn-label">复刻</span>
+                            <span class="marketplace-btn-spinner" aria-hidden="true"></span>
+                        </button>
+                    </div>
+                </div>
+            </article>
+        `;
+    }
+
+    /**
+     * 创客集市：存在搜索词但已发布列表与共享备份均无命中时，提示、清空搜索并重新加载首页列表。
+     * @param {string} queryRaw 当前搜索框内容（与 API 使用的 query 一致）
+     * @returns {Promise<boolean>} 已处理则 true（调用方应 return），无搜索词则 false
+     */
+    async handleMarketplaceEmptySearchReturnHome(queryRaw) {
+        const query = String(queryRaw || '').trim();
+        if (!query || !this.marketplaceGrid) {
+            return false;
+        }
+        const safeQ = this.escapeHtml(query);
+        this.marketplaceGrid.innerHTML = `<div class="account-empty-state">未找到与「${safeQ}」相关的项目。正在返回创客集市首页…</div>`;
+        if (this.marketplaceSearchInput) {
+            this.marketplaceSearchInput.value = '';
+        }
+        this.showNotification(`未找到与「${query}」相关的创客集市项目，已为你返回首页列表。`, 'info');
+        await this.refreshMarketplaceApprovedPosts({ allowNetworkFetch: true, showLoading: false });
+        return true;
+    }
+
+    /**
+     * @param {{
+     *   showLoading?: boolean,
+     *   allowNetworkFetch?: boolean,
+     *   preloadedSharedCards?: Array<Record<string, unknown>>
+     * }} [options]
+     * @returns {Promise<void>}
+     */
+    async refreshMarketplaceApprovedPosts(options = {}) {
+        if (!this.marketplaceGrid || !window.electronAPI?.supabaseListMarketplaceApprovedPosts) {
+            return;
+        }
+        const allowNetworkFetch = Boolean(options?.allowNetworkFetch);
+        if (Boolean(options?.showLoading)) {
+            await this.renderAccountLoadingState(this.marketplaceGrid);
+        }
+        if (!this.authState?.isAuthenticated) {
+            this.marketplaceGrid.innerHTML = '<div class="account-empty-state">请先登录后查看创客集市。</div>';
+            this.marketplaceHasLoaded = true;
+            return;
+        }
+        const query = String(this.marketplaceSearchInput?.value || '').trim();
+        const sortBy = String(this.marketplaceSortSelect?.value || 'likes').trim();
+        const approvedCacheKey = `${query}::${sortBy}`;
+        const sharedBackupQuery = String(query || '').trim().toLowerCase();
+        const needSharedBackupSearch = /^[a-f0-9]{24}$/.test(sharedBackupQuery);
+
+        /** @type {Array<Record<string, unknown>>} */
+        let sharedCards = Array.isArray(options?.preloadedSharedCards) ? [...options.preloadedSharedCards] : [];
+        if (needSharedBackupSearch && !sharedCards.length && window.electronAPI?.supabaseSearchSharedBackupProjectsByKey) {
+            const shared = await window.electronAPI.supabaseSearchSharedBackupProjectsByKey({
+                projectKey: sharedBackupQuery
+            });
+            if (shared?.success && Array.isArray(shared.projects)) {
+                sharedCards = shared.projects;
+            }
+        }
+
+        if (!allowNetworkFetch) {
+            const sharedForDom = sharedCards.length ? sharedCards : this.marketplaceSharedCardsForGrid;
+            await this.syncMarketplaceApprovedGridDom(sharedForDom, this.marketplacePosts);
+            this.marketplaceHasLoaded = true;
+            return;
+        }
+
+        this.marketplaceListCacheState.approved.ts = 0;
+
+        const result = await window.electronAPI.supabaseListMarketplaceApprovedPosts({ query, sortBy });
+        if (!result?.success) {
+            this.marketplaceGrid.innerHTML = `<div class="account-empty-state">${this.escapeHtml(this.formatResultError(result, '读取创客集市失败。'))}</div>`;
+            this.marketplaceHasLoaded = true;
+            return;
+        }
+        this.marketplacePosts = Array.isArray(result?.posts) ? result.posts : [];
+        this.marketplaceSharedCardsForGrid = needSharedBackupSearch ? sharedCards : [];
+        this._marketplaceLastApprovedCacheKey = approvedCacheKey;
+        this.touchMarketplaceListCache('approved', approvedCacheKey);
+        if (!this.marketplacePosts.length && !sharedCards.length) {
+            if (await this.handleMarketplaceEmptySearchReturnHome(query)) {
+                this.marketplaceHasLoaded = true;
+                return;
+            }
+            this.marketplaceGrid.innerHTML = '';
+            this.marketplaceHasLoaded = true;
+            this.persistMarketplaceApprovedToLocalStorage(approvedCacheKey);
+            return;
+        }
+        await this.syncMarketplaceApprovedGridDom(sharedCards, this.marketplacePosts);
+        this.persistMarketplaceApprovedToLocalStorage(approvedCacheKey);
+        this.marketplaceHasLoaded = true;
     }
 
     /**
@@ -1970,17 +3559,20 @@ class AccountCenterManager {
     }
 
     /**
-     * 待审卡片打开模态时的加载态（遮罩 + 禁用点击）。
+     * 待审 / 已发布卡片打开详情时的加载态（与 `.marketplace-card--selectable` 配套）。
      * @param {string} postId
      * @param {boolean} loading
      * @returns {void}
      */
-    setPendingReviewCardLoading(postId, loading) {
-        if (!this.communityPendingContainer || !postId) {
+    setMarketplaceSelectableCardLoading(postId, loading) {
+        const id = String(postId || '').trim();
+        if (!id) {
             return;
         }
-        const card = this.communityPendingContainer.querySelector(`[data-pending-post-id="${postId}"]`);
-        card?.classList.toggle('is-opening', Boolean(loading));
+        const pendingCard = this.communityPendingContainer?.querySelector(`[data-pending-post-id="${id}"]`);
+        const approvedCard = this.marketplaceGrid?.querySelector(`[data-marketplace-post-id="${id}"]`);
+        pendingCard?.classList.toggle('is-opening', Boolean(loading));
+        approvedCard?.classList.toggle('is-opening', Boolean(loading));
     }
 
     /**
@@ -1995,9 +3587,9 @@ class AccountCenterManager {
             return;
         }
         const hasCachedDetail = Boolean(this.marketplacePostDetailCache.get(postId)?.success);
-        const useCardLoading = Boolean(reviewMode) && !fromSessionReopen && !hasCachedDetail;
+        const useCardLoading = !fromSessionReopen && !hasCachedDetail;
         if (useCardLoading) {
-            this.setPendingReviewCardLoading(postId, true);
+            this.setMarketplaceSelectableCardLoading(postId, true);
         }
         try {
             let result = this.marketplacePostDetailCache.get(postId);
@@ -2018,7 +3610,7 @@ class AccountCenterManager {
             await this.loadMarketplaceModalPreviewCanvas(String(postId || '').trim() || String(detail.id || '').trim());
         } finally {
             if (useCardLoading) {
-                this.setPendingReviewCardLoading(postId, false);
+                this.setMarketplaceSelectableCardLoading(postId, false);
             }
         }
     }
@@ -2032,31 +3624,38 @@ class AccountCenterManager {
      */
     populateMarketplaceDetailModal(detail, postId, reviewMode) {
         this.teardownMarketplacePreviewCanvas();
+        /** 与拉取详情的 postId 一致，避免 detail.id 与入口参数不一致时重复开签 */
+        const bundleOpenPostId = String(postId || '').trim() || String(detail.id || '').trim();
+        this.marketplaceDetailOpenPostId = bundleOpenPostId;
         if (this.marketplaceDetailTitle) {
             this.marketplaceDetailTitle.textContent = String(detail.projectName || '项目预览');
         }
         if (this.marketplaceDetailDescription) {
-            this.marketplaceDetailDescription.textContent = String(detail.description || '');
+            const authorName = this.getMarketplaceAuthorLabel(String(detail.authorName || ''));
+            const description = String(detail.description || '').trim() || '暂无描述';
+            this.marketplaceDetailDescription.textContent = `项目作者：${authorName}\n项目描述：${description}`;
         }
         this.drawMarketplacePreviewPlaceholder('加载预览中…');
         if (this.marketplaceDetailActions) {
             this.marketplaceDetailActions.innerHTML = '';
-            /** 与拉取详情的 postId 一致，避免 detail.id 与入口参数不一致时重复开签 */
-            const bundleOpenPostId = String(postId || '').trim() || String(detail.id || '').trim();
-            const detailBtn = document.createElement('button');
-            detailBtn.type = 'button';
-            detailBtn.className = 'btn btn-secondary marketplace-detail-open-btn';
-            detailBtn.innerHTML =
-                '<span class="marketplace-btn-label">查看细节</span><span class="marketplace-btn-spinner" aria-hidden="true"></span>';
-            detailBtn.setAttribute('data-marketplace-open-detail', '1');
-            detailBtn.addEventListener('click', async () => {
-                await this.openMarketplaceDetailInCanvas(bundleOpenPostId);
-            });
-            this.marketplaceDetailActions.appendChild(detailBtn);
+            this.marketplaceDetailActions.className = reviewMode
+                ? 'marketplace-modal-actions marketplace-detail-actions marketplace-detail-actions--review'
+                : 'marketplace-modal-actions marketplace-detail-actions marketplace-detail-actions--approved';
             if (reviewMode) {
+                const openCircuitBtn = document.createElement('button');
+                openCircuitBtn.type = 'button';
+                openCircuitBtn.className = 'btn btn-secondary marketplace-detail-remix-open-btn';
+                openCircuitBtn.setAttribute('data-marketplace-open-canvas', '1');
+                openCircuitBtn.innerHTML =
+                    '<img src="" alt="" data-icon="git-branch"><span class="marketplace-btn-label">查看细节</span><span class="marketplace-btn-spinner" aria-hidden="true"></span>';
+                openCircuitBtn.addEventListener('click', async () => {
+                    await this.openMarketplaceDetailInCanvas(bundleOpenPostId, openCircuitBtn);
+                });
+                this.marketplaceDetailActions.appendChild(openCircuitBtn);
                 const rejectBtn = document.createElement('button');
                 rejectBtn.type = 'button';
-                rejectBtn.className = 'btn marketplace-publish-btn marketplace-review-btn--reject';
+                rejectBtn.className =
+                    'btn marketplace-publish-btn marketplace-review-btn--reject marketplace-detail-review-decision-btn';
                 rejectBtn.innerHTML =
                     '<span class="marketplace-btn-label">拒绝</span><span class="marketplace-btn-spinner" aria-hidden="true"></span>';
                 rejectBtn.addEventListener('click', async () => {
@@ -2064,26 +3663,65 @@ class AccountCenterManager {
                 });
                 const approveBtn = document.createElement('button');
                 approveBtn.type = 'button';
-                approveBtn.className = 'btn btn-primary marketplace-publish-btn';
+                approveBtn.className =
+                    'btn btn-primary marketplace-publish-btn marketplace-detail-review-decision-btn';
                 approveBtn.innerHTML =
                     '<span class="marketplace-btn-label">通过</span><span class="marketplace-btn-spinner" aria-hidden="true"></span>';
                 approveBtn.addEventListener('click', async () => {
                     await this.reviewMarketplacePost(postId, 'approve', '', approveBtn);
                 });
-                this.marketplaceDetailActions.appendChild(rejectBtn);
-                this.marketplaceDetailActions.appendChild(approveBtn);
+                const reviewRow = document.createElement('div');
+                reviewRow.className = 'marketplace-detail-review-row';
+                reviewRow.appendChild(rejectBtn);
+                reviewRow.appendChild(approveBtn);
+                this.marketplaceDetailActions.appendChild(reviewRow);
             } else {
-                ['like', 'favorite', 'remix'].forEach((action) => {
-                    const btn = document.createElement('button');
-                    btn.type = 'button';
-                    btn.className = 'btn btn-secondary';
-                    btn.textContent = action === 'like' ? '点赞' : action === 'favorite' ? '收藏' : '复刻';
-                    btn.addEventListener('click', async () => {
-                        await this.interactMarketplacePost(postId, action);
-                    });
-                    this.marketplaceDetailActions.appendChild(btn);
+                const viewerLike = Boolean(detail.viewerLiked);
+                const viewerFav = Boolean(detail.viewerFavorited);
+                const inner = document.createElement('div');
+                inner.className = 'marketplace-detail-actions-inner';
+                const left = document.createElement('div');
+                left.className = 'marketplace-detail-actions-left';
+                const likeBtn = document.createElement('button');
+                likeBtn.type = 'button';
+                likeBtn.className = `marketplace-modal-interact-icon-btn marketplace-modal-interact-icon-btn--like${viewerLike ? ' is-active' : ''}`;
+                likeBtn.setAttribute('data-viewer-active', viewerLike ? '1' : '0');
+                likeBtn.setAttribute('data-marketplace-interact', 'like');
+                likeBtn.setAttribute('data-post-id', bundleOpenPostId);
+                likeBtn.setAttribute('aria-label', '点赞');
+                likeBtn.setAttribute('title', '点赞');
+                likeBtn.innerHTML = `<img src="" alt="" data-icon="${viewerLike ? 'thumbs-up-filled' : 'thumbs-up'}">`;
+                likeBtn.addEventListener('click', async () => {
+                    await this.interactMarketplacePost(bundleOpenPostId, 'like', likeBtn);
                 });
+                const favoriteBtn = document.createElement('button');
+                favoriteBtn.type = 'button';
+                favoriteBtn.className = `marketplace-modal-interact-icon-btn marketplace-modal-interact-icon-btn--fav${viewerFav ? ' is-active' : ''}`;
+                favoriteBtn.setAttribute('data-viewer-active', viewerFav ? '1' : '0');
+                favoriteBtn.setAttribute('data-marketplace-interact', 'favorite');
+                favoriteBtn.setAttribute('data-post-id', bundleOpenPostId);
+                favoriteBtn.setAttribute('aria-label', '收藏');
+                favoriteBtn.setAttribute('title', '收藏');
+                favoriteBtn.innerHTML = `<img src="" alt="" data-icon="${viewerFav ? 'star-filled' : 'star'}">`;
+                favoriteBtn.addEventListener('click', async () => {
+                    await this.interactMarketplacePost(bundleOpenPostId, 'favorite', favoriteBtn);
+                });
+                left.appendChild(likeBtn);
+                left.appendChild(favoriteBtn);
+                inner.appendChild(left);
+                const remixBtn = document.createElement('button');
+                remixBtn.type = 'button';
+                remixBtn.className = 'btn btn-secondary marketplace-detail-remix-open-btn';
+                remixBtn.setAttribute('data-marketplace-open-canvas', '1');
+                remixBtn.innerHTML =
+                    '<img src="" alt="" data-icon="git-branch"><span class="marketplace-btn-label">复刻</span><span class="marketplace-btn-spinner" aria-hidden="true"></span>';
+                remixBtn.addEventListener('click', async () => {
+                    await this.openMarketplaceDetailInCanvas(bundleOpenPostId, remixBtn, { recordRemix: true });
+                });
+                inner.appendChild(remixBtn);
+                this.marketplaceDetailActions.appendChild(inner);
             }
+            void this.initializeIconsForScope(this.marketplaceDetailActions);
         }
     }
 
@@ -2095,6 +3733,7 @@ class AccountCenterManager {
         this.teardownMarketplacePreviewCanvas();
         this.marketplaceDetailReviewSession = null;
         this.marketplaceDetailReviewMode = false;
+        this.marketplaceDetailOpenPostId = '';
     }
 
     /**
@@ -2229,19 +3868,26 @@ class AccountCenterManager {
      * 从 Storage 拉取单文件 bundle，在内存中反序列化并由电路页打开（不写 temp）。
      * 审核态下保留会话以便返回后继续操作。
      * @param {string} postId
+     * @param {HTMLButtonElement | null} [triggerButton] 用于加载态的触发按钮（避免多按钮时误选）
+     * @param {{ recordRemix?: boolean }} [options]
      * @returns {Promise<void>}
      */
-    async openMarketplaceDetailInCanvas(postId) {
+    async openMarketplaceDetailInCanvas(postId, triggerButton = null, options = {}) {
         if (!postId) {
             return;
         }
-        const detailBtn = this.marketplaceDetailActions?.querySelector('[data-marketplace-open-detail]');
+        const trigger =
+            triggerButton ||
+            this.marketplaceDetailActions?.querySelector('[data-marketplace-open-canvas="1"]');
         if (!window.electronAPI?.supabaseGetMarketplaceProjectBundle) {
             this.showNotification('当前环境不支持查看细节。', 'warning');
             return;
         }
-        detailBtn?.classList.add('is-uploading');
+        trigger?.classList.add('is-uploading');
         try {
+            if (Boolean(options?.recordRemix)) {
+                await this.recordMarketplaceRemix(postId);
+            }
             const bundleResult = await window.electronAPI.supabaseGetMarketplaceProjectBundle({ postId });
             if (!bundleResult?.success || !bundleResult?.bundle) {
                 this.showNotification(this.formatResultError(bundleResult, '读取项目包失败。'), 'error');
@@ -2266,7 +3912,71 @@ class AccountCenterManager {
             const msg = err && typeof err === 'object' && 'message' in err ? String(err.message) : String(err);
             this.showNotification(`打开项目失败：${msg}`, 'error');
         } finally {
-            detailBtn?.classList.remove('is-uploading');
+            trigger?.classList.remove('is-uploading');
+        }
+    }
+
+    /**
+     * 记录一次复刻互动（同一用户同一项目仅计一次）；仅做局部计数补丁，不整页刷新。
+     * @param {string} postId
+     * @returns {Promise<void>}
+     */
+    async recordMarketplaceRemix(postId) {
+        const id = String(postId || '').trim();
+        if (!id || !window.electronAPI?.supabaseInteractMarketplacePost) {
+            return;
+        }
+        const result = await window.electronAPI.supabaseInteractMarketplacePost({ postId: id, action: 'remix' });
+        if (!result?.success) {
+            return;
+        }
+        const delta = Number(result?.delta || 0);
+        if (!delta) {
+            return;
+        }
+        this.applyMarketplaceRemixVisualDelta(id, delta);
+        this.patchMarketplacePostInMemory(id, (row) => ({
+            ...row,
+            remixes_count: Math.max(0, Number(row?.remixes_count || 0) + delta)
+        }));
+        this.marketplacePostDetailCache.delete(id);
+    }
+
+    /**
+     * 按项目编号拉取共享备份并在电路页以内存态打开（无需先下载文件）。
+     * @param {string} projectKey
+     * @param {HTMLElement | null} triggerButton
+     * @returns {Promise<void>}
+     */
+    async openSharedBackupByProjectKey(projectKey, triggerButton = null) {
+        const key = String(projectKey || '').trim().toLowerCase();
+        if (!key) {
+            return;
+        }
+        if (!window.electronAPI?.supabaseGetSharedBackupBundleByProjectKey) {
+            this.showNotification('当前环境不支持按项目编号复刻。', 'warning');
+            return;
+        }
+        triggerButton?.classList.add('is-uploading');
+        try {
+            const result = await window.electronAPI.supabaseGetSharedBackupBundleByProjectKey({ projectKey: key });
+            if (!result?.success || !result?.bundle) {
+                this.showNotification(this.formatResultError(result, '读取共享备份失败。'), 'error');
+                return;
+            }
+            if (!window.mainApp || typeof window.mainApp.openProjectFromMarketplaceBundle !== 'function') {
+                return;
+            }
+            await window.mainApp.switchTab('circuit-design');
+            await window.mainApp.openProjectFromMarketplaceBundle({
+                postId: `shared-backup-${key}`,
+                bundle: result.bundle
+            });
+        } catch (err) {
+            const msg = err && typeof err === 'object' && 'message' in err ? String(err.message) : String(err);
+            this.showNotification(`复刻失败：${msg}`, 'error');
+        } finally {
+            triggerButton?.classList.remove('is-uploading');
         }
     }
 
@@ -2290,13 +4000,14 @@ class AccountCenterManager {
                 return;
             }
             this.showNotification(String(result?.message || '审核完成。'), 'success');
-            this.marketplacePostDetailCache.delete(postId);
+            this.invalidateMarketplaceCaches();
             if (this.marketplaceDetailReviewSession?.postId === postId) {
                 this.marketplaceDetailReviewSession = null;
             }
             this.closeMarketplaceDetailModal();
             await this.refreshMarketplacePendingPosts();
-            await this.refreshMarketplaceApprovedPosts();
+            await this.refreshMarketplaceApprovedPosts({ allowNetworkFetch: true, showLoading: false });
+            await this.resyncMyProjectsPublishStatusesOnly();
         } finally {
             this.marketplaceDetailActions?.classList.remove('is-reviewing');
             clickedBtn?.classList.remove('is-uploading');
@@ -2304,18 +4015,298 @@ class AccountCenterManager {
     }
 
     /**
-     * @param {string} postId
-     * @param {'like'|'favorite'|'remix'} action
+     * 更新点赞/收藏按钮的实心描边图标与激活态（依赖 `initializeIconsForScope`）。
+     * @param {HTMLElement | null} btn
+     * @param {'like'|'favorite'} action
+     * @param {boolean} active
      * @returns {Promise<void>}
      */
-    async interactMarketplacePost(postId, action) {
-        if (!window.electronAPI?.supabaseInteractMarketplacePost) return;
-        const result = await window.electronAPI.supabaseInteractMarketplacePost({ postId, action });
-        if (!result?.success) {
-            this.showNotification(this.formatResultError(result, '互动失败。'), 'error');
+    async setMarketplaceLikeFavoriteButtonVisual(btn, action, active) {
+        if (!btn) {
             return;
         }
-        await this.refreshMarketplaceApprovedPosts();
+        const filled = action === 'like' ? 'thumbs-up-filled' : 'star-filled';
+        const outline = action === 'like' ? 'thumbs-up' : 'star';
+        btn.setAttribute('data-viewer-active', active ? '1' : '0');
+        btn.classList.toggle('is-active', Boolean(active));
+        const img = btn.querySelector('img[data-icon]');
+        if (img) {
+            img.dataset.icon = active ? filled : outline;
+            await this.initializeIconsForScope(btn);
+        }
+    }
+
+    /**
+     * 同步某帖在「列表卡片 + 详情模态」的点赞/收藏图标与计数。
+     * @param {string} postId
+     * @param {'like'|'favorite'} action
+     * @param {boolean} active
+     * @param {number} delta
+     * @returns {Promise<void>}
+     */
+    async applyMarketplaceInteractVisualDelta(postId, action, active, delta) {
+        const id = String(postId || '').trim();
+        if (!id) {
+            return;
+        }
+        const selector = `[data-marketplace-interact="${action}"][data-post-id="${id}"]`;
+        const buttons = document.querySelectorAll(selector);
+        for (const btn of buttons) {
+            await this.setMarketplaceLikeFavoriteButtonVisual(btn, action, active);
+            const countEl =
+                btn.querySelector('.marketplace-card-interact-count') ||
+                btn.parentElement?.querySelector('.marketplace-card-interact-count');
+            if (countEl && Number.isFinite(delta) && delta !== 0) {
+                const current = Number(String(countEl.textContent || '0').trim() || '0');
+                countEl.textContent = String(Math.max(0, current + delta));
+            }
+        }
+    }
+
+    /**
+     * 在内存列表中合并一条帖子的互动字段（乐观更新后与本地缓存一致）。
+     * @param {string} postId
+     * @param {(row: Record<string, unknown>) => Record<string, unknown>} updater
+     * @returns {void}
+     */
+    patchMarketplacePostInMemory(postId, updater) {
+        const id = String(postId || '').trim();
+        if (!id || !Array.isArray(this.marketplacePosts)) {
+            return;
+        }
+        const idx = this.marketplacePosts.findIndex((p) => String(p?.id || '') === id);
+        if (idx < 0) {
+            return;
+        }
+        this.marketplacePosts[idx] = updater(this.marketplacePosts[idx]);
+        this.persistMarketplaceApprovedCacheIfPossible();
+    }
+
+    /**
+     * 仅更新复刻计数的局部 UI（避免整页刷新）。
+     * @param {string} postId
+     * @param {number} delta
+     * @returns {void}
+     */
+    applyMarketplaceRemixVisualDelta(postId, delta) {
+        const id = String(postId || '').trim();
+        if (!id || !delta) {
+            return;
+        }
+        const card = this.marketplaceGrid?.querySelector?.(`[data-marketplace-post-id="${this.escapeHtml(id)}"]`);
+        if (card) {
+            const countEl = card.querySelector('.marketplace-card-remix-count');
+            if (countEl) {
+                const current = Number(String(countEl.textContent || '0').trim() || '0');
+                countEl.textContent = String(Math.max(0, current + delta));
+            }
+        }
+    }
+
+    /**
+     * 点赞/收藏：先切换 UI，再在后台写库；失败则回滚图标与计数，支持再次点击撤销。
+     * @param {string} postId
+     * @param {'like'|'favorite'} action
+     * @param {HTMLElement | null} sourceBtn
+     * @returns {Promise<void>}
+     */
+    async optimisticInteractLikeFavorite(postId, action, sourceBtn) {
+        if (!postId || !sourceBtn || !window.electronAPI?.supabaseInteractMarketplacePost) {
+            return;
+        }
+        const key = `${String(postId)}::${action}`;
+        if (this.marketplaceInteractPending.has(key)) {
+            return;
+        }
+        const currentActive = sourceBtn.getAttribute('data-viewer-active') === '1';
+        const nextActive = !currentActive;
+        const optimisticDelta = nextActive ? 1 : -1;
+        this.marketplaceInteractPending.add(key);
+        await this.applyMarketplaceInteractVisualDelta(postId, action, nextActive, optimisticDelta);
+        this.patchMarketplacePostInMemory(postId, (row) => {
+            const next = { ...row };
+            if (action === 'like') {
+                next.viewer_liked = nextActive;
+                next.likes_count = Math.max(0, Number(row.likes_count || 0) + optimisticDelta);
+            } else {
+                next.viewer_favorited = nextActive;
+                next.favorites_count = Math.max(0, Number(row.favorites_count || 0) + optimisticDelta);
+            }
+            return next;
+        });
+        this.marketplacePostDetailCache.delete(postId);
+        void (async () => {
+            try {
+                const result = await window.electronAPI.supabaseInteractMarketplacePost({ postId, action });
+                if (!result?.success) {
+                    await this.applyMarketplaceInteractVisualDelta(postId, action, currentActive, -optimisticDelta);
+                    this.patchMarketplacePostInMemory(postId, (row) => {
+                        const next = { ...row };
+                        if (action === 'like') {
+                            next.viewer_liked = currentActive;
+                            next.likes_count = Math.max(0, Number(row.likes_count || 0) - optimisticDelta);
+                        } else {
+                            next.viewer_favorited = currentActive;
+                            next.favorites_count = Math.max(0, Number(row.favorites_count || 0) - optimisticDelta);
+                        }
+                        return next;
+                    });
+                    this.showNotification(this.formatResultError(result, '操作失败。'), 'error');
+                    return;
+                }
+                const serverDelta = Number(result?.delta || 0);
+                const serverActive = Boolean(result?.toggled);
+                if (serverDelta !== optimisticDelta || serverActive !== nextActive) {
+                    await this.applyMarketplaceInteractVisualDelta(
+                        postId,
+                        action,
+                        serverActive,
+                        serverDelta - optimisticDelta
+                    );
+                    this.patchMarketplacePostInMemory(postId, (row) => {
+                        const next = { ...row };
+                        if (action === 'like') {
+                            next.viewer_liked = serverActive;
+                            next.likes_count = Math.max(0, Number(row.likes_count || 0) + (serverDelta - optimisticDelta));
+                        } else {
+                            next.viewer_favorited = serverActive;
+                            next.favorites_count = Math.max(0, Number(row.favorites_count || 0) + (serverDelta - optimisticDelta));
+                        }
+                        return next;
+                    });
+                }
+                this.marketplacePostDetailCache.delete(postId);
+            } catch (err) {
+                await this.applyMarketplaceInteractVisualDelta(postId, action, currentActive, -optimisticDelta);
+                this.patchMarketplacePostInMemory(postId, (row) => {
+                    const next = { ...row };
+                    if (action === 'like') {
+                        next.viewer_liked = currentActive;
+                        next.likes_count = Math.max(0, Number(row.likes_count || 0) - optimisticDelta);
+                    } else {
+                        next.viewer_favorited = currentActive;
+                        next.favorites_count = Math.max(0, Number(row.favorites_count || 0) - optimisticDelta);
+                    }
+                    return next;
+                });
+                const msg = err && typeof err === 'object' && 'message' in err ? String(err.message) : String(err);
+                this.showNotification(`操作失败：${msg}`, 'error');
+            } finally {
+                this.marketplaceInteractPending.delete(key);
+            }
+        })();
+    }
+
+    /**
+     * 复刻：局部乐观 + 后台确认，避免每次复刻后全量刷新列表。
+     * @param {string} postId
+     * @returns {Promise<void>}
+     */
+    async optimisticInteractRemix(postId) {
+        if (!postId || !window.electronAPI?.supabaseInteractMarketplacePost) {
+            return;
+        }
+        const key = `${String(postId)}::remix`;
+        if (this.marketplaceInteractPending.has(key)) {
+            return;
+        }
+        const optimisticDelta = 1;
+        this.marketplaceInteractPending.add(key);
+        this.applyMarketplaceRemixVisualDelta(postId, optimisticDelta);
+        this.patchMarketplacePostInMemory(postId, (row) => ({
+            ...row,
+            remixes_count: Math.max(0, Number(row?.remixes_count || 0) + optimisticDelta)
+        }));
+        try {
+            const result = await window.electronAPI.supabaseInteractMarketplacePost({ postId, action: 'remix' });
+            if (!result?.success) {
+                this.applyMarketplaceRemixVisualDelta(postId, -optimisticDelta);
+                this.patchMarketplacePostInMemory(postId, (row) => ({
+                    ...row,
+                    remixes_count: Math.max(0, Number(row?.remixes_count || 0) - optimisticDelta)
+                }));
+                this.showNotification(this.formatResultError(result, '互动失败。'), 'error');
+                return;
+            }
+            const serverDelta = Number(result?.delta || 1);
+            if (serverDelta !== optimisticDelta) {
+                const adjust = serverDelta - optimisticDelta;
+                this.applyMarketplaceRemixVisualDelta(postId, adjust);
+                this.patchMarketplacePostInMemory(postId, (row) => ({
+                    ...row,
+                    remixes_count: Math.max(0, Number(row?.remixes_count || 0) + adjust)
+                }));
+            }
+            this.marketplacePostDetailCache.delete(postId);
+        } catch (err) {
+            this.applyMarketplaceRemixVisualDelta(postId, -optimisticDelta);
+            this.patchMarketplacePostInMemory(postId, (row) => ({
+                ...row,
+                remixes_count: Math.max(0, Number(row?.remixes_count || 0) - optimisticDelta)
+            }));
+            const msg = err && typeof err === 'object' && 'message' in err ? String(err.message) : String(err);
+            this.showNotification(`操作失败：${msg}`, 'error');
+        } finally {
+            this.marketplaceInteractPending.delete(key);
+        }
+    }
+
+    /**
+     * @param {string} postId
+     * @param {'like'|'favorite'|'remix'} action
+     * @param {HTMLElement | null} [sourceButton] 点赞/收藏时传入被点击按钮以做乐观 UI
+     * @returns {Promise<void>}
+     */
+    async interactMarketplacePost(postId, action, sourceButton = null) {
+        if (!window.electronAPI?.supabaseInteractMarketplacePost) {
+            return;
+        }
+        if (action === 'like' || action === 'favorite') {
+            await this.optimisticInteractLikeFavorite(postId, action, sourceButton);
+            return;
+        }
+        await this.optimisticInteractRemix(postId);
+    }
+
+    /**
+     * 超级管理员：确认后删除已发布集市项目（主进程会删 Storage 与 DB）。
+     * @param {string} postId
+     * @returns {Promise<void>}
+     */
+    async confirmAndDeleteMarketplacePublishedPost(postId) {
+        const id = String(postId || '').trim();
+        if (!id) {
+            return;
+        }
+        await this.refreshAuthState();
+        const ok = window.confirm(
+            '确定从创客集市永久删除该项目吗？将删除公开存储中的文件与数据库记录，且不可恢复。'
+        );
+        if (!ok) {
+            return;
+        }
+        if (!window.electronAPI?.supabaseDeleteMarketplaceApprovedPost) {
+            this.showNotification('当前环境不支持删除操作。', 'warning');
+            return;
+        }
+        const result = await window.electronAPI.supabaseDeleteMarketplaceApprovedPost({ postId: id });
+        if (!result?.success) {
+            this.showNotification(this.formatResultError(result, '删除失败。'), 'error');
+            return;
+        }
+        this.showNotification(String(result?.message || '已删除。'), 'success');
+        this.marketplacePostDetailCache.delete(id);
+        if (this.marketplaceDetailOpenPostId === id) {
+            this.closeMarketplaceDetailModal();
+        }
+        this.invalidateMarketplaceApprovedClientCache();
+        const query = String(this.marketplaceSearchInput?.value || '').trim();
+        const sortBy = String(this.marketplaceSortSelect?.value || 'likes').trim();
+        const approvedCacheKey = `${query}::${sortBy}`;
+        await this.removeMarketplaceApprovedPostLocally(id, approvedCacheKey);
+        if (this.authState?.isAuthenticated && this.myProjectsHasLoaded) {
+            await this.resyncMyProjectsPublishStatusesOnly();
+        }
     }
 
     /**
@@ -2329,6 +4320,17 @@ class AccountCenterManager {
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
+    }
+
+    /**
+     * 将字符串转为可安全嵌入 CSS 属性选择器双引号内的片段（用于 querySelector）。
+     * @param {string} value
+     * @returns {string}
+     */
+    escapeHtmlAttribute(value) {
+        return String(value || '')
+            .replace(/\\/g, '\\\\')
+            .replace(/"/g, '\\"');
     }
 
     /**

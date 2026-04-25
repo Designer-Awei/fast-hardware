@@ -22,8 +22,17 @@ const MARKETPLACE_PROJECT_BUNDLE_FORMAT = 'fast-hardware-marketplace-project-v1'
 const MARKETPLACE_PENDING_BUCKET = 'marketplace-pending';
 const MARKETPLACE_PUBLIC_BUCKET = 'marketplace-public';
 const MARKETPLACE_POST_TABLE = 'marketplace_posts';
+const MARKETPLACE_PROJECT_INDEX_TABLE = 'marketplace_projects';
 const MARKETPLACE_DAILY_UPLOAD_TABLE = 'daily_marketplace_uploads';
 const MARKETPLACE_DAILY_UPLOAD_LIMIT = 3;
+const MARKETPLACE_LIST_CACHE_MS = 5 * 60 * 1000;
+const MARKETPLACE_BUNDLE_CACHE_MS = 15 * 60 * 1000;
+/** 写入 marketplace-public 时附带，便于 CDN 与浏览器长期稳定命中 */
+const MARKETPLACE_PUBLIC_OBJECT_CACHE_CONTROL = 'public, max-age=31536000, immutable';
+/** @type {Map<string, { expireAt: number, posts: any[] }>} */
+const marketplaceListCache = new Map();
+/** @type {Map<string, { expireAt: number, bundle: Record<string, unknown>, bundleKey: string }>} */
+const marketplaceBundleCache = new Map();
 
 /**
  * @returns {string}
@@ -572,12 +581,15 @@ function decodeAvatarDataUrl(dataUrl) {
 
 /**
  * @param {string} projectPath
+ * @param {string} [projectUuid]
  * @returns {string}
  */
-function buildProjectKey(projectPath) {
+function buildProjectKey(projectPath, projectUuid = '') {
+  const uuid = normalizeProjectUuid(projectUuid);
+  const keySource = uuid ? `uuid:${uuid}` : String(projectPath || '').trim();
   return crypto
     .createHash('sha256')
-    .update(String(projectPath || '').trim(), 'utf8')
+    .update(keySource, 'utf8')
     .digest('hex')
     .slice(0, 24);
 }
@@ -588,6 +600,15 @@ function buildProjectKey(projectPath) {
  */
 function normalizePathForKey(value) {
   return String(value || '').trim().replace(/\\/g, '/');
+}
+
+/**
+ * @param {string} value
+ * @returns {string}
+ */
+function normalizeProjectUuid(value) {
+  const v = String(value || '').trim().toLowerCase();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v) ? v : '';
 }
 
 /**
@@ -950,10 +971,27 @@ async function getProjectBackups(payload) {
   if (userError || !userId) {
     return { success: false, error: userError?.message || '当前未登录，无法读取备份状态。', backups: [] };
   }
-  const projectPaths = Array.isArray(payload?.projectPaths)
-    ? payload.projectPaths.map((v) => normalizePathForKey(v)).filter(Boolean)
+  const projectRefs = Array.isArray(payload?.projectRefs)
+    ? payload.projectRefs
+        .map((item) => ({
+          projectPath: normalizePathForKey(item?.projectPath || ''),
+          projectUuid: normalizeProjectUuid(item?.projectUuid || '')
+        }))
+        .filter((item) => item.projectPath || item.projectUuid)
     : [];
-  const projectKeys = projectPaths.map((v) => buildProjectKey(v));
+  const projectPaths = projectRefs.length
+    ? projectRefs.map((item) => item.projectPath)
+    : Array.isArray(payload?.projectPaths)
+      ? payload.projectPaths.map((v) => normalizePathForKey(v)).filter(Boolean)
+      : [];
+  const projectUuids = projectRefs.length
+    ? projectRefs.map((item) => item.projectUuid)
+    : Array.isArray(payload?.projectUuids)
+      ? payload.projectUuids.map((v) => normalizeProjectUuid(v)).filter(Boolean)
+      : [];
+  const projectKeys = (projectRefs.length
+    ? projectRefs.map((item) => buildProjectKey(item.projectPath, item.projectUuid))
+    : projectPaths.map((v, i) => buildProjectKey(v, projectUuids[i] || ''))).filter(Boolean);
   let query = client
     .from(PROJECT_BACKUP_TABLE)
     .select('project_path, project_name, project_key, backup_at, file_count, last_modified')
@@ -989,6 +1027,7 @@ async function getProjectBackups(payload) {
         if (!existing) return null;
         return {
           projectPath: projectPaths[index],
+          projectUuid: projectUuids[index] || '',
           projectName: existing.projectName,
           projectKey: existing.projectKey,
           backupAt: existing.backupAt,
@@ -998,6 +1037,97 @@ async function getProjectBackups(payload) {
       })
       .filter(Boolean)
   };
+}
+
+/**
+ * 批量读取当前用户项目在创客集市的发布状态（按 project_path 计算 project_key）。
+ * @param {{ projectPaths?: string[] }} payload
+ * @returns {Promise<{ success: boolean, statuses?: Array<{ projectPath: string, projectKey: string, status: 'unpublished'|'pending'|'approved'|'rejected' }>, error?: string }>}
+ */
+async function getMarketplacePublishStatuses(payload) {
+  const client = getAuthClient();
+  const projectRefs = Array.isArray(payload?.projectRefs)
+    ? payload.projectRefs
+        .map((item) => ({
+          projectPath: normalizePathForKey(item?.projectPath || ''),
+          projectUuid: normalizeProjectUuid(item?.projectUuid || '')
+        }))
+        .filter((item) => item.projectPath || item.projectUuid)
+    : [];
+  const projectPaths = projectRefs.length
+    ? projectRefs.map((item) => item.projectPath)
+    : Array.isArray(payload?.projectPaths)
+      ? payload.projectPaths.map((v) => normalizePathForKey(v)).filter(Boolean)
+      : [];
+  const projectUuids = projectRefs.length
+    ? projectRefs.map((item) => item.projectUuid)
+    : Array.isArray(payload?.projectUuids)
+      ? payload.projectUuids.map((v) => normalizeProjectUuid(v)).filter(Boolean)
+      : [];
+  if (!projectPaths.length) {
+    return { success: true, statuses: [] };
+  }
+  const { data: authData, error: authError } = await client.auth.getUser();
+  const user = authData?.user || null;
+  if (authError || !user?.id) {
+    return {
+      success: true,
+      statuses: projectPaths.map((projectPath, index) => ({
+        projectPath,
+        projectUuid: projectUuids[index] || '',
+        projectKey: buildProjectKey(projectPath, projectUuids[index] || ''),
+        status: 'unpublished'
+      }))
+    };
+  }
+  const keyToPath = new Map();
+  const projectKeys = [];
+  projectPaths.forEach((projectPath, index) => {
+    const key = buildProjectKey(projectPath, projectUuids[index] || '');
+    if (!key) return;
+    projectKeys.push(key);
+    if (!keyToPath.has(key)) {
+      keyToPath.set(key, projectPath);
+    }
+  });
+  if (!projectKeys.length) {
+    return { success: true, statuses: [] };
+  }
+  const { data, error } = await client
+    .from(MARKETPLACE_POST_TABLE)
+    .select('project_key, status, updated_at, created_at')
+    .eq('author_id', user.id)
+    .in('project_key', projectKeys)
+    .order('updated_at', { ascending: false })
+    .order('created_at', { ascending: false });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+  const latestStatusByKey = new Map();
+  (Array.isArray(data) ? data : []).forEach((row) => {
+    const key = String(row?.project_key || '').trim();
+    if (!key || latestStatusByKey.has(key)) return;
+    const raw = String(row?.status || '').trim().toLowerCase();
+    const normalized =
+      raw === 'approved'
+        ? 'approved'
+        : raw === 'pending'
+          ? 'pending'
+          : raw === 'rejected'
+            ? 'rejected'
+            : 'unpublished';
+    latestStatusByKey.set(key, normalized);
+  });
+  const statuses = projectPaths.map((projectPath, index) => {
+    const projectKey = buildProjectKey(projectPath, projectUuids[index] || '');
+    return {
+      projectPath,
+      projectUuid: projectUuids[index] || '',
+      projectKey,
+      status: latestStatusByKey.get(projectKey) || 'unpublished'
+    };
+  });
+  return { success: true, statuses };
 }
 
 /**
@@ -1012,6 +1142,7 @@ async function uploadProjectBackup(payload) {
     return { success: false, error: userError?.message || '当前未登录，无法上传项目备份。' };
   }
   const projectPathRaw = String(payload?.projectPath || '').trim();
+  const projectUuid = normalizeProjectUuid(payload?.projectUuid || '');
   if (!projectPathRaw) {
     return { success: false, error: '项目路径为空，无法上传备份。' };
   }
@@ -1030,7 +1161,7 @@ async function uploadProjectBackup(payload) {
     return { success: false, error: '项目目录为空，暂无可备份文件。' };
   }
 
-  const projectKey = buildProjectKey(projectPath);
+  const projectKey = buildProjectKey(projectPath, projectUuid);
   const projectName = String(payload?.projectName || path.basename(projectPathRaw)).trim() || '未命名项目';
   const { data: existingBackup, error: existingError } = await client
     .from(PROJECT_BACKUP_TABLE)
@@ -1179,6 +1310,118 @@ async function downloadProjectBackup(payload) {
 }
 
 /**
+ * @param {string} value
+ * @returns {boolean}
+ */
+function isValidProjectKey(value) {
+  return /^[a-f0-9]{24}$/i.test(String(value || '').trim());
+}
+
+/**
+ * 通过 project_key 查询可共享备份（用于创客集市按编号复用）。
+ * @param {{ projectKey?: string }} payload
+ * @returns {Promise<{ success: boolean, projects?: Array<{ projectKey: string, projectName: string, backupAt: string, authorName: string }>, error?: string }>}
+ */
+async function searchSharedBackupProjectsByKey(payload) {
+  const client = getAuthClient();
+  const { data: userData, error: userError } = await client.auth.getUser();
+  const userId = String(userData?.user?.id || '').trim();
+  if (userError || !userId) {
+    return { success: false, error: '请先登录后再查询共享项目。' };
+  }
+  const projectKey = String(payload?.projectKey || '').trim().toLowerCase();
+  if (!isValidProjectKey(projectKey)) {
+    return { success: true, projects: [] };
+  }
+  const { data, error } = await client
+    .from(PROJECT_BACKUP_TABLE)
+    .select('project_key, project_name, backup_at, user_id')
+    .eq('project_key', projectKey)
+    .order('backup_at', { ascending: false })
+    .limit(20);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+  const rows = Array.isArray(data) ? data : [];
+  const ownerIds = [...new Set(rows.map((row) => String(row?.user_id || '').trim()).filter(Boolean))];
+  /** @type {Map<string, string>} */
+  const ownerNameMap = new Map();
+  if (ownerIds.length) {
+    const { data: profileRows, error: profileError } = await client
+      .from('profiles')
+      .select('id, display_name')
+      .in('id', ownerIds);
+    if (!profileError && Array.isArray(profileRows)) {
+      profileRows.forEach((profile) => {
+        const id = String(profile?.id || '').trim();
+        if (!id) return;
+        ownerNameMap.set(id, String(profile?.display_name || '').trim());
+      });
+    }
+  }
+  return {
+    success: true,
+    projects: rows.map((row) => ({
+      projectKey: String(row.project_key || ''),
+      projectName: String(row.project_name || '共享备份项目'),
+      backupAt: String(row.backup_at || ''),
+      authorName: String(ownerNameMap.get(String(row?.user_id || '').trim()) || '').trim() || '未知发布者'
+    }))
+  };
+}
+
+/**
+ * 通过 project_key 获取共享备份 bundle（仅内存，不落盘）。
+ * @param {{ projectKey?: string }} payload
+ * @returns {Promise<{ success: boolean, bundle?: Record<string, unknown>, projectName?: string, projectKey?: string, backupAt?: string, error?: string }>}
+ */
+async function getSharedBackupBundleByProjectKey(payload) {
+  const client = getAuthClient();
+  const { data: userData, error: userError } = await client.auth.getUser();
+  const userId = String(userData?.user?.id || '').trim();
+  if (userError || !userId) {
+    return { success: false, error: '请先登录后再复刻共享项目。' };
+  }
+  const projectKey = String(payload?.projectKey || '').trim().toLowerCase();
+  if (!isValidProjectKey(projectKey)) {
+    return { success: false, error: '项目编号无效。' };
+  }
+  const { data: rows, error } = await client
+    .from(PROJECT_BACKUP_TABLE)
+    .select('user_id, project_key, project_name, backup_at')
+    .eq('project_key', projectKey)
+    .order('backup_at', { ascending: false })
+    .limit(1);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row) {
+    return { success: false, error: '未找到该项目编号对应的共享备份。' };
+  }
+  const ownerId = String(row.user_id || '').trim();
+  if (!ownerId) {
+    return { success: false, error: '共享备份缺少有效作者标识。' };
+  }
+  const bundleKey = `${ownerId}/${projectKey}/${MARKETPLACE_PROJECT_BUNDLE_NAME}`.replace(/\/+/g, '/');
+  const text = await downloadStorageObjectTextWithCdn(client, PROJECT_BACKUP_BUCKET, bundleKey);
+  if (!text) {
+    return { success: false, error: '读取共享备份失败，请稍后重试。' };
+  }
+  const parsed = parseMarketplaceProjectBundleJson(text);
+  if (!parsed.ok) {
+    return { success: false, error: '共享备份格式无效。' };
+  }
+  return {
+    success: true,
+    bundle: parsed.bundle,
+    projectName: String(row.project_name || ''),
+    projectKey,
+    backupAt: String(row.backup_at || '')
+  };
+}
+
+/**
  * @param {{ projectPath?: string }} payload
  * @returns {Promise<{ success: boolean, message?: string, error?: string }>}
  */
@@ -1190,11 +1433,12 @@ async function deleteProjectBackup(payload) {
     return { success: false, error: userError?.message || '当前未登录，无法撤销备份。' };
   }
   const projectPathRaw = String(payload?.projectPath || '').trim();
+  const projectUuid = normalizeProjectUuid(payload?.projectUuid || '');
   if (!projectPathRaw) {
     return { success: false, error: '项目路径为空，无法撤销备份。' };
   }
   const projectPath = normalizePathForKey(projectPathRaw);
-  const projectKey = buildProjectKey(projectPath);
+  const projectKey = buildProjectKey(projectPath, projectUuid);
   const { data: deletedRows, error: deleteError } = await client
     .from(PROJECT_BACKUP_TABLE)
     .delete()
@@ -1452,6 +1696,188 @@ function parseMarketplaceProjectBundleJson(text) {
 }
 
 /**
+ * @param {string} key
+ * @returns {any[] | null}
+ */
+function readMarketplaceListCache(key) {
+  const item = marketplaceListCache.get(key);
+  if (!item) return null;
+  if (Date.now() > item.expireAt) {
+    marketplaceListCache.delete(key);
+    return null;
+  }
+  return Array.isArray(item.posts) ? item.posts : null;
+}
+
+/**
+ * @param {string} key
+ * @param {any[]} posts
+ * @returns {void}
+ */
+function writeMarketplaceListCache(key, posts) {
+  marketplaceListCache.set(key, {
+    expireAt: Date.now() + MARKETPLACE_LIST_CACHE_MS,
+    posts: Array.isArray(posts) ? posts : []
+  });
+}
+
+/**
+ * @returns {void}
+ */
+function clearMarketplaceListCache() {
+  marketplaceListCache.clear();
+}
+
+/**
+ * @param {string} bucket
+ * @param {string} objectKey
+ * @returns {string}
+ */
+function buildBundleCacheKey(bucket, objectKey) {
+  return `${String(bucket || '').trim()}::${String(objectKey || '').trim().replace(/\\/g, '/')}`;
+}
+
+/**
+ * @param {string} cacheKey
+ * @returns {{ bundle: Record<string, unknown>, bundleKey: string } | null}
+ */
+function readMarketplaceBundleCache(cacheKey) {
+  const item = marketplaceBundleCache.get(cacheKey);
+  if (!item) return null;
+  if (Date.now() > item.expireAt) {
+    marketplaceBundleCache.delete(cacheKey);
+    return null;
+  }
+  return { bundle: item.bundle, bundleKey: item.bundleKey };
+}
+
+/**
+ * @param {string} cacheKey
+ * @param {Record<string, unknown>} bundle
+ * @param {string} bundleKey
+ * @returns {void}
+ */
+function writeMarketplaceBundleCache(cacheKey, bundle, bundleKey) {
+  marketplaceBundleCache.set(cacheKey, {
+    expireAt: Date.now() + MARKETPLACE_BUNDLE_CACHE_MS,
+    bundle,
+    bundleKey: String(bundleKey || '')
+  });
+}
+
+/**
+ * @returns {void}
+ */
+function clearMarketplaceBundleCache() {
+  marketplaceBundleCache.clear();
+}
+
+/**
+ * @param {import('@supabase/supabase-js').SupabaseClient} client
+ * @param {string} bucket
+ * @param {string} objectKey
+ * @returns {Promise<string | null>}
+ */
+async function downloadStorageObjectTextWithCdn(client, bucket, objectKey) {
+  const key = String(objectKey || '').trim().replace(/\\/g, '/');
+  if (!key) return null;
+  const { data: publicUrlData } = client.storage.from(bucket).getPublicUrl(key);
+  const publicUrl = String(publicUrlData?.publicUrl || '').trim();
+  if (publicUrl) {
+    try {
+      const response = await fetch(publicUrl, {
+        method: 'GET',
+        cache: 'force-cache'
+      });
+      if (response.ok) {
+        return await response.text();
+      }
+    } catch {
+      // fallthrough to storage.download
+    }
+  }
+  const { data: blob, error } = await client.storage.from(bucket).download(key);
+  if (error || !blob) {
+    return null;
+  }
+  return await blob.text();
+}
+
+/**
+ * 与 IPC getMarketplaceProjectBundle 一致：按热索引与帖子行推断 bundle 所在 bucket 与候选对象键。
+ * @param {import('@supabase/supabase-js').SupabaseClient} client
+ * @param {{ id?: string, author_id?: string, status?: string, pending_snapshot_key?: string, public_snapshot_key?: string, project_name?: string }} row
+ * @returns {Promise<{ bucket: string, bundleTryKeys: string[], projectIdx: Record<string, unknown> | null }>}
+ */
+async function resolveMarketplacePostBundleContext(client, row) {
+  const postId = String(row?.id || '').trim();
+  let bucket = String(row?.status || '') === 'approved' ? MARKETPLACE_PUBLIC_BUCKET : MARKETPLACE_PENDING_BUCKET;
+  const { data: projectIdx } = await client
+    .from(MARKETPLACE_PROJECT_INDEX_TABLE)
+    .select('storage_path, bucket, title')
+    .eq('post_id', postId)
+    .maybeSingle();
+  /** @type {Record<string, unknown> | null} */
+  const idx =
+    projectIdx && typeof projectIdx === 'object' ? /** @type {Record<string, unknown>} */ (projectIdx) : null;
+  if (idx) {
+    const idxBucket = String(idx.bucket || '').trim();
+    if (idxBucket) {
+      bucket = idxBucket;
+    }
+  }
+  const storedKey = String(
+    String(idx?.storage_path || '') ||
+      (String(row?.status || '') === 'approved' ? row?.public_snapshot_key : row?.pending_snapshot_key) ||
+      ''
+  )
+    .trim()
+    .replace(/\\/g, '/');
+  const authorId = String(row?.author_id || '').trim();
+  /** @type {string[]} */
+  const bundleTryKeys = [];
+  if (storedKey && storedKey.endsWith(MARKETPLACE_PROJECT_BUNDLE_NAME)) {
+    bundleTryKeys.push(storedKey);
+  }
+  if (authorId && postId) {
+    const guessedBundle = `${authorId}/${postId}/project/${MARKETPLACE_PROJECT_BUNDLE_NAME}`.replace(/\/+/g, '/');
+    if (!bundleTryKeys.includes(guessedBundle)) {
+      bundleTryKeys.push(guessedBundle);
+    }
+  }
+  return { bucket, bundleTryKeys, projectIdx: idx };
+}
+
+/**
+ * 下载并解析 bundle，命中或写入内存缓存（供预览 IPC 与详情共用）。
+ * @param {import('@supabase/supabase-js').SupabaseClient} client
+ * @param {string} bucket
+ * @param {string[]} bundleTryKeys
+ * @returns {Promise<{ ok: true, bundle: Record<string, unknown>, bundleKey: string } | { ok: false }>}
+ */
+async function fetchMarketplaceBundleWithCache(client, bucket, bundleTryKeys) {
+  const keys = Array.isArray(bundleTryKeys) ? bundleTryKeys : [];
+  for (const bk of keys) {
+    const cacheKey = buildBundleCacheKey(bucket, bk);
+    const cached = readMarketplaceBundleCache(cacheKey);
+    if (cached) {
+      return { ok: true, bundle: cached.bundle, bundleKey: cached.bundleKey };
+    }
+    const text = await downloadStorageObjectTextWithCdn(client, bucket, bk);
+    if (!text) {
+      continue;
+    }
+    const parsed = parseMarketplaceProjectBundleJson(text);
+    if (!parsed.ok) {
+      continue;
+    }
+    writeMarketplaceBundleCache(cacheKey, parsed.bundle, bk);
+    return { ok: true, bundle: parsed.bundle, bundleKey: bk };
+  }
+  return { ok: false };
+}
+
+/**
  * 从 bundle 中提取画布用 circuit_config 对象与首份 .ino 源码。
  * @param {Record<string, unknown>} bundle
  * @returns {{ snapshot: Record<string, unknown>, codeSnippet: string }}
@@ -1477,29 +1903,6 @@ function extractSnapshotAndCodeFromBundle(bundle) {
 }
 
 /**
- * 从 Storage 下载单个 bundle 并解析出快照与代码片段。
- * @param {import('@supabase/supabase-js').SupabaseClient} client
- * @param {string} bucket
- * @param {string} bundleKey
- * @returns {Promise<{ snapshot: Record<string, unknown>, codeSnippet: string } | null>}
- */
-async function loadMarketplaceSnapshotFromBundleKey(client, bucket, bundleKey) {
-  const bk = String(bundleKey || '').trim().replace(/\\/g, '/');
-  if (!bk) {
-    return null;
-  }
-  const { data: blob, error } = await client.storage.from(bucket).download(bk);
-  if (error || !blob) {
-    return null;
-  }
-  const parsed = parseMarketplaceProjectBundleJson(await blob.text());
-  if (!parsed.ok) {
-    return null;
-  }
-  return extractSnapshotAndCodeFromBundle(parsed.bundle);
-}
-
-/**
  * 从帖子行推断待审/已发布项目在 Storage 中的项目目录前缀（兼容 DB 与对象键不一致）。
  * @param {{ id?: string, author_id?: string, status?: string, pending_snapshot_key?: string, public_snapshot_key?: string }} row
  * @returns {string}
@@ -1522,35 +1925,35 @@ function resolveMarketplaceProjectStoragePrefix(row) {
 }
 
 /**
- * 读取创客集市帖子在 Storage 中的电路快照与代码片段（仅支持 project.bundle.json）。
+ * 读取创客集市帖子在 Storage 中的电路快照与代码片段（仅支持 project.bundle.json；与 bundle IPC 共用内存缓存）。
  * @param {import('@supabase/supabase-js').SupabaseClient} client
- * @param {string} bucket
  * @param {{ id?: string, author_id?: string, status?: string, pending_snapshot_key?: string, public_snapshot_key?: string, pending_code_key?: string, public_code_key?: string }} row
  * @returns {Promise<{ snapshot: any, codeSnippet: string, error?: string }>}
  */
-async function loadMarketplaceSnapshotForDisplay(client, bucket, row) {
-  const isApproved = String(row?.status || '') === 'approved';
-  const storedKey = String(isApproved ? row?.public_snapshot_key : row?.pending_snapshot_key || '').trim().replace(/\\/g, '/');
-  const authorId = String(row?.author_id || '').trim();
-  const postId = String(row?.id || '').trim();
-
-  const bundleTryKeys = [];
-  if (storedKey && storedKey.endsWith(MARKETPLACE_PROJECT_BUNDLE_NAME)) {
-    bundleTryKeys.push(storedKey);
-  }
-  if (authorId && postId) {
-    const guessedBundle = `${authorId}/${postId}/project/${MARKETPLACE_PROJECT_BUNDLE_NAME}`.replace(/\/+/g, '/');
-    if (!bundleTryKeys.includes(guessedBundle)) {
-      bundleTryKeys.push(guessedBundle);
+async function loadMarketplaceSnapshotForDisplay(client, row) {
+  const ctx = await resolveMarketplacePostBundleContext(client, row);
+  for (const bk of ctx.bundleTryKeys) {
+    const cacheKey = buildBundleCacheKey(ctx.bucket, bk);
+    const cached = readMarketplaceBundleCache(cacheKey);
+    /** @type {Record<string, unknown> | null} */
+    let bundle = cached ? cached.bundle : null;
+    if (!bundle) {
+      const text = await downloadStorageObjectTextWithCdn(client, ctx.bucket, bk);
+      if (!text) {
+        continue;
+      }
+      const parsed = parseMarketplaceProjectBundleJson(text);
+      if (!parsed.ok) {
+        continue;
+      }
+      writeMarketplaceBundleCache(cacheKey, parsed.bundle, bk);
+      bundle = parsed.bundle;
     }
-  }
-  for (const bk of bundleTryKeys) {
-    const got = await loadMarketplaceSnapshotFromBundleKey(client, bucket, bk);
-    if (!got) {
-      continue;
-    }
-    if (marketplaceSnapshotHasCircuit(got.snapshot) || String(got.codeSnippet || '').trim()) {
-      return { snapshot: got.snapshot || {}, codeSnippet: got.codeSnippet || '' };
+    const extracted = extractSnapshotAndCodeFromBundle(bundle);
+    const snapshot = extracted.snapshot || {};
+    const codeSnippet = String(extracted.codeSnippet || '');
+    if (marketplaceSnapshotHasCircuit(snapshot) || codeSnippet.trim()) {
+      return { snapshot, codeSnippet };
     }
   }
 
@@ -1572,7 +1975,10 @@ async function publishMarketplacePost(payload) {
   if (userError || !user?.id) {
     return { success: false, error: userError?.message || '当前未登录，无法发布项目。' };
   }
+  const role = await tryReadCurrentUserRole(client);
+  const isUnlimitedPublisher = role === 'admin' || role === 'super_admin';
   const projectPathRaw = String(payload?.projectPath || '').trim();
+  const projectUuid = normalizeProjectUuid(payload?.projectUuid || '');
   if (!projectPathRaw) {
     return { success: false, error: '项目路径无效，无法发布。' };
   }
@@ -1590,18 +1996,21 @@ async function publishMarketplacePost(payload) {
   }
 
   const nowDate = new Date().toISOString().slice(0, 10);
-  const { data: uploadCounter, error: counterError } = await client
-    .from(MARKETPLACE_DAILY_UPLOAD_TABLE)
-    .select('upload_count')
-    .eq('user_id', user.id)
-    .eq('upload_date', nowDate)
-    .maybeSingle();
-  if (counterError) {
-    return { success: false, error: `读取发布配额失败：${counterError.message}` };
-  }
-  const currentCount = Number(uploadCounter?.upload_count || 0);
-  if (currentCount >= MARKETPLACE_DAILY_UPLOAD_LIMIT) {
-    return { success: false, error: `今日发布次数已达上限（${MARKETPLACE_DAILY_UPLOAD_LIMIT} 次）。` };
+  let currentCount = 0;
+  if (!isUnlimitedPublisher) {
+    const { data: uploadCounter, error: counterError } = await client
+      .from(MARKETPLACE_DAILY_UPLOAD_TABLE)
+      .select('upload_count')
+      .eq('user_id', user.id)
+      .eq('upload_date', nowDate)
+      .maybeSingle();
+    if (counterError) {
+      return { success: false, error: `读取发布配额失败：${counterError.message}` };
+    }
+    currentCount = Number(uploadCounter?.upload_count || 0);
+    if (currentCount >= MARKETPLACE_DAILY_UPLOAD_LIMIT) {
+      return { success: false, error: `今日发布次数已达上限（${MARKETPLACE_DAILY_UPLOAD_LIMIT} 次）。` };
+    }
   }
 
   const projectName = String(
@@ -1609,7 +2018,26 @@ async function publishMarketplacePost(payload) {
   ).trim() || '未命名项目';
   const description = String(payload?.description || config?.description || '').trim();
   const projectPathNormalized = normalizePathForKey(projectPathRaw);
-  const projectKey = buildProjectKey(projectPathNormalized);
+  const configUuid = normalizeProjectUuid(config?.uuid || '');
+  const projectKey = buildProjectKey(projectPathNormalized, projectUuid || configUuid);
+
+  // 同一逻辑项目（以 circuit_config.json 内 uuid 生成的 project_key 为准）仅允许一条待审核记录。
+  const { data: pendingRows, error: pendingCheckError } = await client
+    .from(MARKETPLACE_POST_TABLE)
+    .select('id')
+    .eq('project_key', projectKey)
+    .eq('status', 'pending')
+    .limit(1);
+  if (pendingCheckError) {
+    return { success: false, error: `检查待审核发布状态失败：${pendingCheckError.message}` };
+  }
+  if (Array.isArray(pendingRows) && pendingRows.length > 0) {
+    return {
+      success: false,
+      error: '该项目已有待审核的集市发布，请等待审核结束后再提交。'
+    };
+  }
+
   const postId = crypto.randomUUID();
 
   const pendingProjectPrefix = `${user.id}/${postId}/project`.replace(/\/+/g, '/');
@@ -1679,20 +2107,47 @@ async function publishMarketplacePost(payload) {
   if (postInsertError) {
     return { success: false, error: `写入发布记录失败：${postInsertError.message}` };
   }
-
-  const nextCount = currentCount + 1;
-  const { error: countUpsertError } = await client
-    .from(MARKETPLACE_DAILY_UPLOAD_TABLE)
-    .upsert({
-      user_id: user.id,
-      upload_date: nowDate,
-      upload_count: nextCount,
-      updated_at: nowIso
-    });
-  if (countUpsertError) {
-    return { success: false, error: `更新发布计数失败：${countUpsertError.message}` };
+  const { error: indexInsertError } = await client
+    .from(MARKETPLACE_PROJECT_INDEX_TABLE)
+    .upsert(
+      {
+        post_id: postId,
+        title: projectName,
+        author: user.id,
+        description,
+        cover_image: null,
+        bucket: MARKETPLACE_PENDING_BUCKET,
+        storage_path: bundleKey,
+        status: 'pending',
+        likes_count: 0,
+        favorites_count: 0,
+        remixes_count: 0,
+        published_at: null,
+        created_at: nowIso,
+        updated_at: nowIso
+      },
+      { onConflict: 'post_id' }
+    );
+  if (indexInsertError) {
+    return { success: false, error: `写入集市索引失败：${indexInsertError.message}` };
   }
 
+  if (!isUnlimitedPublisher) {
+    const nextCount = currentCount + 1;
+    const { error: countUpsertError } = await client
+      .from(MARKETPLACE_DAILY_UPLOAD_TABLE)
+      .upsert({
+        user_id: user.id,
+        upload_date: nowDate,
+        upload_count: nextCount,
+        updated_at: nowIso
+      });
+    if (countUpsertError) {
+      return { success: false, error: `更新发布计数失败：${countUpsertError.message}` };
+    }
+  }
+  clearMarketplaceListCache();
+  clearMarketplaceBundleCache();
   return { success: true, message: '发布成功，等待审核。', postId };
 }
 
@@ -1705,15 +2160,151 @@ async function listMarketplacePendingPosts() {
   if (role !== 'admin' && role !== 'super_admin') {
     return { success: false, error: '权限不足，无法读取待审核项目。' };
   }
+  const cacheKey = 'pending::admin';
+  const cached = readMarketplaceListCache(cacheKey);
+  if (cached) {
+    return { success: true, posts: cached };
+  }
   const { data, error } = await client
-    .from(MARKETPLACE_POST_TABLE)
-    .select('id, author_id, project_name, description, status, created_at, pending_snapshot_key, pending_code_key')
+    .from(MARKETPLACE_PROJECT_INDEX_TABLE)
+    .select('*')
     .eq('status', 'pending')
     .order('created_at', { ascending: false });
   if (error) {
     return { success: false, error: error.message };
   }
-  return { success: true, posts: Array.isArray(data) ? data : [] };
+  const posts = (Array.isArray(data) ? data : []).map((row) => ({
+    id: String(row.post_id || ''),
+    author_id: String(row.author || ''),
+    author_name:
+      String(row.author_name || '').trim() ||
+      String(row.author_display_name || '').trim() ||
+      String(row.display_name || '').trim() ||
+      '',
+    project_name: String(row.title || ''),
+    description: String(row.description || ''),
+    status: String(row.status || 'pending'),
+    created_at: String(row.created_at || ''),
+    pending_snapshot_key: String(row.storage_path || ''),
+    pending_code_key: null
+  }));
+  if (!posts.length) {
+    const { data: legacyData, error: legacyError } = await client
+      .from(MARKETPLACE_POST_TABLE)
+      .select('id, author_id, project_name, description, status, created_at, pending_snapshot_key, pending_code_key')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+    if (!legacyError && Array.isArray(legacyData) && legacyData.length) {
+      const withNames = await attachMarketplaceAuthorNames(client, legacyData);
+      writeMarketplaceListCache(cacheKey, withNames);
+      return { success: true, posts: withNames };
+    }
+  }
+  const withNames = await attachMarketplaceAuthorNames(client, posts);
+  writeMarketplaceListCache(cacheKey, withNames);
+  return { success: true, posts: withNames };
+}
+
+/**
+ * 为列表中的每条帖子附加当前用户是否已点赞/收藏（列表缓存按用户维度区分）。
+ * @param {import('@supabase/supabase-js').SupabaseClient} client
+ * @param {string} userId
+ * @param {any[]} posts
+ * @returns {Promise<any[]>}
+ */
+async function attachMarketplaceViewerInteractFlags(client, userId, posts) {
+  const uid = String(userId || '').trim();
+  const list = Array.isArray(posts) ? posts : [];
+  if (!uid || !list.length) {
+    return list.map((p) => ({
+      ...p,
+      viewer_liked: Boolean(p?.viewer_liked),
+      viewer_favorited: Boolean(p?.viewer_favorited)
+    }));
+  }
+  const ids = [...new Set(list.map((p) => String(p?.id || '').trim()).filter(Boolean))];
+  if (!ids.length) {
+    return list.map((p) => ({ ...p, viewer_liked: false, viewer_favorited: false }));
+  }
+  const [{ data: likeRows, error: likeErr }, { data: favRows, error: favErr }] = await Promise.all([
+    client.from('marketplace_post_likes').select('post_id').eq('user_id', uid).in('post_id', ids),
+    client.from('marketplace_post_favorites').select('post_id').eq('user_id', uid).in('post_id', ids)
+  ]);
+  if (likeErr || favErr) {
+    return list.map((p) => ({ ...p, viewer_liked: false, viewer_favorited: false }));
+  }
+  const liked = new Set((likeRows || []).map((r) => String(r.post_id)));
+  const favd = new Set((favRows || []).map((r) => String(r.post_id)));
+  return list.map((p) => {
+    const id = String(p?.id || '').trim();
+    return {
+      ...p,
+      viewer_liked: liked.has(id),
+      viewer_favorited: favd.has(id)
+    };
+  });
+}
+
+/**
+ * 为帖子列表补全作者昵称（优先帖子自带昵称/ profiles.display_name，兜底为“未知发布者”）。
+ * @param {import('@supabase/supabase-js').SupabaseClient} client
+ * @param {any[]} posts
+ * @returns {Promise<any[]>}
+ */
+async function attachMarketplaceAuthorNames(client, posts) {
+  const list = Array.isArray(posts) ? posts : [];
+  if (!list.length) {
+    return [];
+  }
+  /** @type {Map<string, string>} */
+  const postAuthorIdMap = new Map();
+  const missingAuthorPostIds = list
+    .filter((p) => !String(p?.author_id || '').trim())
+    .map((p) => String(p?.id || '').trim())
+    .filter(Boolean);
+  if (missingAuthorPostIds.length) {
+    const { data: authorRows, error: authorErr } = await client
+      .from(MARKETPLACE_POST_TABLE)
+      .select('id, author_id')
+      .in('id', [...new Set(missingAuthorPostIds)]);
+    if (!authorErr && Array.isArray(authorRows)) {
+      authorRows.forEach((row) => {
+        const id = String(row?.id || '').trim();
+        const aid = String(row?.author_id || '').trim();
+        if (!id || !aid) return;
+        postAuthorIdMap.set(id, aid);
+      });
+    }
+  }
+  const authorIds = [
+    ...new Set(
+      list
+        .map((p) => String(p?.author_id || '').trim() || String(postAuthorIdMap.get(String(p?.id || '').trim()) || '').trim())
+        .filter(Boolean)
+    )
+  ];
+  if (!authorIds.length) {
+    return list.map((p) => ({ ...p, author_name: String(p?.author_name || '').trim() || '未知发布者' }));
+  }
+  const { data, error } = await client.from('profiles').select('id, display_name').in('id', authorIds);
+  if (error || !Array.isArray(data)) {
+    return list.map((p) => {
+      const fallback = String(p?.author_name || '').trim();
+      return { ...p, author_name: fallback || '未知发布者' };
+    });
+  }
+  const profileNameMap = new Map();
+  data.forEach((row) => {
+    const id = String(row?.id || '').trim();
+    if (!id) return;
+    profileNameMap.set(id, String(row?.display_name || '').trim());
+  });
+  return list.map((p) => {
+    const authorId = String(p?.author_id || '').trim() || String(postAuthorIdMap.get(String(p?.id || '').trim()) || '').trim();
+    const profileName = authorId ? String(profileNameMap.get(authorId) || '').trim() : '';
+    const fallback = String(p?.author_name || '').trim();
+    return { ...p, author_name: profileName || fallback || '未知发布者' };
+  });
 }
 
 /**
@@ -1726,24 +2317,68 @@ async function listMarketplaceApprovedPosts(payload) {
   if (userError || !userData?.user?.id) {
     return { success: false, error: '请先登录后查看创客集市。' };
   }
+  const userId = String(userData.user.id);
   const query = String(payload?.query || '').trim().toLowerCase();
   const sortBy = String(payload?.sortBy || 'likes').trim().toLowerCase();
   const sortColumn =
     sortBy === 'favorites' ? 'favorites_count' : sortBy === 'remixes' ? 'remixes_count' : 'likes_count';
+  const cacheKey = `approved::${userId}::${query}::${sortColumn}`;
+  const cached = readMarketplaceListCache(cacheKey);
+  if (cached) {
+    return { success: true, posts: cached };
+  }
   let request = client
-    .from(MARKETPLACE_POST_TABLE)
-    .select('id, project_name, description, likes_count, favorites_count, remixes_count, published_at, public_snapshot_key, public_code_key')
+    .from(MARKETPLACE_PROJECT_INDEX_TABLE)
+    .select('*')
     .eq('status', 'approved')
     .order(sortColumn, { ascending: false })
     .order('published_at', { ascending: false });
   if (query) {
-    request = request.or(`project_name.ilike.%${query}%,description.ilike.%${query}%`);
+    request = request.or(`title.ilike.%${query}%,description.ilike.%${query}%`);
   }
   const { data, error } = await request.limit(120);
   if (error) {
     return { success: false, error: error.message };
   }
-  return { success: true, posts: Array.isArray(data) ? data : [] };
+  const posts = (Array.isArray(data) ? data : []).map((row) => ({
+    id: String(row.post_id || ''),
+    author_id: String(row.author || ''),
+    author_name:
+      String(row.author_name || '').trim() ||
+      String(row.author_display_name || '').trim() ||
+      String(row.display_name || '').trim() ||
+      '',
+    project_name: String(row.title || ''),
+    description: String(row.description || ''),
+    likes_count: Number(row.likes_count || 0),
+    favorites_count: Number(row.favorites_count || 0),
+    remixes_count: Number(row.remixes_count || 0),
+    published_at: String(row.published_at || ''),
+    public_snapshot_key: String(row.storage_path || ''),
+    public_code_key: null
+  }));
+  if (!posts.length) {
+    let legacyRequest = client
+      .from(MARKETPLACE_POST_TABLE)
+      .select('id, author_id, project_name, description, likes_count, favorites_count, remixes_count, published_at, public_snapshot_key, public_code_key')
+      .eq('status', 'approved')
+      .order(sortColumn, { ascending: false })
+      .order('published_at', { ascending: false });
+    if (query) {
+      legacyRequest = legacyRequest.or(`project_name.ilike.%${query}%,description.ilike.%${query}%`);
+    }
+    const { data: legacyData, error: legacyError } = await legacyRequest.limit(120);
+    if (!legacyError && Array.isArray(legacyData) && legacyData.length) {
+      const withAuthorLegacy = await attachMarketplaceAuthorNames(client, legacyData);
+      const enrichedLegacy = await attachMarketplaceViewerInteractFlags(client, userId, withAuthorLegacy);
+      writeMarketplaceListCache(cacheKey, enrichedLegacy);
+      return { success: true, posts: enrichedLegacy };
+    }
+  }
+  const withAuthorPosts = await attachMarketplaceAuthorNames(client, posts);
+  const enrichedPosts = await attachMarketplaceViewerInteractFlags(client, userId, withAuthorPosts);
+  writeMarketplaceListCache(cacheKey, enrichedPosts);
+  return { success: true, posts: enrichedPosts };
 }
 
 /**
@@ -1790,8 +2425,7 @@ async function getMarketplacePostDetail(payload) {
     return { success: false, error: gate.error };
   }
   const data = gate.data;
-  const bucket = data.status === 'approved' ? MARKETPLACE_PUBLIC_BUCKET : MARKETPLACE_PENDING_BUCKET;
-  const loaded = await loadMarketplaceSnapshotForDisplay(client, bucket, data);
+  const loaded = await loadMarketplaceSnapshotForDisplay(client, data);
   if (loaded.error) {
     if (!marketplaceSnapshotHasCircuit(loaded.snapshot) && !String(loaded.codeSnippet || '').trim()) {
       return { success: false, error: loaded.error };
@@ -1799,6 +2433,22 @@ async function getMarketplacePostDetail(payload) {
   }
   const snapshot = loaded.snapshot || {};
   const codeSnippet = String(loaded.codeSnippet || '');
+  const authorId = String(data.author_id || '').trim();
+  let authorName = '未知发布者';
+  if (authorId) {
+    const { data: profile } = await client.from('profiles').select('display_name').eq('id', authorId).maybeSingle();
+    authorName = String(profile?.display_name || '').trim() || '未知发布者';
+  }
+  const { data: authUserData } = await client.auth.getUser();
+  const uid = String(authUserData?.user?.id || '').trim();
+  const [{ data: likeRow }, { data: favRow }] = await Promise.all([
+    uid
+      ? client.from('marketplace_post_likes').select('post_id').eq('user_id', uid).eq('post_id', postId).maybeSingle()
+      : Promise.resolve({ data: null }),
+    uid
+      ? client.from('marketplace_post_favorites').select('post_id').eq('user_id', uid).eq('post_id', postId).maybeSingle()
+      : Promise.resolve({ data: null })
+  ]);
   return {
     success: true,
     detail: {
@@ -1809,8 +2459,11 @@ async function getMarketplacePostDetail(payload) {
       likesCount: Number(data.likes_count || 0),
       favoritesCount: Number(data.favorites_count || 0),
       remixesCount: Number(data.remixes_count || 0),
+      authorName,
       createdAt: String(data.created_at || ''),
       publishedAt: String(data.published_at || ''),
+      viewerLiked: Boolean(likeRow?.post_id),
+      viewerFavorited: Boolean(favRow?.post_id),
       snapshot,
       codeSnippet
     }
@@ -1833,40 +2486,17 @@ async function getMarketplaceProjectBundle(payload) {
     return { success: false, error: gate.error };
   }
   const row = gate.data;
-  const bucket = row.status === 'approved' ? MARKETPLACE_PUBLIC_BUCKET : MARKETPLACE_PENDING_BUCKET;
-  const storedKey = String(
-    (row.status === 'approved' ? row.public_snapshot_key : row.pending_snapshot_key) || ''
-  )
-    .trim()
-    .replace(/\\/g, '/');
-  const authorId = String(row.author_id || '').trim();
-  const bundleTryKeys = [];
-  if (storedKey && storedKey.endsWith(MARKETPLACE_PROJECT_BUNDLE_NAME)) {
-    bundleTryKeys.push(storedKey);
+  const ctx = await resolveMarketplacePostBundleContext(client, row);
+  const got = await fetchMarketplaceBundleWithCache(client, ctx.bucket, ctx.bundleTryKeys);
+  if (!got.ok) {
+    return { success: false, error: '未找到 project.bundle.json 或包格式无效。' };
   }
-  if (authorId && postId) {
-    const guessedBundle = `${authorId}/${postId}/project/${MARKETPLACE_PROJECT_BUNDLE_NAME}`.replace(/\/+/g, '/');
-    if (!bundleTryKeys.includes(guessedBundle)) {
-      bundleTryKeys.push(guessedBundle);
-    }
-  }
-  for (const bk of bundleTryKeys) {
-    const { data: blob, error } = await client.storage.from(bucket).download(bk);
-    if (error || !blob) {
-      continue;
-    }
-    const parsed = parseMarketplaceProjectBundleJson(await blob.text());
-    if (!parsed.ok) {
-      continue;
-    }
-    return {
-      success: true,
-      bundle: parsed.bundle,
-      bundleKey: bk,
-      projectName: String(row.project_name || '创客集市预览项目')
-    };
-  }
-  return { success: false, error: '未找到 project.bundle.json 或包格式无效。' };
+  return {
+    success: true,
+    bundle: got.bundle,
+    bundleKey: got.bundleKey,
+    projectName: String(ctx.projectIdx?.title || row.project_name || '创客集市预览项目')
+  };
 }
 
 /**
@@ -1921,9 +2551,11 @@ async function reviewMarketplacePost(payload) {
         return { success: false, error: `读取待审核文件失败：${pendingBlobError?.message || relativePath}` };
       }
       const fileBuffer = Buffer.from(await pendingBlob.arrayBuffer());
-      const { error: publicUploadError } = await client.storage
-        .from(MARKETPLACE_PUBLIC_BUCKET)
-        .upload(publicFile, fileBuffer, { upsert: true, contentType: getContentTypeByPath(publicFile) });
+      const { error: publicUploadError } = await client.storage.from(MARKETPLACE_PUBLIC_BUCKET).upload(publicFile, fileBuffer, {
+        upsert: true,
+        contentType: getContentTypeByPath(publicFile),
+        cacheControl: MARKETPLACE_PUBLIC_OBJECT_CACHE_CONTROL
+      });
       if (publicUploadError) {
         return { success: false, error: `写入公开文件失败(${relativePath})：${publicUploadError.message}` };
       }
@@ -1956,6 +2588,18 @@ async function reviewMarketplacePost(payload) {
     if (updateError) {
       return { success: false, error: `更新审核状态失败：${updateError.message}` };
     }
+    await client
+      .from(MARKETPLACE_PROJECT_INDEX_TABLE)
+      .update({
+        status: 'approved',
+        bucket: MARKETPLACE_PUBLIC_BUCKET,
+        storage_path: publicSnapshotKey,
+        published_at: nowIso,
+        updated_at: nowIso
+      })
+      .eq('post_id', postId);
+    clearMarketplaceListCache();
+    clearMarketplaceBundleCache();
     return { success: true, message: '审核通过，项目已发布到创客集市。' };
   }
 
@@ -1981,12 +2625,23 @@ async function reviewMarketplacePost(payload) {
   if (rejectError) {
     return { success: false, error: `写入拒绝结果失败：${rejectError.message}` };
   }
+  await client
+    .from(MARKETPLACE_PROJECT_INDEX_TABLE)
+    .update({
+      status: 'rejected',
+      bucket: MARKETPLACE_PENDING_BUCKET,
+      storage_path: '',
+      updated_at: nowIso
+    })
+    .eq('post_id', postId);
+  clearMarketplaceListCache();
+  clearMarketplaceBundleCache();
   return { success: true, message: '已拒绝该项目投稿。' };
 }
 
 /**
  * @param {{ postId?: string, action?: 'like'|'favorite'|'remix' }} payload
- * @returns {Promise<{ success: boolean, message?: string, error?: string }>}
+ * @returns {Promise<{ success: boolean, message?: string, toggled?: boolean, delta?: number, error?: string }>}
  */
 async function interactMarketplacePost(payload) {
   const client = getAuthClient();
@@ -2013,12 +2668,29 @@ async function interactMarketplacePost(payload) {
   const table = tableMap[action];
   const countColumn = countColumnMap[action];
   const { data: existing } = await client.from(table).select('post_id').eq('user_id', user.id).eq('post_id', postId).maybeSingle();
+  let delta = 0;
+  let toggled = false;
   if (existing) {
-    return { success: true, message: '已记录该操作。' };
-  }
-  const { error: insertError } = await client.from(table).insert({ user_id: user.id, post_id: postId });
-  if (insertError) {
-    return { success: false, error: insertError.message };
+    if (action === 'remix') {
+      return { success: true, message: '已记录该操作。', toggled: true, delta: 0 };
+    }
+    const { error: deleteError } = await client.from(table).delete().eq('user_id', user.id).eq('post_id', postId);
+    if (deleteError) {
+      return { success: false, error: deleteError.message };
+    }
+    delta = -1;
+    toggled = false;
+  } else {
+    const { error: insertError } = await client.from(table).insert({ user_id: user.id, post_id: postId });
+    if (insertError) {
+      const errCode = String(insertError.code || '').trim();
+      if (action === 'remix' && (errCode === '23505' || /duplicate key/i.test(String(insertError.message || '')))) {
+        return { success: true, message: '已记录该操作。', toggled: true, delta: 0 };
+      }
+      return { success: false, error: insertError.message };
+    }
+    delta = 1;
+    toggled = true;
   }
   const { data: postData } = await client
     .from(MARKETPLACE_POST_TABLE)
@@ -2026,11 +2698,90 @@ async function interactMarketplacePost(payload) {
     .eq('id', postId)
     .maybeSingle();
   const current = Number(postData?.[countColumn] || 0);
+  const nextValue = Math.max(0, current + delta);
   await client
     .from(MARKETPLACE_POST_TABLE)
-    .update({ [countColumn]: current + 1, updated_at: new Date().toISOString() })
+    .update({ [countColumn]: nextValue, updated_at: new Date().toISOString() })
     .eq('id', postId);
-  return { success: true, message: '操作成功。' };
+  await client
+    .from(MARKETPLACE_PROJECT_INDEX_TABLE)
+    .update({ [countColumn]: nextValue, updated_at: new Date().toISOString() })
+    .eq('post_id', postId);
+  clearMarketplaceListCache();
+  return {
+    success: true,
+    message: action === 'remix' ? '操作成功。' : toggled ? '已点赞/收藏。' : '已撤销点赞/收藏。',
+    toggled,
+    delta
+  };
+}
+
+/** 单次 Storage remove 路径数量上限，避免请求体过大。 */
+const MARKETPLACE_STORAGE_REMOVE_CHUNK = 200;
+
+/**
+ * 超级管理员：删除已发布集市项目（公开 bucket 下该项目前缀、互动从表、热索引与主帖）。
+ * @param {{ postId?: string }} payload
+ * @returns {Promise<{ success: boolean, message?: string, error?: string }>}
+ */
+async function deleteMarketplaceApprovedPostSuperAdmin(payload) {
+  const client = getAuthClient();
+  const role = await tryReadCurrentUserRole(client);
+  if (role !== 'super_admin') {
+    return { success: false, error: '仅超级管理员可删除已发布集市项目。' };
+  }
+  const postId = String(payload?.postId || '').trim();
+  if (!postId) {
+    return { success: false, error: '项目标识无效。' };
+  }
+  const { data: post, error: postReadErr } = await client
+    .from(MARKETPLACE_POST_TABLE)
+    .select('id, status')
+    .eq('id', postId)
+    .maybeSingle();
+  if (postReadErr) {
+    return { success: false, error: postReadErr.message };
+  }
+  if (!post || String(post.status || '') !== 'approved') {
+    return { success: false, error: '只能删除已发布状态的项目。' };
+  }
+  const publicProjectPrefix = `${postId}/project`.replace(/\/+/g, '/');
+  let publicFiles = [];
+  try {
+    publicFiles = await listStorageFilesByPrefix(client, MARKETPLACE_PUBLIC_BUCKET, publicProjectPrefix);
+  } catch (e) {
+    const msg = e && typeof e === 'object' && 'message' in e ? String(e.message) : String(e);
+    return { success: false, error: `列出公开存储失败：${msg}` };
+  }
+  for (let i = 0; i < publicFiles.length; i += MARKETPLACE_STORAGE_REMOVE_CHUNK) {
+    const chunk = publicFiles.slice(i, i + MARKETPLACE_STORAGE_REMOVE_CHUNK);
+    const { error: rmErr } = await client.storage.from(MARKETPLACE_PUBLIC_BUCKET).remove(chunk);
+    if (rmErr) {
+      return { success: false, error: `删除公开存储失败：${rmErr.message}` };
+    }
+  }
+  const interactTables = ['marketplace_post_likes', 'marketplace_post_favorites', 'marketplace_post_remixes'];
+  for (const table of interactTables) {
+    const { error: delInteractErr } = await client.from(table).delete().eq('post_id', postId);
+    if (delInteractErr) {
+      return { success: false, error: `清理互动数据失败(${table})：${delInteractErr.message}` };
+    }
+  }
+  const { error: idxErr } = await client.from(MARKETPLACE_PROJECT_INDEX_TABLE).delete().eq('post_id', postId);
+  if (idxErr) {
+    return { success: false, error: `删除索引失败：${idxErr.message}` };
+  }
+  const { error: delPostErr } = await client
+    .from(MARKETPLACE_POST_TABLE)
+    .delete()
+    .eq('id', postId)
+    .eq('status', 'approved');
+  if (delPostErr) {
+    return { success: false, error: `删除帖子记录失败：${delPostErr.message}` };
+  }
+  clearMarketplaceListCache();
+  clearMarketplaceBundleCache();
+  return { success: true, message: '已删除该集市项目。' };
 }
 
 module.exports = {
@@ -2041,9 +2792,12 @@ module.exports = {
   updateProfile,
   uploadAvatar,
   getProjectBackups,
+  getMarketplacePublishStatuses,
   uploadProjectBackup,
   deleteProjectBackup,
   downloadProjectBackup,
+  searchSharedBackupProjectsByKey,
+  getSharedBackupBundleByProjectKey,
   getPermissionManagementStats,
   listUsersForPermissionManagement,
   updateUserRoleBySuperAdmin,
@@ -2054,6 +2808,7 @@ module.exports = {
   getMarketplaceProjectBundle,
   reviewMarketplacePost,
   interactMarketplacePost,
+  deleteMarketplaceApprovedPostSuperAdmin,
   signUpWithPassword,
   signInWithPassword,
   signOut

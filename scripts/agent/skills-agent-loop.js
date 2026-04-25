@@ -196,6 +196,477 @@ function shouldBlockWiringEditAfterNoOpSuccess(toolResults) {
   return false;
 }
 
+/** 单次自动续读最大轮次（防止异常循环） */
+const WORKSPACE_READ_AUTO_MAX_ROUNDS = 24;
+/** 单文件自动续读合并上限（字符） */
+const WORKSPACE_READ_AUTO_MAX_TOTAL_CHARS = 220000;
+
+/**
+ * @param {unknown} n
+ * @returns {number}
+ */
+function toPositiveIntOrZero(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return 0;
+  const i = Math.floor(v);
+  return i > 0 ? i : 0;
+}
+
+/**
+ * @param {string} relativePath
+ * @returns {boolean}
+ */
+function isHighValueSourceFile(relativePath) {
+  const p = String(relativePath || '').trim().toLowerCase();
+  return p.endsWith('.json') || p.endsWith('.ino') || p.endsWith('.h') || p.endsWith('.cpp');
+}
+
+/**
+ * 单文件读结果是否应自动续读。
+ * @param {object} args
+ * @param {{ success?: boolean, data?: any }} result
+ * @returns {boolean}
+ */
+function shouldAutoContinueSingleRead(args, result) {
+  if (!result || result.success !== true || !result.data || typeof result.data !== 'object') return false;
+  const d = result.data;
+  if (!d.truncated) return false;
+  if (!isHighValueSourceFile(String(d.relativePath || args?.relativePath || ''))) return false;
+  if (args && typeof args === 'object') {
+    if (args.disableAutoContinue === true) return false;
+    // 按行窗口或已指定 charOffset 的读取，视为调用方已明确分页策略，不自动接管。
+    if (args.startLine != null || args.endLine != null || args.charOffset != null) return false;
+  }
+  return true;
+}
+
+/**
+ * 在同一后端执行器上，按 `nextCharOffset` 自动续读并合并 content。
+ * @param {(nextArgs: object) => Promise<{ success?: boolean, data?: any, error?: string }>} runRead
+ * @param {object} baseArgs
+ * @param {{ success?: boolean, data?: any, error?: string }} initial
+ * @returns {Promise<{ success?: boolean, data?: any, error?: string }>}
+ */
+async function autoContinueWorkspaceReadSingle(runRead, baseArgs, initial) {
+  if (!shouldAutoContinueSingleRead(baseArgs, initial)) {
+    return initial;
+  }
+  const first = initial.data || {};
+  const totalCharsHint = toPositiveIntOrZero(first.totalChars);
+  const maxTotalChars = Math.max(
+    12000,
+    Math.min(
+      WORKSPACE_READ_AUTO_MAX_TOTAL_CHARS,
+      toPositiveIntOrZero(baseArgs?.autoContinueMaxChars) || WORKSPACE_READ_AUTO_MAX_TOTAL_CHARS
+    )
+  );
+  const maxRounds = Math.max(
+    1,
+    Math.min(
+      WORKSPACE_READ_AUTO_MAX_ROUNDS,
+      toPositiveIntOrZero(baseArgs?.autoContinueMaxRounds) || WORKSPACE_READ_AUTO_MAX_ROUNDS
+    )
+  );
+
+  let merged = String(first.content || '');
+  let nextOffset = toPositiveIntOrZero(first.nextCharOffset);
+  let rounds = 0;
+  let truncated = Boolean(first.truncated);
+
+  while (
+    truncated &&
+    nextOffset > 0 &&
+    rounds < maxRounds &&
+    merged.length < maxTotalChars
+  ) {
+    const pageArgs = {
+      ...baseArgs,
+      relativePath: String(first.relativePath || baseArgs?.relativePath || '').trim(),
+      relativePaths: undefined,
+      startLine: undefined,
+      endLine: undefined,
+      charOffset: nextOffset
+    };
+    const page = await runRead(pageArgs);
+    if (!page || page.success !== true || !page.data || typeof page.data !== 'object') {
+      break;
+    }
+    const pd = page.data;
+    const piece = String(pd.content || '');
+    if (!piece) {
+      break;
+    }
+    merged += piece;
+    rounds += 1;
+    truncated = Boolean(pd.truncated);
+    const candidate = toPositiveIntOrZero(pd.nextCharOffset);
+    if (!truncated) {
+      nextOffset = 0;
+      break;
+    }
+    if (candidate <= nextOffset) {
+      break;
+    }
+    nextOffset = candidate;
+  }
+
+  const capped = merged.length >= maxTotalChars && truncated;
+  const done = !truncated;
+  return {
+    ...initial,
+    data: {
+      ...first,
+      content: merged,
+      truncated: !done,
+      nextCharOffset: done ? null : nextOffset || null,
+      totalChars: totalCharsHint || merged.length,
+      autoContinued: rounds > 0,
+      autoContinueRounds: rounds,
+      note: [
+        String(first.note || '').trim(),
+        rounds > 0 ? `已自动续读 ${rounds} 轮。` : '',
+        capped ? `已触达自动续读上限（${maxTotalChars} 字符），可继续手动按 charOffset 分页读取。` : ''
+      ]
+        .filter(Boolean)
+        .join(' ')
+    }
+  };
+}
+
+/**
+ * 批量读模式下，对每个文件结果尝试自动续读并回填。
+ * @param {(nextArgs: object) => Promise<{ success?: boolean, data?: any, error?: string }>} runRead
+ * @param {object} baseArgs
+ * @param {{ success?: boolean, data?: any, error?: string }} initial
+ * @returns {Promise<{ success?: boolean, data?: any, error?: string }>}
+ */
+async function autoContinueWorkspaceReadBatch(runRead, baseArgs, initial) {
+  const data = initial?.data;
+  if (!initial || initial.success !== true || !data || typeof data !== 'object' || !Array.isArray(data.files)) {
+    return initial;
+  }
+  const files = data.files;
+  let changed = false;
+  const nextFiles = [];
+  for (const item of files) {
+    if (!item || typeof item !== 'object') {
+      nextFiles.push(item);
+      continue;
+    }
+    const rel = String(item.relativePath || '').trim();
+    const oneInitial = { success: !!item.success, data: item.data, error: item.error };
+    const oneNext = await autoContinueWorkspaceReadSingle(
+      runRead,
+      { ...baseArgs, relativePath: rel, relativePaths: undefined },
+      oneInitial
+    );
+    if (oneNext !== oneInitial) {
+      changed = true;
+    }
+    nextFiles.push({
+      ...item,
+      success: !!oneNext.success,
+      data: oneNext.data,
+      error: oneNext.error
+    });
+  }
+  if (!changed) return initial;
+  return {
+    ...initial,
+    data: {
+      ...data,
+      files: nextFiles,
+      autoContinued: true
+    }
+  };
+}
+
+/**
+ * `workspace_read_file` 统一自动续读入口：支持单文件与批量文件。
+ * @param {(nextArgs: object) => Promise<{ success?: boolean, data?: any, error?: string }>} runRead
+ * @param {object} baseArgs
+ * @param {{ success?: boolean, data?: any, error?: string }} initial
+ * @returns {Promise<{ success?: boolean, data?: any, error?: string }>}
+ */
+async function autoContinueWorkspaceReadIfNeeded(runRead, baseArgs, initial) {
+  const mode = String(initial?.data?.mode || '');
+  if (mode === 'batch_via_workspace_read_file') {
+    return autoContinueWorkspaceReadBatch(runRead, baseArgs, initial);
+  }
+  return autoContinueWorkspaceReadSingle(runRead, baseArgs, initial);
+}
+
+/**
+ * 规范化 marketplace-session 项目根（兼容 `marketplace-session://id`、`marketplace-session:\id`、
+ * 以及被误拼到绝对路径中的 `.../marketplace-session:/id`）。
+ * @param {string} raw
+ * @returns {string}
+ */
+function normalizeMarketplaceSessionProjectRoot(raw) {
+  const s = String(raw || '').trim().replace(/\\/g, '/');
+  if (!s) return '';
+  const lower = s.toLowerCase();
+  const idx = lower.indexOf('marketplace-session:');
+  if (idx < 0) return '';
+  let tail = s.slice(idx + 'marketplace-session:'.length).replace(/^\/+/, '').trim();
+  if (!tail) return 'marketplace-session://';
+  const slash = tail.indexOf('/');
+  const id = (slash >= 0 ? tail.slice(0, slash) : tail).trim();
+  if (!id) return 'marketplace-session://';
+  return `marketplace-session://${id}`;
+}
+
+/**
+ * @param {string} projectPath
+ * @returns {boolean}
+ */
+function isMarketplaceSessionProjectPath(projectPath) {
+  return normalizeMarketplaceSessionProjectRoot(projectPath).startsWith('marketplace-session://');
+}
+
+/**
+ * 规范化内存 bundle 相对路径。
+ * @param {string} value
+ * @returns {string}
+ */
+function normalizeMarketplaceBundleRelativePath(value) {
+  return String(value || '')
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '')
+    .replace(/\/+/g, '/')
+    .trim();
+}
+
+/**
+ * 从渲染进程读取当前 marketplace-session 工作区快照（前端内存源）。
+ * @param {import('electron').WebContents} webContents
+ * @param {string} projectPath
+ * @returns {Promise<{ projectRoot: string, files: Array<{ relativePath: string, text: string }> }>}
+ */
+async function getMarketplaceWorkspaceSnapshotFromRenderer(webContents, projectPath) {
+  const normalizedRoot = normalizeMarketplaceSessionProjectRoot(projectPath);
+  const raw = await invokeRendererEngineOp(
+    webContents,
+    'getProjectWorkspaceSnapshotForSkill',
+    [normalizedRoot],
+    120000
+  );
+  const filesRaw = Array.isArray(raw?.files) ? raw.files : [];
+  const files = filesRaw
+    .filter((f) => typeof f?.relativePath === 'string')
+    .map((f) => ({
+      relativePath: normalizeMarketplaceBundleRelativePath(f.relativePath),
+      text: typeof f?.text === 'string' ? f.text : ''
+    }))
+    .filter((f) => !!f.relativePath);
+  return { projectRoot: normalizedRoot, files };
+}
+
+/**
+ * 在 marketplace-session 内存快照上执行工作区工具（主进程分支路由，不走磁盘）。
+ * 返回结构与 `executeWorkspaceTool` 对齐：`{ success, data?, error? }`。
+ * @param {string} toolName
+ * @param {object} args
+ * @param {{ files: Array<{ relativePath: string, text: string }> }} snapshot
+ * @returns {Promise<{ success: boolean, data?: object, error?: string }>}
+ */
+async function executeWorkspaceToolOnMarketplaceSnapshot(toolName, args, snapshot) {
+  const id = String(toolName || '').trim();
+  const a = args && typeof args === 'object' ? args : {};
+  const files = Array.isArray(snapshot?.files) ? snapshot.files : [];
+  const fileMap = new Map(files.map((f) => [normalizeMarketplaceBundleRelativePath(f.relativePath), String(f.text || '')]));
+  const allPaths = [...fileMap.keys()];
+  const normalizeRel = (v) => {
+    const n = normalizeMarketplaceBundleRelativePath(v ?? '.');
+    return n || '.';
+  };
+  const listDir = (relativePath) => {
+    const rel = normalizeRel(relativePath);
+    const prefix = rel === '.' ? '' : `${rel.replace(/\/+$/, '')}/`;
+    const filesOut = new Set();
+    const dirsOut = new Set();
+    allPaths.forEach((p) => {
+      if (prefix && !p.startsWith(prefix)) return;
+      const rest = prefix ? p.slice(prefix.length) : p;
+      if (!rest) return;
+      const seg = rest.split('/').filter(Boolean);
+      if (!seg.length) return;
+      if (seg.length === 1) filesOut.add(seg[0]);
+      else dirsOut.add(seg[0]);
+    });
+    return { rel, files: [...filesOut].sort(), directories: [...dirsOut].sort() };
+  };
+
+  if (id === 'workspace_list_dir') {
+    const rel = String(a.relativePath ?? '.').trim() || '.';
+    const listed = listDir(rel);
+    return {
+      success: true,
+      data: {
+        relativePath: listed.rel,
+        files: listed.files,
+        directories: listed.directories,
+        counts: { files: listed.files.length, directories: listed.directories.length },
+        source: 'marketplace-memory-bundle'
+      }
+    };
+  }
+
+  if (id === 'workspace_read_file') {
+    const rels = Array.isArray(a.relativePaths)
+      ? a.relativePaths.map((x) => String(x || '').trim()).filter(Boolean)
+      : [];
+    if (rels.length) {
+      const filesOut = [];
+      for (const rp of rels.slice(0, 20)) {
+        const one = await executeWorkspaceToolOnMarketplaceSnapshot(
+          'workspace_read_file',
+          { ...a, relativePath: rp, relativePaths: undefined },
+          snapshot
+        );
+        filesOut.push({
+          relativePath: rp,
+          success: !!one?.success,
+          data: one?.data,
+          error: one?.error
+        });
+      }
+      return {
+        success: true,
+        data: {
+          requested: rels.slice(0, 20),
+          files: filesOut,
+          counts: {
+            requested: rels.slice(0, 20).length,
+            success: filesOut.filter((x) => x.success).length,
+            failed: filesOut.filter((x) => !x.success).length
+          },
+          mode: 'batch_via_workspace_read_file'
+        }
+      };
+    }
+    const rel = normalizeMarketplaceBundleRelativePath(String(a.relativePath || '').trim());
+    if (!rel) {
+      return { success: false, error: 'workspace_read_file 需要 args.relativePath（单文件）或 args.relativePaths（批量）' };
+    }
+    if (!fileMap.has(rel)) {
+      return { success: false, error: `文件不存在：${rel}` };
+    }
+    const full = String(fileMap.get(rel) || '');
+    const maxChars = Math.min(Math.max(Number(a.maxChars) || 12000, 500), 64000);
+    const truncated = full.length > maxChars;
+    const content = truncated ? full.slice(0, maxChars) : full;
+    return {
+      success: true,
+      data: {
+        relativePath: rel,
+        content,
+        totalChars: full.length,
+        truncated,
+        nextCharOffset: truncated ? content.length : null,
+        note: truncated ? `内容已截断到 ${maxChars} 字符，可用 charOffset 续读。` : '',
+        source: 'marketplace-memory-bundle'
+      }
+    };
+  }
+
+  if (id === 'workspace_verify') {
+    const rel = normalizeMarketplaceBundleRelativePath(String(a.relativePath || '').trim());
+    if (!rel) {
+      return { success: false, error: 'workspace_verify 需要 args.relativePath' };
+    }
+    const expect = String(a.expect || '').trim().toLowerCase();
+    const isFile = fileMap.has(rel);
+    const hasDir = allPaths.some((p) => p.startsWith(`${rel.replace(/\/+$/, '')}/`));
+    const exists = isFile || hasDir;
+    return {
+      success: true,
+      data: {
+        relativePath: rel,
+        exists,
+        isFile,
+        isDirectory: hasDir,
+        expect,
+        matchesExpect: !expect || (expect === 'file' ? isFile : expect === 'directory' ? hasDir : true),
+        source: 'marketplace-memory-bundle'
+      }
+    };
+  }
+
+  if (id === 'workspace_explore') {
+    const rel = normalizeRel(String(a.relativePath ?? '.').trim() || '.');
+    const maxDepth = Math.min(Math.max(Number(a.maxDepth) || 2, 1), 4);
+    const maxEntries = Math.min(Math.max(Number(a.maxEntries) || 80, 10), 400);
+    const queue = [{ path: rel, depth: 0 }];
+    const entries = [];
+    const seen = new Set();
+    while (queue.length && entries.length < maxEntries) {
+      const cur = queue.shift();
+      if (!cur) break;
+      const key = `${cur.path}::${cur.depth}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const listed = listDir(cur.path);
+      entries.push({
+        relativePath: listed.rel,
+        depth: cur.depth,
+        files: listed.files,
+        directories: listed.directories
+      });
+      if (cur.depth >= maxDepth - 1) continue;
+      listed.directories.forEach((d) => {
+        const child = listed.rel === '.' ? d : `${listed.rel}/${d}`;
+        queue.push({ path: child, depth: cur.depth + 1 });
+      });
+    }
+    return {
+      success: true,
+      data: {
+        relativePath: rel,
+        maxDepth,
+        maxEntries,
+        entries,
+        truncated: queue.length > 0,
+        source: 'marketplace-memory-bundle'
+      }
+    };
+  }
+
+  if (id === 'workspace_grep') {
+    const pattern = String(a.pattern || '').trim();
+    if (!pattern) return { success: false, error: 'workspace_grep 需要 args.pattern' };
+    const maxFiles = Math.min(Math.max(Number(a.maxFiles) || 60, 1), 400);
+    const maxMatches = Math.min(Math.max(Number(a.maxMatches) || 120, 1), 1000);
+    const lowerNeedle = pattern.toLowerCase();
+    const hits = [];
+    let scannedFiles = 0;
+    for (const p of allPaths) {
+      if (scannedFiles >= maxFiles || hits.length >= maxMatches) break;
+      const text = String(fileMap.get(p) || '');
+      scannedFiles += 1;
+      const lines = text.split(/\r?\n/);
+      for (let i = 0; i < lines.length; i++) {
+        if (hits.length >= maxMatches) break;
+        const line = lines[i];
+        if (line.toLowerCase().includes(lowerNeedle)) {
+          hits.push({ relativePath: p, lineNumber: i + 1, lineText: line });
+        }
+      }
+    }
+    return {
+      success: true,
+      data: {
+        pattern,
+        matches: hits,
+        counts: { scannedFiles, matches: hits.length },
+        source: 'marketplace-memory-bundle'
+      }
+    };
+  }
+
+  return { success: false, error: `未知工作区工具: ${toolName}` };
+}
+
 /**
  * @param {import('electron').WebContents} webContents
  * @param {SkillsAgentLoopOptions} options
@@ -601,8 +1072,40 @@ async function runSkillsAgentLoop(webContents, options) {
             success: false,
             error: '当前未携带本地项目路径（projectPath），无法执行工作区工具'
           };
+        } else if (isMarketplaceSessionProjectPath(projectPath)) {
+          try {
+            const snapshot = await getMarketplaceWorkspaceSnapshotFromRenderer(webContents, projectPath);
+            if (!Array.isArray(snapshot.files) || snapshot.files.length === 0) {
+              result = {
+                success: false,
+                error:
+                  '当前为复刻项目内存会话，但未读取到可用工作区文件快照。建议先保存到本地项目文件夹后重试。'
+              };
+            } else {
+              const runRead = async (nextArgs) =>
+                executeWorkspaceToolOnMarketplaceSnapshot('workspace_read_file', nextArgs, snapshot);
+              result = await executeWorkspaceToolOnMarketplaceSnapshot(
+                skillName,
+                toolCall.args,
+                snapshot
+              );
+              if (skillName === 'workspace_read_file') {
+                result = await autoContinueWorkspaceReadIfNeeded(runRead, toolCall.args || {}, result);
+              }
+            }
+          } catch (e) {
+            result = {
+              success: false,
+              error: `读取复刻项目内存工作区失败：${e?.message || String(e)}`
+            };
+          }
         } else {
           result = await executeWorkspaceTool(skillName, toolCall.args, projectPath);
+          if (skillName === 'workspace_read_file') {
+            const runRead = async (nextArgs) =>
+              executeWorkspaceTool('workspace_read_file', nextArgs, projectPath);
+            result = await autoContinueWorkspaceReadIfNeeded(runRead, toolCall.args || {}, result);
+          }
         }
       } else if (
         skillName === 'firmware_codegen_skill' &&

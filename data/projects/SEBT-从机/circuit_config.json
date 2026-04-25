@@ -1,9 +1,10 @@
 {
+  "uuid": "b0f6e797-1046-44d1-813e-fc0c2574ee97",
   "projectName": "SEBT-从机",
   "description": "通过Fast Hardware创建的电路设计",
   "version": "1.0.0",
   "createdAt": "2026-04-18T08:08:03.063Z",
-  "lastModified": "2026-04-18T08:08:03.063Z",
+  "lastModified": "2026-04-25T13:21:40.906Z",
   "components": [
     {
       "componentFile": "std-fsr402-压力传感器-115646.json",
@@ -320,7 +321,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2026-04-18T08:08:03.063Z"
+        "createdAt": "2026-04-25T13:21:40.906Z"
       }
     },
     {
@@ -366,7 +367,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2026-04-18T08:08:03.063Z"
+        "createdAt": "2026-04-25T13:21:40.906Z"
       }
     },
     {
@@ -412,7 +413,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2026-04-18T08:08:03.063Z"
+        "createdAt": "2026-04-25T13:21:40.906Z"
       }
     },
     {
@@ -458,7 +459,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2026-04-18T08:08:03.063Z"
+        "createdAt": "2026-04-25T13:21:40.906Z"
       }
     },
     {
@@ -504,7 +505,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2026-04-18T08:08:03.063Z"
+        "createdAt": "2026-04-25T13:21:40.906Z"
       }
     },
     {
@@ -550,7 +551,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2026-04-18T08:08:03.063Z"
+        "createdAt": "2026-04-25T13:21:40.906Z"
       }
     },
     {
@@ -596,7 +597,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2026-04-18T08:08:03.063Z"
+        "createdAt": "2026-04-25T13:21:40.906Z"
       }
     },
     {
@@ -642,7 +643,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2026-04-18T08:08:03.063Z"
+        "createdAt": "2026-04-25T13:21:40.906Z"
       }
     },
     {
@@ -688,14 +689,14 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2026-04-18T08:08:03.063Z"
+        "createdAt": "2026-04-25T13:21:40.906Z"
       }
     }
   ],
   "canvas": {
-    "zoom": 1.2531100788527323,
-    "panX": 48.877640598466996,
-    "panY": 626.3174725878955,
+    "zoom": 1,
+    "panX": 50,
+    "panY": 558,
     "gridSize": 10,
     "showGrid": true
   }

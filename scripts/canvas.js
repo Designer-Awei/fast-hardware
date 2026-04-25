@@ -2908,13 +2908,18 @@ void loop() {
      */
     rejectAllFirmwarePatchChanges() {
         if (!this.firmwarePatchReviewState) return;
-        const rows = this.firmwarePatchReviewState.rows;
-        for (const row of rows) {
-            if (row.type === 'add' || row.type === 'remove') {
-                row.decision = 'rejected';
-            }
+        const originalCode = String(
+            this.firmwarePatchReviewState.originalCode ||
+                this.lastSavedCodeContent ||
+                ''
+        );
+        this.firmwarePatchReviewState.reviewedCode = originalCode;
+        const textarea = document.getElementById('code-editor-textarea');
+        if (textarea) {
+            textarea.value = originalCode;
         }
-        this.refreshFirmwarePatchReviewOutput();
+        // 复刻项目（memory:/...）在拒绝补丁后应立即回到打开审阅前代码，避免显示空白编辑器。
+        this.lastSavedCodeContent = originalCode;
         this.showSaveNotification('已在内存中拒绝本次改动（未写入磁盘）');
         this.exitFirmwarePatchReview();
     }

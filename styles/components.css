@@ -912,7 +912,7 @@
 }
 
 .notification.scrolling .notification-text {
-    animation: notification-marquee var(--notification-marquee-duration, 6000ms) linear 2;
+    animation: notification-marquee var(--notification-marquee-duration, 6000ms) linear var(--notification-marquee-iterations, 2);
 }
 
 @keyframes notification-marquee {

@@ -28,14 +28,14 @@ Fast Hardware
 | **`6-project-isolation_prd.md`** | **项目级隔离**（多标签下聊天 / 画布内存 / 固件草稿按项目隔离，**已落地**） |
 | **`7-project-share_prd.md`** | **方案分享与导出**（画布分享入口、分享预览、长图/方案包；**规划中**） |
 | **`8-account_prd.md`** | **账号管理**（OAuth 登录、会话、角色、权限与基础风控；**规划中**） |
-| **`9-maker-marketplace_prd.md`** | **创客集市（在线社区）**（Supabase + 阿里云 OSS、OAuth、审核、个人中心下的社区管理二级页；**规划中**） |
+| **`9-maker-marketplace_prd.md`** | **创客集市（在线社区）**（Supabase、审核、互动与个人中心下的社区管理二级页；**规划中**） |
 
 ## 🔢 版本号、变更日志与同步脚本
 
 - **产品版本（semver）** 的**唯一事实来源**：仓库根目录 **`package.json`** 的 **`version`** 字段（当前开发与安装包均以该字段为准）。
 - **变更日志**：根目录 **`0-Change-Log.md`**，按 **`v0.2.x`** 分段维护。
-  - **已发布线**：以 **`package.json`** 与 CHANGELOG 中 **`v0.2.7`** 置顶小节及 dated 补充为准；当前 **`version`** 为 **0.2.7** 且已执行 **`npm run sync-version`** 时，与对外安装包及展示文案一致。
-  - **下一版**：发布 **0.2.8+** 时在 **`package.json`** bump **`version`**，更新 **`0-Change-Log.md`** 置顶说明，并执行 **`npm run sync-version`**。
+  - **已发布线**：以 **`package.json`** 与 CHANGELOG 中 **`v0.2.8`** 置顶小节及 dated 补充为准；当前 **`version`** 为 **0.2.8** 且已执行 **`npm run sync-version`** 时，与对外安装包及展示文案一致。
+  - **下一版**：发布 **0.2.9+** 时在 **`package.json`** bump **`version`**，更新 **`0-Change-Log.md`** 置顶说明，并执行 **`npm run sync-version`**。
 - **展示用版本字符串同步**：**`npm run sync-version`** → **`scripts/sync-version.js`**
   - **读入**：**`package.json` → `version`**
   - **写回**（有变更才写入）：**`index.html`**（关于页 `Fast Hardware v…`）、**`main.js`**（HTTP **`User-Agent`: `Fast-Hardware/<version>`**）、**`assets/update.txt`**（JSON 数组首元素的 **`version`**）、**`README.md`** / **`README_EN.md`**（徽章、最新特性标题、安装包文件名示例、版本升级段落等，规则见脚本内 **`applyReadmeVersionPatterns`**）

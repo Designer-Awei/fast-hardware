@@ -456,13 +456,18 @@ class FastHardwareApp {
      * @param {string} message - 通知消息
      * @param {string} type - 通知类型 (success, error, warning, info)
      * @param {number} duration - 显示时长(毫秒)
+     * @param {{ marqueeRounds?: number, forceMarquee?: boolean, maxWidth?: number }=} options - 滚动与显示选项
      */
-    showNotification(message, type = 'info', duration = 3000) {
+    showNotification(message, type = 'info', duration = 3000, options = {}) {
         const container = document.getElementById('notification-container');
         if (!container) return;
 
         const notification = document.createElement('div');
         notification.className = `notification ${type}`;
+        const maxWidth = Number(options?.maxWidth);
+        if (Number.isFinite(maxWidth) && maxWidth > 0) {
+            notification.style.maxWidth = `${maxWidth}px`;
+        }
         const textEl = document.createElement('span');
         textEl.className = 'notification-text';
         textEl.textContent = String(message || '');
@@ -480,13 +485,22 @@ class FastHardwareApp {
                 const visibleWidth = Math.max(0, notification.clientWidth - paddingLeft - paddingRight);
                 const fullTextWidth = textEl.scrollWidth;
                 const overflowDistance = Math.max(0, fullTextWidth - visibleWidth);
+                const marqueeRoundsRaw = Number(options?.marqueeRounds);
+                const marqueeRounds =
+                    Number.isFinite(marqueeRoundsRaw) && marqueeRoundsRaw > 0
+                        ? Math.max(1, Math.floor(marqueeRoundsRaw))
+                        : 2;
+                const forceMarquee = Boolean(options?.forceMarquee);
                 let hideDelay = duration;
-                if (overflowDistance > 4) {
-                    const durationPerRound = Math.max(4000, Math.min(14000, overflowDistance * 18));
-                    notification.style.setProperty('--notification-marquee-distance', `${overflowDistance}px`);
+                if (overflowDistance > 4 || forceMarquee) {
+                    const effectiveDistance =
+                        overflowDistance > 4 ? overflowDistance : Math.max(80, Math.floor(visibleWidth * 0.35));
+                    const durationPerRound = Math.max(4000, Math.min(14000, effectiveDistance * 18));
+                    notification.style.setProperty('--notification-marquee-distance', `${effectiveDistance}px`);
                     notification.style.setProperty('--notification-marquee-duration', `${durationPerRound}ms`);
+                    notification.style.setProperty('--notification-marquee-iterations', String(marqueeRounds));
                     notification.classList.add('scrolling');
-                    hideDelay = durationPerRound * 2 + 350;
+                    hideDelay = durationPerRound * marqueeRounds + 350;
                 }
 
                 setTimeout(() => {
@@ -713,7 +727,12 @@ class FastHardwareApp {
         this.switchTab('circuit-design');
         await this.resetCanvasToDefaultView();
         this.logCanvasViewState(`打开集市内存项目: ${postIdKey}`);
-        this.showNotification('已从内存加载集市项目', 'success');
+        this.showNotification(
+            '当前项目为复刻项目，建议保存本地后再与agent助手交流',
+            'warning',
+            3000,
+            { marqueeRounds: 3, forceMarquee: true, maxWidth: 360 }
+        );
     }
 
     /**
@@ -762,7 +781,9 @@ class FastHardwareApp {
             const canvasState = this.getCurrentCanvasState();
             // 移除画布元件校验，允许空画布保存项目
 
-            if (this.currentProject) {
+            const isMarketplaceSessionProject =
+                String(this.currentProject || '').trim().toLowerCase().startsWith('marketplace-session://');
+            if (this.currentProject && !isMarketplaceSessionProject) {
                 // 已打开项目：直接更新配置文件
                 console.log('更新已打开的项目:', this.currentProject);
                 await this.updateExistingProject(this.currentProject, canvasState);
@@ -779,7 +800,7 @@ class FastHardwareApp {
                 this.showNotification('项目更新成功！', 'success');
             } else {
                 // 新项目：显示对话框进行保存
-                console.log('创建新项目...');
+                console.log(isMarketplaceSessionProject ? '复刻项目另存到本地...' : '创建新项目...');
 
                 // 显示项目信息输入对话框
                 const projectInfo = await this.showProjectInfoDialog();
@@ -829,8 +850,16 @@ class FastHardwareApp {
         try {
             console.log('更新项目配置文件:', projectPath);
 
+            // 读取现有配置（保留既有 uuid；若缺失则在本次保存自动补齐）。
+            let existingConfig = null;
+            try {
+                const raw = await window.electronAPI.loadFile(`${projectPath}/circuit_config.json`);
+                existingConfig = JSON.parse(raw);
+            } catch (e) {
+                console.warn('[save] 未读取到旧配置或解析失败，将按新配置写入 uuid:', e?.message || e);
+            }
             // 生成circuit_config.json内容
-            const circuitConfig = this.generateCircuitConfig(canvasState);
+            const circuitConfig = this.generateCircuitConfig(canvasState, { existingConfig, forceNewUuid: false });
 
             // 保存circuit_config.json
             const configPath = `${projectPath}/circuit_config.json`;
@@ -1003,11 +1032,58 @@ class FastHardwareApp {
     }
 
     /**
+     * 生成项目稳定 UUID（写入 circuit_config.json，跨环境路径变化仍可匹配同一项目）。
+     * @returns {string}
+     */
+    generateProjectUuid() {
+        if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+            return crypto.randomUUID();
+        }
+        const now = Date.now().toString(16);
+        const rand = Math.random().toString(16).slice(2, 14);
+        return `${now.slice(0, 8)}-${rand.slice(0, 4)}-${rand.slice(4, 8)}-${rand.slice(8, 12)}-${(now + rand).slice(0, 12)}`;
+    }
+
+    /**
+     * 校验是否为有效 UUID 字符串。
+     * @param {string} value
+     * @returns {boolean}
+     */
+    isValidProjectUuid(value) {
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+            String(value || '').trim()
+        );
+    }
+
+    /**
+     * 从现有配置中解析可复用 UUID；若不存在则按策略生成新值。
+     * @param {any} existingConfig
+     * @param {{ forceNew?: boolean }} [options]
+     * @returns {string}
+     */
+    resolveProjectUuid(existingConfig, options = {}) {
+        if (!options?.forceNew) {
+            const existing = String(existingConfig?.uuid || '').trim();
+            if (this.isValidProjectUuid(existing)) {
+                return existing;
+            }
+        }
+        return this.generateProjectUuid();
+    }
+
+    /**
      * 生成circuit_config.json内容
      * @param {Object} canvasState - 画布状态
+     * @param {{ existingConfig?: any, forceNewUuid?: boolean }} [options]
      * @returns {Object} circuit_config.json格式的对象
      */
-    generateCircuitConfig(canvasState) {
+    generateCircuitConfig(canvasState, options = {}) {
+        const existingConfig = options?.existingConfig && typeof options.existingConfig === 'object'
+            ? options.existingConfig
+            : null;
+        const projectUuid = this.resolveProjectUuid(existingConfig, {
+            forceNew: Boolean(options?.forceNewUuid)
+        });
         const components = canvasState.components.map(component => {
             // 将元件方向转换为orientation字符串
             const directionToOrientation = {
@@ -1060,10 +1136,11 @@ class FastHardwareApp {
         }));
 
         return {
+            uuid: projectUuid,
             projectName: canvasState.projectName || "未命名项目",
             description: canvasState.description || "通过Fast Hardware创建的电路设计",
             version: "1.0.0",
-            createdAt: new Date().toISOString(),
+            createdAt: String(existingConfig?.createdAt || '').trim() || new Date().toISOString(),
             lastModified: new Date().toISOString(),
             components: components,
             connections: connections,
@@ -1461,22 +1538,11 @@ void loop() {
             const componentsPath = `${projectPath}/components`;
             await window.electronAPI.saveFile(componentsPath, '', true); // 创建目录
 
-            // 保存元件文件 - 从系统元件库复制
+            // 保存元件文件：优先落盘当前画布内存数据（确保复刻项目的自定义元件不丢失）。
             for (const component of canvasState.components) {
                 if (component.data && component.data.id) {
                     try {
-                        // 从系统元件库读取原始元件文件
-                        const sourcePath = `data/system-components/standard/${component.data.id}.json`;
-                        let componentContent;
-
-                        try {
-                            // 先尝试从standard目录读取
-                            componentContent = await window.electronAPI.loadFile(sourcePath);
-                        } catch (error) {
-                            // 如果standard目录没有找到，尝试custom目录
-                            const customPath = `data/system-components/custom/${component.data.id}.json`;
-                            componentContent = await window.electronAPI.loadFile(customPath);
-                        }
+                        const componentContent = await this.resolveComponentContentForProjectSave(component);
 
                         // 保存到项目的components目录
                         const componentFileName = `${component.data.id}.json`;
@@ -1486,7 +1552,7 @@ void loop() {
                         console.log(`元件 ${component.data.name} 已复制到项目`);
                     } catch (error) {
                         console.error(`复制元件 ${component.data.name} 失败:`, error);
-                        // 如果无法从系统库读取，则保存当前数据作为备用
+                        // 兜底：强制落盘当前元件数据，避免因单元件失败中断整项目保存。
                         const componentFileName = `${component.data.id}.json`;
                         const componentPath = `${componentsPath}/${componentFileName}`;
                         await window.electronAPI.saveFile(componentPath, JSON.stringify(component.data, null, 2));
@@ -1494,8 +1560,8 @@ void loop() {
                 }
             }
 
-            // 创建circuit_config.json
-            const circuitConfig = this.generateCircuitConfig(canvasState);
+            // 创建circuit_config.json（初次保存统一生成新 uuid）
+            const circuitConfig = this.generateCircuitConfig(canvasState, { forceNewUuid: true });
             // 更新项目名称和描述
             circuitConfig.projectName = projectInfo.name;
             circuitConfig.description = projectInfo.description;
@@ -1503,8 +1569,8 @@ void loop() {
             const configPath = `${projectPath}/circuit_config.json`;
             await window.electronAPI.saveFile(configPath, JSON.stringify(circuitConfig, null, 2));
 
-            // 生成Arduino代码文件，使用项目名称作为文件名
-            const codeContent = this.generateArduinoCode(canvasState, projectInfo.name);
+            // 保存固件代码：优先保留编辑器/内存中的真实代码（含复刻项目），缺失时再回退自动模板。
+            const codeContent = this.resolveInitialProjectCodeContent(canvasState, projectInfo.name);
             const codePath = `${projectPath}/${projectInfo.name}.ino`;
             await window.electronAPI.saveFile(codePath, codeContent);
 
@@ -1513,6 +1579,49 @@ void loop() {
             console.error('创建项目文件夹失败:', error);
             throw new Error('创建项目文件夹失败: ' + error.message);
         }
+    }
+
+    /**
+     * 解析首次保存时某个元件应写入项目目录的 JSON 内容。
+     * 优先使用当前画布中的元件数据，若缺失再回退读取系统元件库文件。
+     * @param {{ data?: { id?: string } }} component
+     * @returns {Promise<string>}
+     */
+    async resolveComponentContentForProjectSave(component) {
+        const componentData = component?.data && typeof component.data === 'object' ? component.data : null;
+        if (componentData && Object.keys(componentData).length) {
+            return JSON.stringify(componentData, null, 2);
+        }
+        const componentId = String(componentData?.id || '').trim();
+        if (!componentId) {
+            throw new Error('元件缺少有效 id，无法保存元件文件。');
+        }
+        try {
+            return await window.electronAPI.loadFile(`data/system-components/standard/${componentId}.json`);
+        } catch {
+            return await window.electronAPI.loadFile(`data/system-components/custom/${componentId}.json`);
+        }
+    }
+
+    /**
+     * 解析“首次保存项目”时应写入的固件代码。
+     * 优先级：代码编辑器当前文本 > 画布内存缓存代码 > 自动生成模板。
+     * 这样可确保复刻项目另存时保留原始 .ino，而不是被模板覆盖。
+     * @param {Object} canvasState - 画布状态
+     * @param {string} projectName - 项目名称
+     * @returns {string}
+     */
+    resolveInitialProjectCodeContent(canvasState, projectName) {
+        const textarea = document.getElementById('code-editor-textarea');
+        const editorText = textarea && typeof textarea.value === 'string' ? textarea.value : '';
+        if (editorText.trim()) {
+            return editorText;
+        }
+        const memoryText = String(window.canvasInstance?.lastSavedCodeContent || '');
+        if (memoryText.trim()) {
+            return memoryText;
+        }
+        return this.generateArduinoCode(canvasState, projectName);
     }
 
 

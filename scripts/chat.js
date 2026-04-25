@@ -26,7 +26,8 @@ const ALLOWED_SKILLS_ENGINE_RPC_OPS = new Set([
     'runWiringEditPlan',
     'applyWiringEditOperations',
     'webSearchExa',
-    'getCurrentSkillState'
+    'getCurrentSkillState',
+    'getProjectWorkspaceSnapshotForSkill'
 ]);
 
 /**
@@ -952,6 +953,251 @@ class ChatManager {
     }
 
     /**
+     * 规范化内存项目 bundle 相对路径（统一为 `/`，去掉前导 `/`）。
+     * @param {string} value
+     * @returns {string}
+     */
+    _normalizeMarketplaceBundleRelativePath(value) {
+        return String(value || '')
+            .replace(/\\/g, '/')
+            .replace(/^\/+/, '')
+            .replace(/\/+/g, '/')
+            .trim();
+    }
+
+    /**
+     * 获取当前活动的集市内存会话 bundle（仅 marketplace-session:// 项目使用）。
+     * @param {string} projectRoot
+     * @returns {{ files: Array<{ relativePath: string, text: string }> } | null}
+     */
+    _getActiveMarketplaceSessionBundle(projectRoot) {
+        const root = String(projectRoot || '').trim().toLowerCase();
+        if (!root.startsWith('marketplace-session://')) {
+            return null;
+        }
+        const app = window.app;
+        const activeProject =
+            app &&
+            app.projectTabsManager &&
+            typeof app.projectTabsManager.getActiveProject === 'function'
+                ? app.projectTabsManager.getActiveProject()
+                : null;
+        const pd = activeProject?.projectData && typeof activeProject.projectData === 'object' ? activeProject.projectData : null;
+        if (!pd) {
+            return null;
+        }
+        const pdPath = String(pd.path || '').trim().toLowerCase();
+        const appPath = String(app?.currentProject || '').trim().toLowerCase();
+        if (pdPath !== root && appPath !== root) {
+            return null;
+        }
+        const rawBundle = pd.marketplaceBundle;
+        const files = Array.isArray(rawBundle?.files) ? rawBundle.files : [];
+        return { files };
+    }
+
+    /**
+     * 在集市内存会话中执行 workspace_* 工具（不走磁盘 read/list）。
+     * @param {string} toolName
+     * @param {object} args
+     * @param {string} projectRoot
+     * @returns {Promise<Record<string, unknown>>}
+     */
+    async _executeMarketplaceSessionWorkspaceTool(toolName, args, projectRoot) {
+        const bundle = this._getActiveMarketplaceSessionBundle(projectRoot);
+        if (!bundle) {
+            return {
+                success: false,
+                error: '当前为集市内存项目，但未找到可读的内存 bundle（请先在该标签页激活项目后重试）'
+            };
+        }
+        const name = canonicalWorkspaceToolName(toolName);
+        const a = args && typeof args === 'object' ? args : {};
+        const files = bundle.files
+            .filter((f) => typeof f?.relativePath === 'string')
+            .map((f) => ({
+                relativePath: this._normalizeMarketplaceBundleRelativePath(f.relativePath),
+                text: typeof f?.text === 'string' ? f.text : ''
+            }))
+            .filter((f) => !!f.relativePath);
+        const fileMap = new Map(files.map((f) => [f.relativePath, f.text]));
+        const allPaths = [...fileMap.keys()];
+
+        const listDir = (relativePath) => {
+            const rel = this._normalizeMarketplaceBundleRelativePath(relativePath || '.');
+            const prefix = !rel || rel === '.' ? '' : `${rel.replace(/\/+$/, '')}/`;
+            const filesOut = new Set();
+            const directoriesOut = new Set();
+            allPaths.forEach((p) => {
+                if (prefix && !p.startsWith(prefix)) return;
+                const rest = prefix ? p.slice(prefix.length) : p;
+                if (!rest) return;
+                const seg = rest.split('/').filter(Boolean);
+                if (!seg.length) return;
+                if (seg.length === 1) filesOut.add(seg[0]);
+                else directoriesOut.add(seg[0]);
+            });
+            return {
+                relativePath: rel || '.',
+                files: [...filesOut].sort(),
+                directories: [...directoriesOut].sort()
+            };
+        };
+
+        if (name === 'workspace_list_dir' || name === 'list_dir') {
+            const rel = String(a.relativePath ?? '.').trim() || '.';
+            const listed = listDir(rel);
+            return {
+                success: true,
+                relativePath: listed.relativePath,
+                files: listed.files,
+                directories: listed.directories,
+                counts: { files: listed.files.length, directories: listed.directories.length },
+                source: 'marketplace-memory-bundle'
+            };
+        }
+
+        if (name === 'workspace_read_file' || name === 'read_file') {
+            const rels = Array.isArray(a.relativePaths)
+                ? a.relativePaths.map((x) => String(x || '').trim()).filter(Boolean)
+                : [];
+            if (rels.length) {
+                const batch = [];
+                for (const rp of rels.slice(0, 20)) {
+                    const one = await this._executeMarketplaceSessionWorkspaceTool(
+                        'workspace_read_file',
+                        { ...a, relativePath: rp, relativePaths: undefined },
+                        projectRoot
+                    );
+                    batch.push({ relativePath: rp, success: Boolean(one?.success), data: one, error: one?.error || '' });
+                }
+                return {
+                    success: true,
+                    requested: rels.slice(0, 20),
+                    files: batch,
+                    counts: {
+                        requested: batch.length,
+                        success: batch.filter((x) => x.success).length,
+                        failed: batch.filter((x) => !x.success).length
+                    },
+                    mode: 'batch_via_workspace_read_file',
+                    source: 'marketplace-memory-bundle'
+                };
+            }
+            const rel = this._normalizeMarketplaceBundleRelativePath(String(a.relativePath || '').trim());
+            if (!rel) {
+                return { success: false, error: 'workspace_read_file 需要 args.relativePath（单文件）或 args.relativePaths（批量）' };
+            }
+            if (!fileMap.has(rel)) {
+                return { success: false, error: `ENOENT: no such file in marketplace bundle: ${rel}` };
+            }
+            const full = String(fileMap.get(rel) || '');
+            const maxChars = Math.min(Math.max(Number(a.maxChars) || 12000, 500), 64000);
+            const truncated = full.length > maxChars;
+            const content = truncated ? full.slice(0, maxChars) : full;
+            return {
+                success: true,
+                relativePath: rel,
+                length: full.length,
+                totalLines: full.split(/\r?\n/).length,
+                readMode: 'head',
+                truncated,
+                content,
+                contentChars: content.length,
+                nextCharOffset: truncated ? content.length : null,
+                note: truncated ? `内存 bundle 读到上限 ${maxChars} 字符，可用 charOffset 续读（后续可扩展）。` : undefined,
+                source: 'marketplace-memory-bundle'
+            };
+        }
+
+        if (name === 'workspace_verify' || name === 'verify' || name === 'verify_workspace') {
+            const rel = this._normalizeMarketplaceBundleRelativePath(String(a.relativePath || '').trim());
+            if (!rel) {
+                return { success: false, error: 'workspace_verify 需要 args.relativePath' };
+            }
+            const existsFile = fileMap.has(rel);
+            const existsDir = allPaths.some((p) => p.startsWith(`${rel.replace(/\/+$/, '')}/`));
+            return {
+                success: true,
+                relativePath: rel,
+                exists: existsFile || existsDir,
+                isFile: existsFile,
+                isDirectory: !existsFile && existsDir,
+                size: existsFile ? String(fileMap.get(rel) || '').length : 0,
+                source: 'marketplace-memory-bundle'
+            };
+        }
+
+        if (name === 'workspace_explore' || name === 'explore' || name === 'explore_workspace') {
+            const rel = this._normalizeMarketplaceBundleRelativePath(String(a.relativePath ?? '.').trim() || '.');
+            const maxDepth = Math.min(Math.max(Number(a.maxDepth) || 2, 1), 4);
+            const maxEntries = Math.min(Math.max(Number(a.maxEntries) || 80, 10), 200);
+            const rootPrefix = !rel || rel === '.' ? '' : `${rel.replace(/\/+$/, '')}/`;
+            const entries = [];
+            allPaths.forEach((p) => {
+                if (rootPrefix && !p.startsWith(rootPrefix)) return;
+                const rest = rootPrefix ? p.slice(rootPrefix.length) : p;
+                if (!rest) return;
+                const seg = rest.split('/').filter(Boolean);
+                if (!seg.length) return;
+                const depth = seg.length - 1;
+                if (depth > maxDepth) return;
+                const relFile = (rootPrefix ? `${rootPrefix}${rest}` : rest).replace(/\\/g, '/');
+                entries.push({ relative: relFile, type: 'file' });
+            });
+            const uniq = [];
+            const seen = new Set();
+            for (const item of entries) {
+                const k = `${item.type}:${item.relative}`;
+                if (seen.has(k)) continue;
+                seen.add(k);
+                uniq.push(item);
+                if (uniq.length >= maxEntries) break;
+            }
+            return {
+                success: true,
+                rootRelative: rel || '.',
+                maxDepth,
+                maxEntries,
+                entries: uniq,
+                truncated: uniq.length >= maxEntries,
+                source: 'marketplace-memory-bundle'
+            };
+        }
+
+        if (name === 'workspace_grep' || name === 'grep_workspace' || name === 'grep') {
+            const pattern = String(a.pattern || '').trim().toLowerCase();
+            if (!pattern) {
+                return { success: false, error: 'workspace_grep 需要 args.pattern' };
+            }
+            const maxMatches = Math.min(Math.max(Number(a.maxMatches) || 40, 1), 120);
+            const matches = [];
+            for (const p of allPaths) {
+                if (matches.length >= maxMatches) break;
+                const content = String(fileMap.get(p) || '');
+                const lines = content.split(/\r?\n/);
+                for (let i = 0; i < lines.length; i++) {
+                    if (matches.length >= maxMatches) break;
+                    const line = String(lines[i] || '');
+                    if (line.toLowerCase().includes(pattern)) {
+                        matches.push({ file: p, line: i + 1, text: line.slice(0, 240) });
+                    }
+                }
+            }
+            return {
+                success: true,
+                pattern: String(a.pattern || ''),
+                scannedFiles: allPaths.length,
+                matches,
+                note: '在集市内存 bundle 中搜索',
+                source: 'marketplace-memory-bundle'
+            };
+        }
+
+        return { success: false, error: `集市内存项目暂不支持工具：${name}` };
+    }
+
+    /**
      * 类 Cursor 的多轮工具说明：模型按需 list/read/grep，避免首轮塞全文。
      * @param {{ path: string, folderName: string } | null} meta
      * @returns {string}
@@ -1018,6 +1264,9 @@ class ChatManager {
         }
         if (!projectRoot) {
             return { success: false, error: '未设置项目根路径' };
+        }
+        if (projectRoot.toLowerCase().startsWith('marketplace-session://')) {
+            return this._executeMarketplaceSessionWorkspaceTool(name, a, projectRoot);
         }
 
         try {

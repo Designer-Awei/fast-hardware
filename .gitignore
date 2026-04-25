@@ -149,8 +149,9 @@ app/dist/
 *.AppImage
 *.snap
 
-# User projects and data
-data/projects/
+# User projects：未跟踪内容忽略；.keep 占位保证安装包 resources/data/projects 为空目录默认存储根
+data/projects/**
+!data/projects/.keep
 
 # SiliconFlow / Agent 真测与单元测试目录（体积与密钥风险高；本地保留，不纳入远程）
 test-cases/

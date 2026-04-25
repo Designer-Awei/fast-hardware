@@ -21,7 +21,8 @@ const ALLOWED_ENGINE_OPS = new Set([
   'runWiringEditPlan',
   'applyWiringEditOperations',
   'webSearchExa',
-  'getCurrentSkillState'
+  'getCurrentSkillState',
+  'getProjectWorkspaceSnapshotForSkill'
 ]);
 
 /** @type {Map<string, { resolve: function, reject: function, timer: NodeJS.Timeout, senderId: number }>} */
@@ -106,7 +107,8 @@ function createSkillsEngineProxy(webContents) {
     runWiringEditPlan: (a, b, c, d) => call('runWiringEditPlan', [a, b, c, d && typeof d === 'object' ? d : {}]),
     applyWiringEditOperations: (a) => call('applyWiringEditOperations', [a]),
     webSearchExa: (a, b) => call('webSearchExa', [a, b]),
-    getCurrentSkillState: () => call('getCurrentSkillState', [])
+    getCurrentSkillState: () => call('getCurrentSkillState', []),
+    getProjectWorkspaceSnapshotForSkill: (projectRoot) => call('getProjectWorkspaceSnapshotForSkill', [projectRoot || ''])
   };
 }
 

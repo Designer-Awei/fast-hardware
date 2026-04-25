@@ -1,9 +1,10 @@
 {
+  "uuid": "ff82be62-fe6e-406d-8036-3bdc91a0487a",
   "projectName": "sample-led-project",
   "description": "通过Fast Hardware创建的电路设计",
   "version": "1.0.0",
   "createdAt": "2026-04-24T13:04:34.755Z",
-  "lastModified": "2026-04-24T13:04:34.755Z",
+  "lastModified": "2026-04-25T13:21:07.491Z",
   "components": [
     {
       "componentFile": "std-arduino-nano-220724.json",
@@ -329,7 +330,7 @@
         "dashPattern": []
       },
       "metadata": {
-        "createdAt": "2026-04-24T13:04:34.754Z",
+        "createdAt": "2026-04-25T13:21:07.491Z",
         "connectionType": "digital"
       }
     },
@@ -377,7 +378,7 @@
         "dashPattern": []
       },
       "metadata": {
-        "createdAt": "2026-04-24T13:04:34.755Z",
+        "createdAt": "2026-04-25T13:21:07.491Z",
         "connectionType": "ground"
       }
     },
@@ -425,7 +426,7 @@
         "dashPattern": []
       },
       "metadata": {
-        "createdAt": "2026-04-24T13:04:34.755Z",
+        "createdAt": "2026-04-25T13:21:07.491Z",
         "connectionType": "power"
       }
     },
@@ -473,7 +474,7 @@
         "dashPattern": []
       },
       "metadata": {
-        "createdAt": "2026-04-24T13:04:34.755Z",
+        "createdAt": "2026-04-25T13:21:07.491Z",
         "connectionType": "ground"
       }
     },
@@ -520,7 +521,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2026-04-24T13:04:34.755Z"
+        "createdAt": "2026-04-25T13:21:07.491Z"
       }
     },
     {
@@ -566,7 +567,7 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2026-04-24T13:04:34.755Z"
+        "createdAt": "2026-04-25T13:21:07.491Z"
       }
     },
     {
@@ -612,14 +613,14 @@
         "width": 2
       },
       "metadata": {
-        "createdAt": "2026-04-24T13:04:34.755Z"
+        "createdAt": "2026-04-25T13:21:07.491Z"
       }
     }
   ],
   "canvas": {
-    "zoom": 0.9797707205477252,
-    "panX": 53.32587525128656,
-    "panY": 635.0979438062468,
+    "zoom": 1.0566556110000007,
+    "panX": 182.15902173549682,
+    "panY": 626.7573277543011,
     "gridSize": 10,
     "showGrid": true
   }

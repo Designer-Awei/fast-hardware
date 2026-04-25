@@ -1715,6 +1715,73 @@ ${schemeHint ? `【方案所需元件摘要（请与画布 componentFile/customL
     }
 
     /**
+     * 为主进程 agent 提供当前项目工作区快照（优先服务 marketplace-session 内存会话）。
+     * 该快照直接来自前端已加载数据（bundle + 代码编辑器草稿），避免主进程按磁盘路径读复刻项目时报 ENOENT。
+     * @param {string} projectRoot
+     * @returns {{ projectRoot: string, source: string, files: Array<{ relativePath: string, text: string }> }}
+     */
+    getProjectWorkspaceSnapshotForSkill(projectRoot = '') {
+        const normalizeRoot = (raw) => {
+            const s = String(raw || '').trim().replace(/\\/g, '/');
+            if (!s) return '';
+            const lower = s.toLowerCase();
+            const idx = lower.indexOf('marketplace-session:');
+            if (idx < 0) return '';
+            const tail = s.slice(idx + 'marketplace-session:'.length).replace(/^\/+/, '').trim();
+            const id = String(tail.split('/')[0] || '').trim();
+            return id ? `marketplace-session://${id}` : 'marketplace-session://';
+        };
+        const normalizeRel = (value) =>
+            String(value || '')
+                .replace(/\\/g, '/')
+                .replace(/^\/+/, '')
+                .replace(/\/+/g, '/')
+                .trim();
+        const targetRoot = normalizeRoot(projectRoot);
+        const app = typeof window !== 'undefined' ? window.app : null;
+        const activeProject =
+            app &&
+            app.projectTabsManager &&
+            typeof app.projectTabsManager.getActiveProject === 'function'
+                ? app.projectTabsManager.getActiveProject()
+                : null;
+        const pd = activeProject?.projectData && typeof activeProject.projectData === 'object' ? activeProject.projectData : null;
+        const pdRoot = normalizeRoot(String(pd?.path || ''));
+        const appRoot = normalizeRoot(String(app?.currentProject || ''));
+        const effectiveRoot = targetRoot || pdRoot || appRoot;
+        const filesMap = new Map();
+
+        const rawBundleFiles = Array.isArray(pd?.marketplaceBundle?.files) ? pd.marketplaceBundle.files : [];
+        rawBundleFiles.forEach((f) => {
+            const rel = normalizeRel(f?.relativePath);
+            if (!rel) return;
+            filesMap.set(rel, typeof f?.text === 'string' ? f.text : '');
+        });
+
+        const canvas = typeof window !== 'undefined' ? window.canvasInstance : null;
+        const draftText =
+            typeof document !== 'undefined'
+                ? String(document.getElementById('code-editor-textarea')?.value || '')
+                : '';
+        const savedText = String(canvas?.lastSavedCodeContent || '');
+        const codeText = draftText || savedText;
+        let codeRel = normalizeRel(String(canvas?.currentCodePath || '').replace(/^memory:\//i, ''));
+        if (!codeRel) {
+            codeRel = [...filesMap.keys()].find((p) => p.toLowerCase().endsWith('.ino')) || 'sketch.ino';
+        }
+        if (codeText && codeRel) {
+            filesMap.set(codeRel, codeText);
+        }
+
+        const files = [...filesMap.entries()].map(([relativePath, text]) => ({ relativePath, text }));
+        return {
+            projectRoot: effectiveRoot || String(projectRoot || '').trim(),
+            source: 'renderer-active-project-memory',
+            files
+        };
+    }
+
+    /**
      * 供主进程经 IPC 桥接读取 `currentSkillState`（异步接口与同步字段等价）
      * @returns {unknown}
      */

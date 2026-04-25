@@ -7,6 +7,20 @@
 以下 **🎯 日期补充**按**日期降序**排列（最新在上）。
 
 #### 🎯 2026-04-25 补充
+- **状态匹配问题定位与后续方案记录（`scripts/account-center.js` / `supabase/auth-service.js` / `feature-prd/todo.md`）**：确认生产环境与开发环境项目根路径不一致时，基于 `projectPath` 哈希生成的 `project_key` 无法跨环境稳定命中，导致“我的项目”卡片显示无备份/未发布；本次先记录不改逻辑，后续计划在 `circuit_config.json` 引入稳定 `uuid`，并在旧项目再次保存时自动补齐，状态匹配改为 `uuid` 优先（路径兜底）。
+- **复刻项目工作区路由与快照桥接修复（`scripts/agent/skills-agent-loop.js` / `scripts/skills/renderer-engine-bridge.js` / `scripts/circuit-skills-engine.js` / `scripts/chat.js`）**：修复 `marketplace-session://` 场景下主进程工作区工具误走磁盘导致 `ENOENT`；新增主进程到渲染进程的项目快照桥接 `getProjectWorkspaceSnapshotForSkill`，并在 skills-loop 中对复刻项目分支改为读取前端内存文件快照（bundle + 编辑器代码），`list/read/grep/explore/verify` 不再依赖本地目录。
+- **工作区读文件自动续读（`scripts/agent/skills-agent-loop.js`）**：`workspace_read_file` 在返回 `truncated=true` 时自动按 `nextCharOffset` 续读并合并内容（支持单文件与批量模式），加入最大轮次与最大字符数保护，降低大 `circuit_config.json` 仅读首段导致的误判。
+- **固件审阅 Reject All 回滚修复（`scripts/canvas.js`）**：复刻项目中拒绝全部补丁后改为直接回退 `originalCode` 并同步编辑器与内存代码，修复“Reject All 后代码窗变空、需重开才恢复”的问题。
+- **个人中心缓存一致性修复（`scripts/account-center.js`）**：登录身份切换时同时失效“我的项目/创客集市”缓存与映射状态，修复重新登录后备份状态、发布状态或“请先登录后查看集市”旧视图残留问题。
+- **账号与集市交互细节优化（`styles/main.css` / `scripts/account-center.js`）**：退出登录按钮 hover 调整为高亮不位移；集市复刻 icon 改为与点赞/收藏一致的 `24x24` 图标容器 + 计数布局（只读不绑定点击），统一三组间距观感。
+- **个人中心结构收口（`index.html` / `styles/main.css` / `feature-prd/8-account_prd.md`）**：移除「创作中心」二级标签页与对应骨架样式，个人中心收敛为 `账号设置`、`我的项目`、`社区管理`、`权限管理`；同步更新账号 PRD 的范围、章节与验收项，避免文档与实现不一致。
+- **我的项目卡片状态增强（`scripts/account-center.js` / `styles/main.css` / `preload.js` / `main.js` / `supabase/auth-service.js`）**：卡片头部元件/连线同一行右侧新增发布状态标签（● 未发布/● 待审核/● 已发布，灰/黄/绿）；新增按项目路径批量查询发布状态 IPC（基于 `project_key` + `marketplace_posts.status`），无须新增表字段。
+- **我的项目列表缓存与加载态策略（`scripts/account-center.js` / `styles/main.css` / `index.html`）**：首次进入「我的项目」展示居中 `icon-refresh` 加载态；之后切页返回直接命中本地缓存，只有上传/更新/撤销/下载等数据变更后才强制静默刷新；并修复加载 icon 定位、尺寸与色彩表现。
+- **创客集市交互与带宽优化（`scripts/account-center.js` / `supabase/auth-service.js` / `styles/main.css` / `feature-prd/9-maker-marketplace_prd.md`）**：集市列表改为仅首次进入请求；点赞/收藏/复刻均采用前端乐观更新 + 后端静默写入，不再因互动触发整页转圈；作者昵称回退策略改为“昵称优先，缺失显示未知发布者”以避免显示 UUID。
+- **集市卡片与预览模态统一（`scripts/account-center.js` / `styles/main.css` / `index.html`）**：项目描述统一为“项目描述：”前缀并限制卡片 3 行省略（固定 3 行高度）；发布预览输入框改为不可拉伸、可视 3 行、限制 <80 字；待审/发布详情模态作者与描述改为换行显示，移除预览外层包裹边框。
+- **项目编号共享复用（`scripts/account-center.js` / `styles/main.css` / `preload.js` / `main.js` / `supabase/auth-service.js`）**：在「我的项目」卡片的描述与更新时间之间新增 **项目编号** 行（已备份显示 `project_key`，未备份显示 `暂无project_key`），并新增与系统设置邀请码一致样式的 **快捷复制按钮**；创客集市顶部输入 24 位项目编号时会额外命中“共享备份卡片”（外观与发布卡片同体系，但仅保留标题、**备份时间** 与单个 **复刻** 按钮）；点击复刻后按 `project_key` 直接拉取共享 `project.bundle.json` 并以内存态在电路页打开项目标签，无需传文件。
+- **集市点赞/收藏交互优化（`scripts/account-center.js` / `styles/main.css` / `supabase/auth-service.js` / `assets/icon-*.svg`）**：点赞/收藏改为描边/实心图标态（列表与预览模态一致），支持再次点击撤销（toggle）；前端采用乐观更新实现 **即时 +1/-1 与图标切换**，后台异步写库失败自动回滚；后端互动接口返回 `toggled/delta` 用于前端校准，收藏实心星调整为明黄色资源。
+- **Supabase 备份共享通道（MCP）**：将 `storage.buckets.project-backups` 调整为 `public=true`，并新增 RLS `project_backups_select_shared_authenticated`（`public.project_backups` 对登录用户可查询）以支持按项目编号检索他人备份。
 - **社区管理 · 待审卡片加载态（`styles/main.css`）**：点击待审卡片拉取详情时，整卡 **半透明遮罩** + **几何居中大号转圈**，替代右上角小圈，层次更清晰。
 - **集市详情预览 · 与电路页同引擎渲染（`scripts/account-center.js` / `scripts/canvas.js` / `scripts/main.js` / `index.html`）**：弃用此前基于 **`position`/`path`/尺寸估算** 的 **2D 简化示意**；改为拉取与「**查看细节**」相同的 **Storage 项目 bundle**，经 **`buildProjectDataFromMarketplaceBundle`** 与 **`renderProjectToCanvasManager`** 写入 **第二套 `CanvasManager` 只读实例**（独立 `#marketplace-detail-preview-canvas`），元件/连线/网格与主 **电路搭建** 页一致；**`ResizeObserver`** 监听 **`#marketplace-detail-preview-wrap`** 自适应尺寸；关闭模态 **`destroyReadOnlyPreview`** 移除监听并释放引用；拉取前/失败时 **`drawMarketplacePreviewPlaceholder`** 占位文案；提示文案标明与电路页 **同一引擎**、仅预览不可编辑。
 - **`CanvasManager` 预览构造参数（`scripts/canvas.js`）**：支持 `{ canvasElement, isReadOnlyPreview: true }`；只读模式下 **`markProjectAsModified` 空操作**、**`updateZoomDisplay` 不写主界面缩放百分比**；**`bindReadOnlyPreviewEvents`** 仅左键拖动画布平移 + 滚轮缩放（与主画布 **`zoom`** 逻辑一致）；**`resizeCanvas`** 在 `canvas`/`ctx` 缺失时安全返回。

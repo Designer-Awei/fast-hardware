@@ -98,7 +98,12 @@
     "extraResources": [
       {
         "from": "data",
-        "to": "data"
+        "to": "data",
+        "filter": [
+          "**/*",
+          "!projects/**",
+          "projects/.keep"
+        ]
       },
       {
         "from": ".env.supabase",

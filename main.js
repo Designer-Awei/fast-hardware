@@ -17,6 +17,7 @@ const { pathToFileURL } = require('url');
 const fsSync = require('fs');
 const fs = fsSync.promises;
 const https = require('https');
+const { createClient } = require('@supabase/supabase-js');
 const { readSupabaseConfig } = require('./supabase/config');
 const {
   getAuthState: getSupabaseAuthState,
@@ -26,9 +27,12 @@ const {
   updateProfile: supabaseUpdateProfile,
   uploadAvatar: supabaseUploadAvatar,
   getProjectBackups: supabaseGetProjectBackups,
+  getMarketplacePublishStatuses: supabaseGetMarketplacePublishStatuses,
   uploadProjectBackup: supabaseUploadProjectBackup,
   deleteProjectBackup: supabaseDeleteProjectBackup,
   downloadProjectBackup: supabaseDownloadProjectBackup,
+  searchSharedBackupProjectsByKey: supabaseSearchSharedBackupProjectsByKey,
+  getSharedBackupBundleByProjectKey: supabaseGetSharedBackupBundleByProjectKey,
   getPermissionManagementStats: supabaseGetPermissionManagementStats,
   listUsersForPermissionManagement: supabaseListUsersForPermissionManagement,
   updateUserRoleBySuperAdmin: supabaseUpdateUserRoleBySuperAdmin,
@@ -39,6 +43,7 @@ const {
   getMarketplaceProjectBundle: supabaseGetMarketplaceProjectBundle,
   reviewMarketplacePost: supabaseReviewMarketplacePost,
   interactMarketplacePost: supabaseInteractMarketplacePost,
+  deleteMarketplaceApprovedPostSuperAdmin: supabaseDeleteMarketplaceApprovedPostSuperAdmin,
   signUpWithPassword: supabaseSignUpWithPassword,
   signInWithPassword: supabaseSignInWithPassword,
   signOut: supabaseSignOut
@@ -63,6 +68,7 @@ const STARTUP_DEBUG_ENABLED = process.argv.includes('--enable-startup-debug') ||
   process.argv.includes('--enable-logging') ||
   process.env.STARTUP_DEBUG === '1';
 const UPDATE_STATUS_CHANNEL = 'update-status';
+const SUPABASE_MARKETPLACE_CHANGED_CHANNEL = 'supabase-marketplace-changed';
 const MODEL_SYNC_TIMEOUT_MS = 5000;
 const SUPABASE_AUTH_CALLBACK_CHANNEL = 'supabase-auth-callback';
 const SUPABASE_OAUTH_LOOPBACK_HOST = '127.0.0.1';
@@ -70,6 +76,64 @@ const SUPABASE_OAUTH_LOOPBACK_PORT = 38129;
 let pendingSupabaseAuthCallbackUrl = '';
 let pendingSupabaseAuthCallbackPayload = null;
 let supabaseOAuthCallbackServer = null;
+/** @type {import('@supabase/supabase-js').SupabaseClient | null} */
+let supabaseRealtimeClient = null;
+/** @type {import('@supabase/supabase-js').RealtimeChannel | null} */
+let supabaseMarketplaceRealtimeChannel = null;
+
+/**
+ * 向所有渲染进程广播集市数据变更，便于前端失效本地缓存并按需刷新。
+ * @param {'publish'|'review'|'interact'} type
+ * @returns {void}
+ */
+function broadcastMarketplaceChanged(type) {
+  const windows = BrowserWindow.getAllWindows();
+  windows.forEach((win) => {
+    if (!win || win.isDestroyed() || !win.webContents) {
+      return;
+    }
+    win.webContents.send(SUPABASE_MARKETPLACE_CHANGED_CHANNEL, {
+      type: String(type || ''),
+      at: Date.now()
+    });
+  });
+}
+
+/**
+ * 启动 marketplace_projects 的 Realtime 订阅（跨端变更自动广播到渲染层）。
+ * @returns {void}
+ */
+function ensureMarketplaceRealtimeSubscription() {
+  try {
+    const config = readSupabaseConfig();
+    if (!config?.isConfigured || !config.url || !config.publishableKey) {
+      return;
+    }
+    if (!supabaseRealtimeClient) {
+      supabaseRealtimeClient = createClient(config.url, config.publishableKey, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false
+        }
+      });
+    }
+    if (supabaseMarketplaceRealtimeChannel) {
+      return;
+    }
+    supabaseMarketplaceRealtimeChannel = supabaseRealtimeClient
+      .channel('fh-marketplace-projects')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'marketplace_projects' },
+        () => {
+          broadcastMarketplaceChanged('realtime');
+        }
+      )
+      .subscribe();
+  } catch (error) {
+    console.warn('marketplace realtime 订阅失败:', error?.message || String(error));
+  }
+}
 
 /**
  * @returns {void}
@@ -2321,6 +2385,7 @@ app.whenReady().then(async () => {
   console.log('Electron应用程序已准备就绪');
   registerSupabaseProfileAndAvatarIpcHandlers();
   registerSupabaseProtocolClient();
+  ensureMarketplaceRealtimeSubscription();
   pendingSupabaseAuthCallbackUrl = extractSupabaseAuthDeepLinkFromArgv(process.argv);
   await ensureSupabaseOAuthCallbackServer();
 
@@ -3200,9 +3265,35 @@ ipcMain.handle('supabase-auth-sign-out', async () => {
 
 ipcMain.handle('supabase-project-backup-list', async (event, payload) => {
   try {
-    return await supabaseGetProjectBackups(payload || {});
+    const request = payload || {};
+    const result = await supabaseGetProjectBackups(request);
+    console.log('[ipc][supabase-project-backup-list]', {
+      success: Boolean(result?.success),
+      projectPathCount: Array.isArray(request?.projectPaths) ? request.projectPaths.length : 0,
+      backupsCount: Array.isArray(result?.backups) ? result.backups.length : 0,
+      error: String(result?.error || '')
+    });
+    return result;
   } catch (error) {
+    console.error('[ipc][supabase-project-backup-list] exception', error?.message || error);
     return { success: false, error: error.message || String(error), backups: [] };
+  }
+});
+
+ipcMain.handle('supabase-marketplace-publish-statuses', async (event, payload) => {
+  try {
+    const request = payload || {};
+    const result = await supabaseGetMarketplacePublishStatuses(request);
+    console.log('[ipc][supabase-marketplace-publish-statuses]', {
+      success: Boolean(result?.success),
+      projectPathCount: Array.isArray(request?.projectPaths) ? request.projectPaths.length : 0,
+      statusesCount: Array.isArray(result?.statuses) ? result.statuses.length : 0,
+      error: String(result?.error || '')
+    });
+    return result;
+  } catch (error) {
+    console.error('[ipc][supabase-marketplace-publish-statuses] exception', error?.message || error);
+    return { success: false, error: error?.message || String(error) };
   }
 });
 
@@ -3225,6 +3316,22 @@ ipcMain.handle('supabase-project-backup-delete', async (event, payload) => {
 ipcMain.handle('supabase-project-backup-download', async (event, payload) => {
   try {
     return await supabaseDownloadProjectBackup(payload || {});
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('supabase-project-backup-search-shared', async (event, payload) => {
+  try {
+    return await supabaseSearchSharedBackupProjectsByKey(payload || {});
+  } catch (error) {
+    return { success: false, error: error.message || String(error), projects: [] };
+  }
+});
+
+ipcMain.handle('supabase-project-backup-bundle-by-key', async (event, payload) => {
+  try {
+    return await supabaseGetSharedBackupBundleByProjectKey(payload || {});
   } catch (error) {
     return { success: false, error: error.message || String(error) };
   }
@@ -3256,7 +3363,11 @@ ipcMain.handle('supabase-permission-management-update-role', async (event, paylo
 
 ipcMain.handle('supabase-marketplace-publish', async (event, payload) => {
   try {
-    return await supabasePublishMarketplacePost(payload || {});
+    const result = await supabasePublishMarketplacePost(payload || {});
+    if (result?.success) {
+      broadcastMarketplaceChanged('publish');
+    }
+    return result;
   } catch (error) {
     return { success: false, error: error.message || String(error) };
   }
@@ -3296,7 +3407,11 @@ ipcMain.handle('supabase-marketplace-project-bundle', async (event, payload) => 
 
 ipcMain.handle('supabase-marketplace-review', async (event, payload) => {
   try {
-    return await supabaseReviewMarketplacePost(payload || {});
+    const result = await supabaseReviewMarketplacePost(payload || {});
+    if (result?.success) {
+      broadcastMarketplaceChanged('review');
+    }
+    return result;
   } catch (error) {
     return { success: false, error: error.message || String(error) };
   }
@@ -3304,7 +3419,23 @@ ipcMain.handle('supabase-marketplace-review', async (event, payload) => {
 
 ipcMain.handle('supabase-marketplace-interact', async (event, payload) => {
   try {
-    return await supabaseInteractMarketplacePost(payload || {});
+    const result = await supabaseInteractMarketplacePost(payload || {});
+    if (result?.success) {
+      broadcastMarketplaceChanged('interact');
+    }
+    return result;
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('supabase-marketplace-delete-approved', async (event, payload) => {
+  try {
+    const result = await supabaseDeleteMarketplaceApprovedPostSuperAdmin(payload || {});
+    if (result?.success) {
+      broadcastMarketplaceChanged('delete-approved');
+    }
+    return result;
   } catch (error) {
     return { success: false, error: error.message || String(error) };
   }

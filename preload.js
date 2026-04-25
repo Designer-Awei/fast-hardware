@@ -196,6 +196,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('supabase-project-backup-list', payload),
 
   /**
+   * 创客集市：批量读取当前用户项目发布状态。
+   * @param {{ projectPaths: string[] }} payload
+   */
+  supabaseGetMarketplacePublishStatuses: (payload) =>
+    ipcRenderer.invoke('supabase-marketplace-publish-statuses', payload),
+
+  /**
    * 上传或更新项目备份。
    * @param {{ projectPath: string, projectName?: string, lastModified?: string }} payload
    */
@@ -215,6 +222,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   supabaseDownloadProjectBackup: (payload) =>
     ipcRenderer.invoke('supabase-project-backup-download', payload),
+
+  /**
+   * 通过项目编号查询可共享备份（用于创客集市复用）。
+   * @param {{ projectKey: string }} payload
+   */
+  supabaseSearchSharedBackupProjectsByKey: (payload) =>
+    ipcRenderer.invoke('supabase-project-backup-search-shared', payload),
+
+  /**
+   * 通过项目编号拉取共享备份 bundle（仅内存）。
+   * @param {{ projectKey: string }} payload
+   */
+  supabaseGetSharedBackupBundleByProjectKey: (payload) =>
+    ipcRenderer.invoke('supabase-project-backup-bundle-by-key', payload),
 
   /**
    * 超级管理员权限管理：读取用户统计。
@@ -283,6 +304,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   supabaseInteractMarketplacePost: (payload) =>
     ipcRenderer.invoke('supabase-marketplace-interact', payload),
+
+  /**
+   * 创客集市：超级管理员删除已发布项目（Storage + 数据库）。
+   * @param {{ postId: string }} payload
+   */
+  supabaseDeleteMarketplaceApprovedPost: (payload) =>
+    ipcRenderer.invoke('supabase-marketplace-delete-approved', payload),
+
+  /**
+   * 监听创客集市数据变更广播（用于前端缓存失效与按需刷新）。
+   * @param {(payload: { type: string, at: number }) => void} callback
+   * @returns {() => void}
+   */
+  onSupabaseMarketplaceChanged: (callback) => {
+    if (typeof callback !== 'function') {
+      return () => {};
+    }
+    const channel = 'supabase-marketplace-changed';
+    const handler = (_evt, payload) => {
+      callback(payload && typeof payload === 'object' ? payload : { type: '', at: Date.now() });
+    };
+    ipcRenderer.on(channel, handler);
+    return () => ipcRenderer.removeListener(channel, handler);
+  },
 
   /**
    * Supabase 登出。
