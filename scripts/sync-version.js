@@ -4,6 +4,7 @@
  * - **不修改** `package-lock.json` 中第三方依赖的版本范围（如 `~0.2.3`）。
  * - **不修改** `model_config.json`（其 `version` 为模型清单模式版本，非 App semver）。
  * - **不修改** `0-Change-Log.md`（避免误替换历史版本号段落）。
+ * - **不修改** `README.md` / `README_EN.md`（文档正文由人工维护，避免仅版本号自动变化造成描述不一致）。
  * - **`npm run dist`** 经 `scripts/build-dist.js` 会在打包前调用 `syncVersionFromPackageJson()`。
  *
  * 产品版本与 CHANGELOG 对照见 `feature-prd/0-PRD.md`「版本号、变更日志与同步脚本」。
@@ -27,33 +28,6 @@ function readPackageVersion() {
     throw new Error('package.json 缺少有效的 version 字段');
   }
   return pkg.version;
-}
-
-/**
- * 对 README / README_EN 应用已知的版本替换模式（避免误改「历史版本 v0.2.0」等段落）。
- * @param {string} content - 原始 Markdown
- * @param {string} version - 目标版本
- * @returns {string} 替换后的 Markdown
- */
-function applyReadmeVersionPatterns(content, version) {
-  let result = content;
-  result = result.replace(/version-\d+\.\d+\.\d+-blue/g, `version-${version}-blue`);
-  result = result.replace(/## ✨ 最新特性 \(v\d+\.\d+\.\d+\)/, `## ✨ 最新特性 (v${version})`);
-  result = result.replace(/## ✨ Latest Features \(v\d+\.\d+\.\d+\)/, `## ✨ Latest Features (v${version})`);
-  result = result.replace(
-    /\*\*版本升级\*\*:\s*项目当前版本升级为 `\d+\.\d+\.\d+`/g,
-    `**版本升级**: 项目当前版本升级为 \`${version}\``
-  );
-  result = result.replace(
-    /\*\*Version bump\*\*:\s*The project version is now `\d+\.\d+\.\d+`/g,
-    `**Version bump**: The project version is now \`${version}\``
-  );
-  result = result.replace(/Fast-Hardware-Setup-\d+\.\d+\.\d+\.exe/g, `Fast-Hardware-Setup-${version}.exe`);
-  result = result.replace(/Fast Hardware-\d+\.\d+\.\d+\.dmg/g, `Fast Hardware-${version}.dmg`);
-  result = result.replace(/Fast Hardware-\d+\.\d+\.\d+\.AppImage/g, `Fast Hardware-${version}.AppImage`);
-  result = result.replace(/fast-hardware_\d+\.\d+\.\d+_amd64\.deb/g, `fast-hardware_${version}_amd64.deb`);
-  result = result.replace(/fast-hardware-\d+\.\d+\.\d+\.x86_64\.rpm/g, `fast-hardware-${version}.x86_64.rpm`);
-  return result;
 }
 
 /**
@@ -94,22 +68,6 @@ function syncVersionFromPackageJson() {
     changedFiles.push('assets/update.txt');
   }
 
-  const readmePath = path.join(PROJECT_ROOT, 'README.md');
-  const readmeBefore = fs.readFileSync(readmePath, 'utf8');
-  const readmeAfter = applyReadmeVersionPatterns(readmeBefore, version);
-  if (readmeAfter !== readmeBefore) {
-    fs.writeFileSync(readmePath, readmeAfter, 'utf8');
-    changedFiles.push('README.md');
-  }
-
-  const readmeEnPath = path.join(PROJECT_ROOT, 'README_EN.md');
-  const readmeEnBefore = fs.readFileSync(readmeEnPath, 'utf8');
-  const readmeEnAfter = applyReadmeVersionPatterns(readmeEnBefore, version);
-  if (readmeEnAfter !== readmeEnBefore) {
-    fs.writeFileSync(readmeEnPath, readmeEnAfter, 'utf8');
-    changedFiles.push('README_EN.md');
-  }
-
   if (changedFiles.length > 0) {
     console.log(`[sync-version] 已同步到 ${version}，写入: ${changedFiles.join(', ')}`);
   } else {
@@ -130,6 +88,5 @@ if (require.main === module) {
 
 module.exports = {
   readPackageVersion,
-  applyReadmeVersionPatterns,
   syncVersionFromPackageJson
 };
