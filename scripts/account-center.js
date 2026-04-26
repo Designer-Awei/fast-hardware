@@ -18,7 +18,7 @@ class AccountCenterManager {
             email: '',
             id: '',
             displayName: '',
-            role: 'user',
+            role: 'free',
             provider: 'email',
             avatarUrl: ''
         };
@@ -358,6 +358,10 @@ class AccountCenterManager {
             }
             const shareBtn = event.target?.closest?.('[data-project-share]');
             if (shareBtn) {
+                if (shareBtn.disabled) {
+                    this.showNotification('当前为免费版，发布到创客集市功能受限。', 'warning');
+                    return;
+                }
                 const projectPath = String(shareBtn.getAttribute('data-project-path') || '').trim();
                 const projectUuid = String(shareBtn.getAttribute('data-project-uuid') || '').trim();
                 const projectName = String(shareBtn.getAttribute('data-project-name') || '').trim() || '当前项目';
@@ -367,6 +371,10 @@ class AccountCenterManager {
             }
             const backupBtn = event.target?.closest?.('[data-project-backup]');
             if (backupBtn) {
+                if (backupBtn.disabled) {
+                    this.showNotification('当前为免费版，云端备份上传功能受限。', 'warning');
+                    return;
+                }
                 const projectPath = String(backupBtn.getAttribute('data-project-path') || '').trim();
                 const projectUuid = String(backupBtn.getAttribute('data-project-uuid') || '').trim();
                 const projectName = String(backupBtn.getAttribute('data-project-name') || '').trim();
@@ -389,6 +397,10 @@ class AccountCenterManager {
             }
             const downloadBtn = event.target?.closest?.('[data-project-backup-download]');
             if (downloadBtn) {
+                if (downloadBtn.disabled) {
+                    this.showNotification('当前为免费版，从云端恢复备份功能受限。', 'warning');
+                    return;
+                }
                 const projectKey = String(downloadBtn.getAttribute('data-project-key') || '').trim();
                 const projectName = String(downloadBtn.getAttribute('data-project-name') || '').trim();
                 await this.downloadProjectBackup(projectKey, projectName);
@@ -424,6 +436,9 @@ class AccountCenterManager {
                 await this.refreshAuthState();
                 if (this.currentSubTab === 'my-projects') {
                     await this.presentMyProjectsTab();
+                }
+                if (this.currentSubTab === 'permission-management' && this.isPermissionManagementViewer()) {
+                    await this.refreshPermissionManagement();
                 }
             }
             if (tabName === 'maker-marketplace') {
@@ -496,7 +511,7 @@ class AccountCenterManager {
             }
         }
         if (subTabName === 'permission-management') {
-            await this.refreshPermissionStats();
+            await this.refreshPermissionManagement();
         }
     }
 
@@ -874,9 +889,10 @@ class AccountCenterManager {
         if (!isAdmin && this.currentSubTab === 'community-management') {
             this.switchSubTab('account-settings');
         }
-        this.permissionTabBtn?.classList.toggle('is-hidden', !isSuperAdmin);
-        this.permissionTabPanel?.classList.toggle('is-hidden', !isSuperAdmin);
-        if (!isSuperAdmin && this.currentSubTab === 'permission-management') {
+        const canViewPermissionManagement = this.isPermissionManagementViewer();
+        this.permissionTabBtn?.classList.toggle('is-hidden', !canViewPermissionManagement);
+        this.permissionTabPanel?.classList.toggle('is-hidden', !canViewPermissionManagement);
+        if (!canViewPermissionManagement && this.currentSubTab === 'permission-management') {
             this.switchSubTab('account-settings');
         }
     }
@@ -1267,8 +1283,35 @@ class AccountCenterManager {
         if (key === 'super_admin') return '超级管理员';
         if (key === 'admin') return '管理员';
         if (key === 'user') return '普通用户';
+        if (key === 'free') return '免费用户';
         if (key === 'anonymous' || key === '') return '匿名用户';
         return String(role || '用户');
+    }
+
+    /**
+     * 是否具备完整账号能力（非免费版）：云端备份上传、集市发布、按项目编号检索共享备份等。
+     * @returns {boolean}
+     */
+    isFullAccountRole() {
+        const roleKey = String(this.authState?.role || '').toLowerCase();
+        return roleKey === 'user' || roleKey === 'admin' || roleKey === 'super_admin';
+    }
+
+    /**
+     * 是否可进入「权限管理」页（管理员或超级管理员）。
+     * @returns {boolean}
+     */
+    isPermissionManagementViewer() {
+        const roleKey = String(this.authState?.role || '').toLowerCase();
+        return roleKey === 'admin' || roleKey === 'super_admin';
+    }
+
+    /**
+     * 是否具备完整角色升降权（仅超级管理员可设 admin、改管理员账号）。
+     * @returns {boolean}
+     */
+    isSuperPermissionManager() {
+        return String(this.authState?.role || '').toLowerCase() === 'super_admin';
     }
 
     /**
@@ -1452,7 +1495,16 @@ class AccountCenterManager {
         const backupBtnText = hasBackup ? '更新备份' : '上传备份';
         const backupIcon = hasBackup ? 'refresh' : 'upload-cloud';
         const revokeDisabled = hasBackup ? '' : 'disabled';
-        const backupButtonDisabled = isCloudOnly ? 'disabled' : '';
+        const tierFull = this.isFullAccountRole();
+        const backupButtonDisabled = isCloudOnly || !tierFull ? 'disabled' : '';
+        const shareButtonDisabled = tierFull ? '' : 'disabled';
+        const cloudDownloadDisabled = tierFull ? '' : 'disabled';
+        let backupUploadTitle = '上传或更新云端备份';
+        if (isCloudOnly) {
+            backupUploadTitle = '仅云端备份条目无法从本机覆盖上传';
+        } else if (!tierFull) {
+            backupUploadTitle = '当前为免费版，云端备份上传不可用';
+        }
         const openButtonDisabled = isCloudOnly ? 'disabled' : '';
         const publishKey = String(s.publishStatusKey || 'unpublished').toLowerCase();
         const publishStatus =
@@ -1479,6 +1531,9 @@ class AccountCenterManager {
             backupIcon,
             revokeDisabled,
             backupButtonDisabled,
+            shareButtonDisabled,
+            cloudDownloadDisabled,
+            backupUploadTitle,
             openButtonDisabled,
             publishStatus,
             projectKeyForDownload: String(s.projectKey || '').trim()
@@ -1514,8 +1569,9 @@ class AccountCenterManager {
                                 data-project-description="${this.escapeHtml(description)}"
                                 data-project-path="${this.escapeHtml(pathKey)}"
                                 data-project-uuid="${this.escapeHtml(uuidKey)}"
-                                title="分享（预留）"
-                                aria-label="分享（预留）"
+                                title="${vm.shareButtonDisabled ? '当前为免费版，发布到创客集市不可用' : '发布到创客集市'}"
+                                aria-label="${vm.shareButtonDisabled ? '当前为免费版，发布到创客集市不可用' : '发布到创客集市'}"
+                                ${vm.shareButtonDisabled || ''}
                             >
                                 <img src="" alt="" width="22" height="22" data-icon="share-2">
                             </button>
@@ -1558,6 +1614,8 @@ class AccountCenterManager {
                                     data-project-name="${this.escapeHtml(projectName)}"
                                     data-project-path="${this.escapeHtml(pathKey)}"
                                     data-project-uuid="${this.escapeHtml(uuidKey)}"
+                                    title="${this.escapeHtml(String(vm.backupUploadTitle || '上传或更新云端备份'))}"
+                                    aria-label="${this.escapeHtml(String(vm.backupUploadTitle || '上传或更新云端备份'))}"
                                     ${vm.backupButtonDisabled || ''}
                                 >
                                     <img src="" alt="" width="18" height="18" data-icon="${this.escapeHtml(String(vm.backupIcon || 'upload-cloud'))}">
@@ -1584,7 +1642,8 @@ class AccountCenterManager {
                                     data-project-backup-download="1"
                                     data-project-key="${this.escapeHtml(String(vm.projectKeyForDownload || ''))}"
                                     data-project-name="${this.escapeHtml(projectName)}"
-                                    title="在项目存储根目录下从 bundle 反序列化并创建项目文件夹"
+                                    title="${vm.cloudDownloadDisabled ? '当前为免费版，从云端恢复备份不可用' : '在项目存储根目录下从 project.bundle.json 反序列化并创建项目文件夹'}"
+                                    ${vm.cloudDownloadDisabled || ''}
                                 >
                                     <img src="" alt="" width="18" height="18" data-icon="download">
                                     <span>下载备份</span>
@@ -2289,6 +2348,10 @@ class AccountCenterManager {
         if (!this.ensureBackupOperationAllowed()) {
             return;
         }
+        if (!this.isFullAccountRole()) {
+            this.showNotification('当前为免费版，云端备份上传功能受限。', 'warning');
+            return;
+        }
         const normalizedPath = this.normalizeProjectPath(projectPath);
         if (!normalizedPath) {
             this.showNotification('项目路径无效，无法上传备份。', 'warning');
@@ -2389,6 +2452,10 @@ class AccountCenterManager {
      * @returns {Promise<void>}
      */
     async downloadProjectBackup(projectKey, projectName) {
+        if (!this.isFullAccountRole()) {
+            this.showNotification('当前为免费版，从云端恢复备份功能受限。', 'warning');
+            return;
+        }
         if (!window.electronAPI?.supabaseDownloadProjectBackup) {
             this.showNotification('当前环境不支持恢复备份。', 'warning');
             return;
@@ -2581,8 +2648,7 @@ class AccountCenterManager {
      * @returns {Promise<void>}
      */
     async refreshPermissionManagement() {
-        const roleKey = String(this.authState?.role || '').toLowerCase();
-        if (roleKey !== 'super_admin') {
+        if (!this.isPermissionManagementViewer()) {
             return;
         }
         await this.refreshPermissionStats();
@@ -2613,6 +2679,7 @@ class AccountCenterManager {
             setText('permission-total-users', Number(stats.totalUsers || 0));
             setText('permission-admin-count', Number(stats.adminCount || 0));
             setText('permission-super-admin-count', Number(stats.superAdminCount || 0));
+            setText('permission-free-count', Number(stats.freeCount || 0));
         } catch (error) {
             this.showNotification(this.localizeAuthMessage(String(error?.message || error || '读取权限统计失败。')) || '读取权限统计失败。', 'error');
         }
@@ -2669,22 +2736,56 @@ class AccountCenterManager {
             this.permissionUsersTbody.innerHTML = '<tr><td colspan="5" class="permission-table-empty">未搜索到匹配账号</td></tr>';
             return;
         }
+        const viewerSuper = this.isSuperPermissionManager();
         this.permissionUsersTbody.innerHTML = this.permissionUsers.map((user) => {
-            const roleKey = String(user?.role || 'user').toLowerCase();
+            const roleKey = String(user?.role || 'free').toLowerCase();
             const roleClass = roleKey.replace(/_/g, '-');
             const roleLabel = this.mapRoleLabel(roleKey);
             const createdText = this.formatDateTime(String(user?.createdAt || '')) || '-';
             const email = this.escapeHtml(String(user?.email || '-'));
             const displayName = this.escapeHtml(String(user?.displayName || '-') || '-');
             const userId = this.escapeHtml(String(user?.id || ''));
-            const disablePromote = roleKey === 'admin' || roleKey === 'super_admin' || this.permissionUpdatingUserIds.has(String(user?.id || ''));
-            const disableDemote = roleKey === 'user' || roleKey === 'super_admin' || this.permissionUpdatingUserIds.has(String(user?.id || ''));
-            const actionButtons = roleKey === 'super_admin'
-                ? '<span style="color:#8b2b52;font-size:12px;">超级管理员不可在此变更</span>'
-                : `
-                <button type="button" class="permission-action-btn" data-permission-role-update="1" data-user-id="${userId}" data-user-email="${email}" data-target-role="admin" ${disablePromote ? 'disabled' : ''}>设为管理员</button>
-                <button type="button" class="permission-action-btn" data-permission-role-update="1" data-user-id="${userId}" data-user-email="${email}" data-target-role="user" ${disableDemote ? 'disabled' : ''}>设为用户</button>
+            const busy = this.permissionUpdatingUserIds.has(String(user?.id || ''));
+            const d = busy ? 'disabled' : '';
+            /** @type {string} */
+            let actionButtons = '';
+            if (roleKey === 'super_admin') {
+                actionButtons = '<span style="color:#8b2b52;font-size:12px;">超级管理员不可在此变更</span>';
+            } else if (roleKey === 'admin') {
+                actionButtons = viewerSuper
+                    ? `
+                <button type="button" class="permission-action-btn" data-permission-role-update="1" data-user-id="${userId}" data-user-email="${email}" data-target-role="user" ${d}>设为用户</button>
+                <button type="button" class="permission-action-btn" data-permission-role-update="1" data-user-id="${userId}" data-user-email="${email}" data-target-role="free" ${d}>设为免费用户</button>
+                `
+                    : '<span style="color:#6c7894;font-size:12px;">无权变更其他管理员</span>';
+            } else if (roleKey === 'user') {
+                actionButtons = viewerSuper
+                    ? `
+                <button type="button" class="permission-action-btn" data-permission-role-update="1" data-user-id="${userId}" data-user-email="${email}" data-target-role="admin" ${d}>设为管理员</button>
+                <button type="button" class="permission-action-btn" data-permission-role-update="1" data-user-id="${userId}" data-user-email="${email}" data-target-role="free" ${d}>设为免费用户</button>
+                `
+                    : `
+                <button type="button" class="permission-action-btn" data-permission-role-update="1" data-user-id="${userId}" data-user-email="${email}" data-target-role="free" ${d}>设为免费用户</button>
                 `;
+            } else if (roleKey === 'free') {
+                actionButtons = viewerSuper
+                    ? `
+                <button type="button" class="permission-action-btn" data-permission-role-update="1" data-user-id="${userId}" data-user-email="${email}" data-target-role="admin" ${d}>设为管理员</button>
+                <button type="button" class="permission-action-btn" data-permission-role-update="1" data-user-id="${userId}" data-user-email="${email}" data-target-role="user" ${d}>设为用户</button>
+                `
+                    : `
+                <button type="button" class="permission-action-btn" data-permission-role-update="1" data-user-id="${userId}" data-user-email="${email}" data-target-role="user" ${d}>设为用户</button>
+                `;
+            } else {
+                actionButtons = viewerSuper
+                    ? `
+                <button type="button" class="permission-action-btn" data-permission-role-update="1" data-user-id="${userId}" data-user-email="${email}" data-target-role="admin" ${d}>设为管理员</button>
+                <button type="button" class="permission-action-btn" data-permission-role-update="1" data-user-id="${userId}" data-user-email="${email}" data-target-role="user" ${d}>设为用户</button>
+                `
+                    : `
+                <button type="button" class="permission-action-btn" data-permission-role-update="1" data-user-id="${userId}" data-user-email="${email}" data-target-role="user" ${d}>设为用户</button>
+                `;
+            }
             return `
                 <tr>
                     <td>${email}</td>
@@ -2698,7 +2799,7 @@ class AccountCenterManager {
     }
 
     /**
-     * 超级管理员修改用户角色。
+     * 管理员或超级管理员修改用户角色（管理员仅可在 free / user 间切换）。
      * @param {string} userId
      * @param {string} role
      * @param {string} email
@@ -2707,7 +2808,12 @@ class AccountCenterManager {
     async handlePermissionRoleUpdate(userId, role, email) {
         const normalizedUserId = String(userId || '').trim();
         const targetRole = String(role || '').trim().toLowerCase();
-        if (!normalizedUserId || !['user', 'admin'].includes(targetRole)) {
+        if (!normalizedUserId || !['free', 'user', 'admin'].includes(targetRole)) {
+            return;
+        }
+        const viewerKey = String(this.authState?.role || '').toLowerCase();
+        if (viewerKey === 'admin' && !['free', 'user'].includes(targetRole)) {
+            this.showNotification('管理员仅可在「普通用户」与「免费用户」之间切换。', 'warning');
             return;
         }
         if (!window.electronAPI?.supabaseUpdateUserRoleBySuperAdmin) {
@@ -2753,6 +2859,10 @@ class AccountCenterManager {
             this.showNotification('请先登录后再发布到创客集市。', 'warning');
             this.switchMainTab('personal-center');
             this.switchSubTab('account-settings');
+            return;
+        }
+        if (!this.isFullAccountRole()) {
+            this.showNotification('当前为免费版，发布到创客集市功能受限。', 'warning');
             return;
         }
         this.marketplacePublishContext = {
@@ -2851,7 +2961,11 @@ class AccountCenterManager {
     async executeMarketplaceSearchAction() {
         this.setMarketplaceSearchButtonLoading(true);
         try {
-            await this.refreshMarketplaceApprovedPosts({ allowNetworkFetch: true, showLoading: false });
+            await this.refreshMarketplaceApprovedPosts({
+                allowNetworkFetch: true,
+                showLoading: false,
+                userInitiatedSearch: true
+            });
         } finally {
             this.setMarketplaceSearchButtonLoading(false);
         }
@@ -2977,7 +3091,7 @@ class AccountCenterManager {
         const needSharedBackupSearch = /^[a-f0-9]{24}$/.test(sharedBackupQuery);
         /** @type {Array<Record<string, unknown>>} */
         let sharedCards = [];
-        if (needSharedBackupSearch && window.electronAPI?.supabaseSearchSharedBackupProjectsByKey) {
+        if (needSharedBackupSearch && this.isFullAccountRole() && window.electronAPI?.supabaseSearchSharedBackupProjectsByKey) {
             const shared = await window.electronAPI.supabaseSearchSharedBackupProjectsByKey({
                 projectKey: sharedBackupQuery
             });
@@ -3224,6 +3338,9 @@ class AccountCenterManager {
             return;
         }
         const grid = this.marketplaceGrid;
+        // 清空「未找到 / 加载中 / 请先登录」等占位，避免与增量插入的卡片叠在一起
+        grid.querySelectorAll(':scope > .account-empty-state').forEach((n) => n.remove());
+        grid.querySelectorAll(':scope > .account-loading-state').forEach((n) => n.remove());
         grid.querySelectorAll('.marketplace-card--shared-backup').forEach((n) => n.remove());
         const sharedHtml = (Array.isArray(sharedCards) ? sharedCards : [])
             .map((item) => this.renderSharedBackupMarketplaceCardHtml(item))
@@ -3271,6 +3388,10 @@ class AccountCenterManager {
      */
     async confirmMarketplacePublish() {
         if (this.marketplacePublishConfirmBtn?.classList.contains('is-uploading')) {
+            return;
+        }
+        if (!this.isFullAccountRole()) {
+            this.showNotification('当前为免费版，发布到创客集市功能受限。', 'warning');
             return;
         }
         if (!this.marketplacePublishContext?.projectPath) {
@@ -3470,7 +3591,8 @@ class AccountCenterManager {
      * @param {{
      *   showLoading?: boolean,
      *   allowNetworkFetch?: boolean,
-     *   preloadedSharedCards?: Array<Record<string, unknown>>
+     *   preloadedSharedCards?: Array<Record<string, unknown>>,
+     *   userInitiatedSearch?: boolean
      * }} [options]
      * @returns {Promise<void>}
      */
@@ -3492,10 +3614,16 @@ class AccountCenterManager {
         const approvedCacheKey = `${query}::${sortBy}`;
         const sharedBackupQuery = String(query || '').trim().toLowerCase();
         const needSharedBackupSearch = /^[a-f0-9]{24}$/.test(sharedBackupQuery);
+        const tierFull = this.isFullAccountRole();
 
         /** @type {Array<Record<string, unknown>>} */
         let sharedCards = Array.isArray(options?.preloadedSharedCards) ? [...options.preloadedSharedCards] : [];
-        if (needSharedBackupSearch && !sharedCards.length && window.electronAPI?.supabaseSearchSharedBackupProjectsByKey) {
+        if (
+            needSharedBackupSearch &&
+            tierFull &&
+            !sharedCards.length &&
+            window.electronAPI?.supabaseSearchSharedBackupProjectsByKey
+        ) {
             const shared = await window.electronAPI.supabaseSearchSharedBackupProjectsByKey({
                 projectKey: sharedBackupQuery
             });
@@ -3524,6 +3652,21 @@ class AccountCenterManager {
         this._marketplaceLastApprovedCacheKey = approvedCacheKey;
         this.touchMarketplaceListCache('approved', approvedCacheKey);
         if (!this.marketplacePosts.length && !sharedCards.length) {
+            // 免费用户按 24 位 project_key 检索共享备份被禁止：不应走「未找到」占位与二次通知，直接清空搜索并拉首页
+            if (needSharedBackupSearch && !tierFull) {
+                if (this.marketplaceSearchInput) {
+                    this.marketplaceSearchInput.value = '';
+                }
+                if (Boolean(options?.userInitiatedSearch)) {
+                    this.showNotification(
+                        '当前为免费版，无法通过项目编号在集市检索共享备份，已为你返回首页列表。',
+                        'info'
+                    );
+                }
+                await this.refreshMarketplaceApprovedPosts({ allowNetworkFetch: true, showLoading: false });
+                this.marketplaceHasLoaded = true;
+                return;
+            }
             if (await this.handleMarketplaceEmptySearchReturnHome(query)) {
                 this.marketplaceHasLoaded = true;
                 return;
@@ -3951,6 +4094,10 @@ class AccountCenterManager {
     async openSharedBackupByProjectKey(projectKey, triggerButton = null) {
         const key = String(projectKey || '').trim().toLowerCase();
         if (!key) {
+            return;
+        }
+        if (!this.isFullAccountRole()) {
+            this.showNotification('当前为免费版，无法通过项目编号复刻共享备份。', 'warning');
             return;
         }
         if (!window.electronAPI?.supabaseGetSharedBackupBundleByProjectKey) {

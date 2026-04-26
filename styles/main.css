@@ -2702,6 +2702,11 @@ body {
     background: #ffe9f3;
 }
 
+.permission-role-chip.role-free {
+    color: #4a5d46;
+    background: #e8f4e4;
+}
+
 .permission-action-btn {
     min-height: 28px;
     border: none;

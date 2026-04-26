@@ -6,6 +6,12 @@
 
 以下 **🎯 日期补充**按**日期降序**排列（最新在上）。
 
+#### 🎯 2026-04-26 补充
+- **管理员可见权限管理并仅切换 user/free（`supabase/sql/006_admin_permission_user_free.sql` / `scripts/account-center.js` / `feature-prd/8-account_prd.md`）**：`get_permission_management_stats` / `list_users_for_permission_management` 对 `admin` 与 `super_admin` 开放；`set_user_role_by_super_admin` 对 `admin` 仅允许目标为 `user`/`free` 且新角色仅 `user`/`free`；前端 `isPermissionManagementViewer` / `isSuperPermissionManager` 控制 Tab 与表格按钮。
+- **新注册用户默认 `free`（`supabase/sql/005_new_user_default_role_free.sql` / `supabase/auth-service.js` / `scripts/account-center.js` / `feature-prd/8-account_prd.md`）**：`user_roles` / `profiles` 列默认值改为 `free`；`ensure_user_role_row_default` 无 `raw_app_meta_data.role` 或非法值时落 `free`；`current_user_role()` 与权限列表 `coalesce` 缺省为 `free`；客户端匿名态默认角色与 RPC 失败回退与之一致。
+- **免费用户角色 `free`（`supabase/sql/004_free_role_and_policies.sql` / `supabase/auth-service.js` / `scripts/account-center.js` / `index.html` / `styles/main.css` / `feature-prd/8-account_prd.md`）**：角色低于 `user`；禁止云端备份上传、从云端恢复备份、集市发布与按 24 位 `project_key` 检索/复刻共享备份；可浏览集市已发布内容并点赞、收藏、从**已发布帖子**复刻。前端登录态 `isFullAccountRole` 与 `showNotification` 提示「当前为免费版…」；Supabase 侧扩展 `user_roles`/`profiles` 枚举、`marketplace_posts` 插入策略与 `project_backups` 插入/共享 `SELECT`（若表已存在）。权限管理支持将账号设为 `free`/`user`/`admin` 并统计免费用户数。
+- **PRD/README 与备份描述对齐实现**：云端备份统一为 **`project.bundle.json`** 序列化/反序列化，移除已过时的 **`__manifest__.json`** 表述。
+
 #### 🎯 2026-04-25 补充
 - **状态匹配问题定位与后续方案记录（`scripts/account-center.js` / `supabase/auth-service.js` / `feature-prd/todo.md`）**：确认生产环境与开发环境项目根路径不一致时，基于 `projectPath` 哈希生成的 `project_key` 无法跨环境稳定命中，导致“我的项目”卡片显示无备份/未发布；本次先记录不改逻辑，后续计划在 `circuit_config.json` 引入稳定 `uuid`，并在旧项目再次保存时自动补齐，状态匹配改为 `uuid` 优先（路径兜底）。
 - **复刻项目工作区路由与快照桥接修复（`scripts/agent/skills-agent-loop.js` / `scripts/skills/renderer-engine-bridge.js` / `scripts/circuit-skills-engine.js` / `scripts/chat.js`）**：修复 `marketplace-session://` 场景下主进程工作区工具误走磁盘导致 `ENOENT`；新增主进程到渲染进程的项目快照桥接 `getProjectWorkspaceSnapshotForSkill`，并在 skills-loop 中对复刻项目分支改为读取前端内存文件快照（bundle + 编辑器代码），`list/read/grep/explore/verify` 不再依赖本地目录。
@@ -28,7 +34,7 @@
 - **集市内存项目 · 防重复标签（`scripts/main.js` / `scripts/project-tabs.js` / `scripts/account-center.js`）**：虚拟路径与帖 id **小写规范化**；**`projectData.marketplacePostId`** 与标签对象 **`marketplacePostId`**；**`findOpenMarketplaceSessionByPostId`** 按 `path` / `projectData.path` / 帖 id 补查，避免 `findProjectByPath` 漏检导致同一待审帖多次「查看细节」新开重复标签；详情按钮 **`bundleOpenPostId`** 优先使用打开详情的 **`postId`**，与 **`detail.id`** 对齐。
 
 #### 🎯 2026-04-24 补充
-- **个人中心 · 我的项目 · 云端备份（`scripts/account-center.js` / `styles/main.css` / `preload.js` / `main.js` / `supabase/auth-service.js`）**：在登录态下列出本地项目卡片并展示备份状态；支持 **上传/更新备份**、**撤销备份**、**下载恢复到本地**；本地项目路径与列表键统一 **`\` → `/` 归一化**；备份清单 **`__manifest__.json`** 映射原始相对路径与安全存储名；单方案备份体积上限 **5MB**、每用户最多 **10** 个不同方案备份（更新已有方案不计入新增上限）。
+- **个人中心 · 我的项目 · 云端备份（`scripts/account-center.js` / `styles/main.css` / `preload.js` / `main.js` / `supabase/auth-service.js`）**：在登录态下列出本地项目卡片并展示备份状态；支持 **上传/更新备份**、**撤销备份**、**下载恢复到本地**；本地项目路径与列表键统一 **`\` → `/` 归一化**；备份与集市一致为单文件 **`project.bundle.json`**（序列化 `circuit_config.json` 与 `.json`/`.ino`，格式 `fast-hardware-marketplace-project-v1`），下载时反序列化还原；单方案备份体积上限 **5MB**、每用户最多 **10** 个不同方案备份（更新已有方案不计入新增上限）。
 - **撤销备份可靠性（`supabase/auth-service.js`）**：先删除 **`project_backups`** 表记录并用 **`delete().select('id')`** 校验实际删除行数，再清理 Storage，避免 RLS 下「0 行删除仍返回成功」；无删除权限时返回明确错误文案。
 - **Supabase RLS**：为 **`public.project_backups`** 增加 **`project_backups_delete_own`**（`authenticated` 且 **`user_id = auth.uid()`** 可 `DELETE`），与撤销备份主进程逻辑配套。
 - **撤销备份交互（`scripts/account-center.js` / `styles/main.css`）**：与上传一致的 **加载态**（转圈 + 背景进度条 + 防重复点击）；**`refreshMyProjects` 后** `setRevokeButtonLoading(false)` 按 **`projectBackupMap`** 恢复 **`disabled`**，避免无备份时撤销按钮仍为可点态。

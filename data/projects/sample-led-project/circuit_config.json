@@ -1,7 +1,7 @@
 {
   "uuid": "ff82be62-fe6e-406d-8036-3bdc91a0487a",
   "projectName": "sample-led-project",
-  "description": "通过Fast Hardware创建的电路设计",
+  "description": "默认示例项目，项目存储地址请在系统设置页的项目文件夹下查看或更改（若需删除此项目，请打开对应的项目文件夹路径删除）",
   "version": "1.0.0",
   "createdAt": "2026-04-24T13:04:34.755Z",
   "lastModified": "2026-04-25T13:21:07.491Z",

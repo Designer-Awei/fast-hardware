@@ -373,18 +373,28 @@ async function tryReadCurrentUserRole(client) {
   try {
     const { data, error } = await client.rpc('current_user_role');
     if (error) {
-      return 'user';
+      return 'free';
     }
     if (typeof data === 'string' && data.trim()) {
       return data.trim().toLowerCase();
     }
     if (Array.isArray(data) && data[0] && typeof data[0].current_user_role === 'string') {
-      return String(data[0].current_user_role || 'user').trim().toLowerCase() || 'user';
+      return String(data[0].current_user_role || 'free').trim().toLowerCase() || 'free';
     }
-    return 'user';
+    return 'free';
   } catch {
-    return 'user';
+    return 'free';
   }
+}
+
+/**
+ * 是否具备付费档账号能力（非 `free`）：云端备份上传、集市发布、按项目编号检索/复刻他人共享备份等。
+ * @param {string} role
+ * @returns {boolean}
+ */
+function hasPaidAccountCapabilities(role) {
+  const r = String(role || '').trim().toLowerCase();
+  return r === 'user' || r === 'admin' || r === 'super_admin';
 }
 
 /**
@@ -398,7 +408,7 @@ function normalizeUserState(user, profile = {}) {
     email: String(user?.email || ''),
     id: String(user?.id || ''),
     displayName: String(profile.displayName || user?.user_metadata?.display_name || user?.email || ''),
-    role: String(profile.role || 'user'),
+    role: String(profile.role || 'free'),
     provider: String(profile.provider || user?.app_metadata?.provider || 'email'),
     avatarUrl: String(profile.avatarUrl || user?.user_metadata?.avatar_url || '')
   };
@@ -1141,6 +1151,10 @@ async function uploadProjectBackup(payload) {
   if (userError || !user?.id) {
     return { success: false, error: userError?.message || '当前未登录，无法上传项目备份。' };
   }
+  const accountRole = await tryReadCurrentUserRole(client);
+  if (!hasPaidAccountCapabilities(accountRole)) {
+    return { success: false, error: '当前为免费版，云端备份上传功能不可用。' };
+  }
   const projectPathRaw = String(payload?.projectPath || '').trim();
   const projectUuid = normalizeProjectUuid(payload?.projectUuid || '');
   if (!projectPathRaw) {
@@ -1329,6 +1343,10 @@ async function searchSharedBackupProjectsByKey(payload) {
   if (userError || !userId) {
     return { success: false, error: '请先登录后再查询共享项目。' };
   }
+  const searchRole = await tryReadCurrentUserRole(client);
+  if (!hasPaidAccountCapabilities(searchRole)) {
+    return { success: false, error: '当前为免费版，无法通过项目编号检索共享备份。' };
+  }
   const projectKey = String(payload?.projectKey || '').trim().toLowerCase();
   if (!isValidProjectKey(projectKey)) {
     return { success: true, projects: [] };
@@ -1381,6 +1399,10 @@ async function getSharedBackupBundleByProjectKey(payload) {
   const userId = String(userData?.user?.id || '').trim();
   if (userError || !userId) {
     return { success: false, error: '请先登录后再复刻共享项目。' };
+  }
+  const bundleRole = await tryReadCurrentUserRole(client);
+  if (!hasPaidAccountCapabilities(bundleRole)) {
+    return { success: false, error: '当前为免费版，无法通过项目编号复刻共享备份。' };
   }
   const projectKey = String(payload?.projectKey || '').trim().toLowerCase();
   if (!isValidProjectKey(projectKey)) {
@@ -1464,7 +1486,7 @@ async function deleteProjectBackup(payload) {
 }
 
 /**
- * @returns {Promise<{ success: boolean, stats?: { totalUsers: number, adminCount: number, superAdminCount: number }, error?: string }>}
+ * @returns {Promise<{ success: boolean, stats?: { totalUsers: number, adminCount: number, superAdminCount: number, freeCount: number }, error?: string }>}
  */
 async function getPermissionManagementStats() {
   const client = getAuthClient();
@@ -1478,7 +1500,8 @@ async function getPermissionManagementStats() {
     stats: {
       totalUsers: Number(row.total_users || 0),
       adminCount: Number(row.admin_count || 0),
-      superAdminCount: Number(row.super_admin_count || 0)
+      superAdminCount: Number(row.super_admin_count || 0),
+      freeCount: Number(row.free_count || 0)
     }
   };
 }
@@ -1511,14 +1534,14 @@ async function listUsersForPermissionManagement(payload) {
       id: String(row.user_id || ''),
       email: String(row.email || ''),
       displayName: String(row.display_name || ''),
-      role: String(row.role || 'user'),
+      role: String(row.role || 'free'),
       createdAt: String(row.created_at || '')
     }))
   };
 }
 
 /**
- * @param {{ userId?: string, role?: 'user'|'admin' }} payload
+ * @param {{ userId?: string, role?: 'free'|'user'|'admin' }} payload
  * @returns {Promise<{ success: boolean, message?: string, error?: string }>}
  */
 async function updateUserRoleBySuperAdmin(payload) {
@@ -1528,8 +1551,8 @@ async function updateUserRoleBySuperAdmin(payload) {
   if (!userId || !role) {
     return { success: false, error: '缺少用户标识或目标角色。' };
   }
-  if (!['user', 'admin'].includes(role)) {
-    return { success: false, error: '仅支持设置为 user 或 admin。' };
+  if (!['free', 'user', 'admin'].includes(role)) {
+    return { success: false, error: '仅支持设置为 free、user 或 admin。' };
   }
   const { data, error } = await client.rpc('set_user_role_by_super_admin', {
     p_user_id: userId,
@@ -1976,6 +1999,9 @@ async function publishMarketplacePost(payload) {
     return { success: false, error: userError?.message || '当前未登录，无法发布项目。' };
   }
   const role = await tryReadCurrentUserRole(client);
+  if (!hasPaidAccountCapabilities(role)) {
+    return { success: false, error: '当前为免费版，无法发布项目到创客集市。' };
+  }
   const isUnlimitedPublisher = role === 'admin' || role === 'super_admin';
   const projectPathRaw = String(payload?.projectPath || '').trim();
   const projectUuid = normalizeProjectUuid(payload?.projectUuid || '');

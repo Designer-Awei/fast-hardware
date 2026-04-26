@@ -106,6 +106,10 @@
         ]
       },
       {
+        "from": "data/projects/sample-led-project",
+        "to": "data/projects/sample-led-project"
+      },
+      {
         "from": ".env.supabase",
         "to": "."
       }

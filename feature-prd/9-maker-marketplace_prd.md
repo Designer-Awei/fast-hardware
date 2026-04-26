@@ -194,14 +194,14 @@ marketplace-public/{post_id}/code-snippet.txt
 
 ### 6.4 `project_backups` 共享查询策略（新增）
 
-- 上传/更新/删除：仍按“仅本人行”约束（`user_id = auth.uid()`）。
-- 为支持“按项目编号复用”，增加登录用户共享读取策略：
+- 上传/更新/删除：仍按“仅本人行”约束（`user_id = auth.uid()`）；**`free` 角色** 禁止 `INSERT` 备份行（与 `004_free_role_and_policies.sql` 一致）。
+- 为支持“按项目编号复用”，增加 **非免费** 登录用户共享读取策略（仅可 `SELECT` **他人** `user_id` 行）：
   - 策略名示例：`project_backups_select_shared_authenticated`
-  - 规则：`authenticated` 可 `SELECT`（服务端接口继续只返回必要字段）。
+  - 规则：`authenticated` 且 `user_roles.role in ('user','admin','super_admin')`（服务端接口继续只返回必要字段）。
 
 ### 6.2 写入与审核
 
-- 普通用户只允许 `insert own pending`
+- **`user` / `admin` / `super_admin`** 允许 `insert own pending`；**`free`** 禁止插入待审帖子（RLS + 前端双保险，见 `004_free_role_and_policies.sql`）
 - 用户不可直接把 `status` 改为 `approved/rejected`
 - 审核操作仅管理员/超级管理员可执行（建议走 RPC）
 
