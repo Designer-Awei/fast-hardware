@@ -2,6 +2,16 @@
 
 ## 📝 更新日志
 
+### 🎉 v0.2.9 (2026-06-27) — 聊天 @ Skill 与 Agent 编排
+
+- **聊天 @ Skill 点名（`scripts/chat.js` / `index.html` / `styles/main.css` / `main.js` / `scripts/agent/skills-agent-loop.js` / `scripts/agent/skills-agent-shared.js`）**：输入框输入 `@` 弹出 Skill 浮窗（短标题 + 一句简介 + `@skill_name`）；选中后插入**不可编辑芯片**（浅蓝高亮、`contenteditable` 输入区），`←`/`→` 整块跳过、`Backspace`/`Delete` 整颗删除；发送时仍序列化为 `@scheme_design_skill` 等纯文本。消息含合法 `@skill` 时**强制**走 `runSkillsAgentLoop`。
+- **Agent 首轮 Skill 建议并集（`skills-agent-loop.js` / `skills-agent-shared.js`）**：首轮 prompt 注入「用户 @ 点名 + SKILL.md keywords 命中 + 对话路由推断」三路**并集**（`extractAtMentionedSkills` / `mergeSuggestedSkillsForRun` / `inferRoutingSuggestedSkills`），替代原先仅 keywords 单行提示，单次编排覆盖更全。
+- **Skills 对话路由放宽（`scripts/chat.js` / `scripts/agent/skills-agent-shared.js`）**：修复方案/选型/显式 skill 名等句落入「默认直连短答」、不进 Agent 的问题；新增 `userMessageSuggestsSchemeOrCompletionAgent`、`moderateProjectIntent`（≥20 字硬件方案句）等；`userMessageSuggestsSkillOrchestration` 修复「仅放宽字数、不触发 Agent」逻辑；`preferBriefAnswerFirst` 在强设计意图时不误伤直连。
+- **Agent 终答 Markdown 渲染（`scripts/chat.js` / `scripts/agent/skills-agent-shared.js`）**：修复 `runSkillsAgentLoop` 结束后 `#`、`**`、表格等语法原样露出；流式阶段避免 `textContent` 覆盖已渲染 HTML；`extractRenderableMarkdownFromAgentSynthesis` 对非 JSON 信封与缺 `final_message` 字段做回退，保证可渲染正文。
+- **复刻/快照/固件 E2E 回归（`e2e/lib/scenario-runner.js` / `e2e/scenarios/04-marketplace-fork-memory-workspace.json` / `e2e/scenarios/05-marketplace-fork-firmware-reject-rollback.json` / `e2e/README.md`）**：内存态 `marketplace-session://` 打开本地 bundle；场景 04 覆盖复刻 → 画布快照 → 读 `.ino` / 大 JSON 续读；场景 05 覆盖固件补丁 → Reject All 后代码区不为空且不含错误波特率；`feature-prd/todo.md` 同步标记相关项。
+
+> **v0.2.9 已发布**：根目录 `package.json` 的 `version` 为 **0.2.9**；展示用文案与安装包命名以 `npm run sync-version` 及构建产物为准。
+
 ### 🎉 v0.2.8 (2026-04-24) — 账号与个人中心、云端备份
 
 以下 **🎯 日期补充**按**日期降序**排列（最新在上）。

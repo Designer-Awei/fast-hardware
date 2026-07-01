@@ -944,7 +944,7 @@ async function fetchPublicPageText({ hostname, path: requestPath }) {
       path: requestPath,
       method: 'GET',
       headers: {
-        'User-Agent': 'Fast-Hardware/0.2.8'
+        'User-Agent': 'Fast-Hardware/0.2.9'
       }
     }, (res) => {
       let responseBody = '';
@@ -2487,6 +2487,9 @@ ipcMain.handle('run-skills-agent-loop', async (event, payload) => {
   const temperature = typeof p.temperature === 'number' ? p.temperature : 0.2;
   const canvasSnapshot = p.canvasSnapshot;
   const projectPath = String(p.projectPath || '').trim();
+  const userSelectedSkills = Array.isArray(p.userSelectedSkills)
+    ? p.userSelectedSkills.map((s) => String(s || '').trim()).filter(Boolean)
+    : undefined;
 
   try {
     const result = await runSkillsAgentLoop(event.sender, {
@@ -2495,6 +2498,7 @@ ipcMain.handle('run-skills-agent-loop', async (event, payload) => {
       temperature,
       canvasSnapshot,
       projectPath,
+      userSelectedSkills,
       callLLM: async (messages, mdl, temp, meta) => {
         const temperature = typeof temp === 'number' ? temp : 0.2;
         if (meta && meta.mode === 'stream_markdown') {

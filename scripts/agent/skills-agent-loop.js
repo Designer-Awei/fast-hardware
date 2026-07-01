@@ -26,6 +26,9 @@ const {
   getSkillResultPhaseLabel,
   getSkillProgressSlug,
   buildSkillsAgentUserPrompt,
+  extractAtMentionedSkills,
+  mergeSuggestedSkillsForRun,
+  inferRoutingSuggestedSkills,
   maybeCompactToolResultForAgentLoop,
   estimateToolResultJsonChars,
   TOOL_RESULT_COMPACT_THRESHOLD_CHARS,
@@ -148,6 +151,7 @@ function matchKeywordTriggeredSkills(userMessage) {
  * @property {number} [temperature]
  * @property {unknown} [canvasSnapshot]
  * @property {string} [projectPath] - 当前打开项目的本地根路径（绝对路径）；非空时注入工作区读盘工具并与 skills 并列 tool_calls
+ * @property {string[]} [userSelectedSkills] - 渲染进程解析的 `@skill` 点名列表（与关键词/路由推断并集）
  * @property {(messages: Array<{role:string, content:string}>, model: string, temperature?: number, meta?: { mode?: 'stream_markdown' }) => Promise<{ content: string }>} callLLM
  * @property {(webContents: import('electron').WebContents, payload: { skillName: string, args?: unknown, ctxPayload?: { userRequirement?: string, canvasSnapshot?: unknown, projectPath?: string } }) => Promise<unknown>} [executeSkill] - 真测等场景注入，缺省走 `executeSkillInMain`
  */
@@ -784,16 +788,24 @@ async function runSkillsAgentLoop(webContents, options) {
     const webSearchCapReached =
       webPriority && webSearchExaInvokeCount >= maxWebSearchExaPerRun && !webSearchCalled;
 
-    const triggeredSkills = iter === 0 ? matchKeywordTriggeredSkills(userMessage) : [];
-    const keywordHint =
-      triggeredSkills.length > 0
-        ? `\n\n【首轮关键词触发建议】以下 skills 命中 keywords，可与模型判断取并集参考：${triggeredSkills.join(', ')}`
-        : '';
-    const prompt = `${buildSkillsAgentUserPrompt(skills, toolResults, userMessage, webPriority, {
+    const allSkillNames = skills.map((s) => s.name);
+    const userAtSelected = Array.isArray(options.userSelectedSkills)
+      ? options.userSelectedSkills.map((s) => String(s || '').trim()).filter(Boolean)
+      : extractAtMentionedSkills(userMessage, allSkillNames);
+    const suggestedSkills =
+      iter === 0
+        ? mergeSuggestedSkillsForRun(
+            userAtSelected,
+            matchKeywordTriggeredSkills(userMessage),
+            inferRoutingSuggestedSkills(userMessage)
+          )
+        : [];
+    const prompt = buildSkillsAgentUserPrompt(skills, toolResults, userMessage, webPriority, {
       workspaceTools,
       projectPath,
-      webSearchCapReached
-    })}${keywordHint}`;
+      webSearchCapReached,
+      suggestedSkills
+    });
 
     if (shouldAbort()) {
       return buildAbortedResult();

@@ -160,7 +160,8 @@
                             </div>
                         </div>
                         <div class="chat-input-area">
-                            <textarea id="chat-input" placeholder="描述你想要实现的硬件功能，我来帮你设计电路..." rows="3"></textarea>
+                            <div id="chat-input" class="chat-input-editor" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="描述硬件需求；输入 @ 可点名 Skill…"></div>
+                            <div id="skill-mention-popup" class="skill-mention-popup" role="listbox" hidden aria-label="Skill 选择"></div>
 
                             <!-- 输入控制栏 -->
                             <div class="input-controls">
@@ -586,7 +587,7 @@
                                 </div>
                                 <div class="card-info">
                                     <h3>关于</h3>
-                                    <p id="about-version-text">Fast Hardware v0.2.8</p>
+                                    <p id="about-version-text">Fast Hardware v0.2.9</p>
                                 </div>
                             </div>
                             <div class="card-content">

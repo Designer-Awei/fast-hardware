@@ -91,6 +91,11 @@ function needsWebSearchPriority(userMessage) {
     t.length >= 72 &&
     /方案|设计|实现|搭建|开发|传感器|执行器|主控|嵌入式|电路|硬件|控制|监测|自动化|装置|系统|飞控|云台|整机/.test(t) &&
     /需要|要做|想做一个|想做个|想做|帮我|如何|怎么|哪些|清单|架构|逻辑|条件|指标/.test(t);
+  const moderateProjectIntent =
+    t.length >= 20 &&
+    /(?:方案|选型|设计).{0,40}(?:硬件|电路|云台|系统|嵌入式|物联网|控制|装置)|(?:硬件|电路|云台|物联网|嵌入式).{0,40}(?:方案|选型|设计)/i.test(
+      t
+    );
 
   return (
     marketLike ||
@@ -98,7 +103,8 @@ function needsWebSearchPriority(userMessage) {
     explicitWeb ||
     moduleOrPartSelection ||
     similarSolutionIntent ||
-    substantialProjectIntent
+    substantialProjectIntent ||
+    moderateProjectIntent
   );
 }
 
@@ -390,12 +396,19 @@ function extractRenderableMarkdownFromAgentSynthesis(text) {
   const raw = String(text || '').trim();
   if (!raw) return '';
 
+  const looksLikeJsonEnvelope =
+    raw.startsWith('{') || /^```(?:json|markdown)?\s/i.test(raw);
+
+  if (!looksLikeJsonEnvelope) {
+    return sanitizeAgentFinalMessage(raw);
+  }
+
   const parsed = parseJsonLoose(raw);
   if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
     if (typeof parsed.final_message === 'string' && parsed.final_message.trim()) {
       return sanitizeAgentFinalMessage(parsed.final_message);
     }
-    return '';
+    return sanitizeAgentFinalMessage(raw);
   }
 
   return sanitizeAgentFinalMessage(raw);
@@ -535,17 +548,118 @@ function getSkillResultPhaseLabel(skillName, success, webResultCount) {
 }
 
 /**
+ * 从用户消息中解析 `@skill_name` 点名（仅识别已知 skill 全名）。
+ * @param {string} userMessage
+ * @param {string[]} [knownSkillNames]
+ * @returns {string[]}
+ */
+function extractAtMentionedSkills(userMessage, knownSkillNames) {
+  const names = Array.isArray(knownSkillNames)
+    ? knownSkillNames
+    : getSkillsForAgentList().map((s) => s.name);
+  const lowerToCanonical = new Map();
+  for (const n of names) {
+    const canon = String(n || '').trim();
+    if (canon) lowerToCanonical.set(canon.toLowerCase(), canon);
+  }
+  const out = [];
+  const seen = new Set();
+  const text = String(userMessage || '');
+  const re = /@([a-z][a-z0-9_]*)/gi;
+  let m;
+  while ((m = re.exec(text))) {
+    const canon = lowerToCanonical.get(String(m[1] || '').toLowerCase());
+    if (canon && !seen.has(canon)) {
+      seen.add(canon);
+      out.push(canon);
+    }
+  }
+  return out;
+}
+
+/**
+ * 多路 skill 建议取并集（去重、保序）。
+ * @param {...(string[]|undefined|null)} lists
+ * @returns {string[]}
+ */
+function mergeSuggestedSkillsForRun(...lists) {
+  const out = [];
+  const seen = new Set();
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue;
+    for (const item of list) {
+      const n = String(item || '').trim();
+      if (!n || seen.has(n)) continue;
+      seen.add(n);
+      out.push(n);
+    }
+  }
+  return out;
+}
+
+/**
+ * 根据对话路由语义推断「建议优先考虑」的 skills（与渲染进程 `_dispatchAfterTextUserMessage` 对齐）。
+ * @param {string} userMessage
+ * @returns {string[]}
+ */
+function inferRoutingSuggestedSkills(userMessage) {
+  const t = String(userMessage || '');
+  if (!t.trim()) return [];
+  /** @type {string[]} */
+  const out = [];
+  const add = (name) => {
+    if (name && !out.includes(name)) out.push(name);
+  };
+  if (needsWebSearchPriority(t)) {
+    add('web_search_exa');
+  }
+  if (
+    /方案设计|硬件方案|电路方案|系统方案|完整方案|元件选型|模块选型|选型方案|选型建议|帮我选型|BOM|物料清单|缺件|补全.{0,4}型号|推荐.{0,8}型号|具体型号|可采购|生成.{0,2}方案|出.{0,2}方案|做.{0,2}方案|设计方案|帮我设计|设计一个|想做一个|想做个|想做一?个/i.test(
+      t
+    ) ||
+    /(?:电机|芯片|传感器|模块|MCU|主控|执行器|云台|飞控|物联网).{0,20}选型|选型.{0,12}(?:电机|芯片|传感器|模块|MCU)/i.test(
+      t
+    )
+  ) {
+    add('scheme_design_skill');
+    add('completion_suggestion_skill');
+  }
+  if (
+    /连线|接线|补线|改线|连一下|接上|连上|飞线|自动连线|帮我连|帮(?:我)?(?:在)?画(?:布|板)(?:上)?(?:把|将)?.*连|画(?:布|板)(?:上)?.*(?:连|接)|电路(?:里)?.*(?:连|接)|引脚\s*(?:怎么|如何)?\s*连|GPIO\s*\d+.*连|wiring_edit|add_connection|remove_connection/i.test(
+      t
+    )
+  ) {
+    add('wiring_edit_skill');
+  }
+  if (
+    /固件|代码补丁|改代码|改固件|生成代码|示例代码|示例程序|写(?:个|一段)?(?:示例)?代码|\.ino|arduino|codegen|firmware|烧录|sketch|补丁/i.test(
+      t
+    ) ||
+    /(写|生成|给|编|出|来)(?:我|个|一)?(?:段)?(?:点)?(?:示例|示范)?(程序|代码|sketch)/i.test(t)
+  ) {
+    add('firmware_codegen_skill');
+  }
+  if (/@web_search_exa|web_search_exa/i.test(t) && /摘要|总结|要点|summarize/i.test(t)) {
+    add('summarize_skill');
+  }
+  return out;
+}
+
+/**
  * @param {Array<{name:string, description:string}>} skills
  * @param {Array<{toolCallId?:string, skillName:string, args?:any, result?:any}>} toolResults
  * @param {string} userMessage
  * @param {boolean} needsWebPriority
- * @param {{ workspaceTools?: Array<{name:string, description:string}>, projectPath?: string, webSearchCapReached?: boolean }} [options]
+ * @param {{ workspaceTools?: Array<{name:string, description:string}>, projectPath?: string, webSearchCapReached?: boolean, suggestedSkills?: string[] }} [options]
  * @returns {string}
  */
 function buildSkillsAgentUserPrompt(skills, toolResults, userMessage, needsWebPriority, options = {}) {
   const workspaceTools = Array.isArray(options.workspaceTools) ? options.workspaceTools : [];
   const projectPath = String(options.projectPath || '').trim();
   const webSearchCapReached = !!options.webSearchCapReached;
+  const suggestedSkills = Array.isArray(options.suggestedSkills)
+    ? options.suggestedSkills.map((s) => String(s || '').trim()).filter(Boolean)
+    : [];
   const firmwareAlreadySucceeded = hasSuccessfulFirmwareCodegenInResults(toolResults);
   const workspaceSection =
     workspaceTools.length && projectPath
@@ -606,6 +720,14 @@ function buildSkillsAgentUserPrompt(skills, toolResults, userMessage, needsWebPr
     '4) 推荐写法示例：据某某报道（[新华网](https://www.news.cn/...)）……；文末可增加「### 参考资料」列出本次用到的全部链接。',
     '',
     workspaceSection,
+    suggestedSkills.length
+      ? [
+          '【本轮建议优先考虑的 skills】',
+          '以下来自：用户输入框 @ 点名、SKILL.md keywords 命中、对话路由推断的**并集**（请与自主判断再取并集，尽量覆盖用户意图；非强制唯一顺序）：',
+          suggestedSkills.join(', '),
+          ''
+        ].join('\n')
+      : '',
     '可用 skills：',
     JSON.stringify(skills, null, 2),
     '',
@@ -1123,6 +1245,9 @@ function toolResultPlainTextForUi(skillName, result, maxChars = 4800) {
 
 module.exports = {
   extractBalancedJsonObject,
+  extractAtMentionedSkills,
+  mergeSuggestedSkillsForRun,
+  inferRoutingSuggestedSkills,
   getSkillsForAgentList,
   isRealtimeQuery,
   needsWebSearchPriority,

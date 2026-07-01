@@ -15,6 +15,320 @@ import {
     workspaceToolShortNameForUi
 } from './tools/workspace-direct-chat-tools.mjs';
 
+/** 与 `getSkillsForAgent` / 主进程 `getSkillsForAgentList` 一致的 skill 名 */
+const KNOWN_AGENT_SKILL_NAMES = Object.freeze([
+    'scheme_design_skill',
+    'web_search_exa',
+    'completion_suggestion_skill',
+    'summarize_skill',
+    'wiring_edit_skill',
+    'firmware_codegen_skill'
+]);
+
+/** @ 浮窗展示用短标题 */
+const SKILL_PICKER_SHORT_LABEL = Object.freeze({
+    scheme_design_skill: '方案设计',
+    web_search_exa: '联网检索',
+    completion_suggestion_skill: '器件补全',
+    summarize_skill: '摘要提炼',
+    wiring_edit_skill: '画布连线',
+    firmware_codegen_skill: '固件补丁'
+});
+
+/** @ 浮窗一行简介（勿用 LLM 长 description） */
+const SKILL_PICKER_BRIEF = Object.freeze({
+    scheme_design_skill: '生成硬件方案并匹配元件库',
+    web_search_exa: '检索网络补全资料',
+    completion_suggestion_skill: '补全缺件的具体型号',
+    summarize_skill: '提炼检索或长文要点',
+    wiring_edit_skill: '在画布上自动连线',
+    firmware_codegen_skill: '生成或修订固件补丁'
+});
+
+/** 构建 @skill 匹配正则 */
+const KNOWN_AGENT_SKILL_MENTION_RE = new RegExp(
+    `@(${KNOWN_AGENT_SKILL_NAMES.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`,
+    'gi'
+);
+
+/**
+ * 从用户消息解析 `@skill_name`（仅识别 {@link KNOWN_AGENT_SKILL_NAMES}）。
+ * @param {string} text
+ * @param {readonly string[]} [knownNames]
+ * @returns {string[]}
+ */
+function extractAtMentionedSkillsFromMessage(text, knownNames = KNOWN_AGENT_SKILL_NAMES) {
+    const lowerToCanonical = new Map();
+    for (const n of knownNames) {
+        const canon = String(n || '').trim();
+        if (canon) lowerToCanonical.set(canon.toLowerCase(), canon);
+    }
+    const out = [];
+    const seen = new Set();
+    const re = /@([a-z][a-z0-9_]*)/gi;
+    let m;
+    const src = String(text || '');
+    while ((m = re.exec(src))) {
+        const canon = lowerToCanonical.get(String(m[1] || '').toLowerCase());
+        if (canon && !seen.has(canon)) {
+            seen.add(canon);
+            out.push(canon);
+        }
+    }
+    return out;
+}
+
+/**
+ * @param {string} skillName
+ * @returns {HTMLSpanElement}
+ */
+function createSkillMentionChipElement(skillName) {
+    const span = document.createElement('span');
+    span.className = 'skill-mention-chip';
+    span.contentEditable = 'false';
+    span.setAttribute('data-skill-name', skillName);
+    span.textContent = `@${skillName}`;
+    return span;
+}
+
+/**
+ * @param {Node} node
+ * @returns {string}
+ */
+function chatInputNodeToPlainText(node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+        return node.textContent || '';
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+        return '';
+    }
+    const el = /** @type {HTMLElement} */ (node);
+    if (el.classList.contains('skill-mention-chip')) {
+        const name = el.getAttribute('data-skill-name');
+        return name ? `@${name}` : el.textContent || '';
+    }
+    if (el.tagName === 'BR') {
+        return '\n';
+    }
+    let out = '';
+    for (const child of el.childNodes) {
+        out += chatInputNodeToPlainText(child);
+    }
+    return out;
+}
+
+/**
+ * @param {Range} range
+ * @returns {string}
+ */
+function chatInputRangeToPlainText(range) {
+    const frag = range.cloneContents();
+    let out = '';
+    for (const child of frag.childNodes) {
+        out += chatInputNodeToPlainText(child);
+    }
+    return out;
+}
+
+/**
+ * @param {Node} node
+ * @returns {number}
+ */
+function chatInputNodePlainLength(node) {
+    return chatInputNodeToPlainText(node).length;
+}
+
+/**
+ * @param {HTMLElement} container
+ * @param {string} text
+ * @returns {void}
+ */
+function setChatInputPlainTextWithChips(container, text) {
+    container.innerHTML = '';
+    const s = String(text || '');
+    if (!s) {
+        return;
+    }
+    let last = 0;
+    const re = new RegExp(KNOWN_AGENT_SKILL_MENTION_RE.source, 'gi');
+    let m;
+    while ((m = re.exec(s))) {
+        if (m.index > last) {
+            container.appendChild(document.createTextNode(s.slice(last, m.index)));
+        }
+        const canon =
+            KNOWN_AGENT_SKILL_NAMES.find((n) => n.toLowerCase() === String(m[1] || '').toLowerCase()) ||
+            m[1];
+        container.appendChild(createSkillMentionChipElement(canon));
+        last = m.index + m[0].length;
+    }
+    if (last < s.length) {
+        container.appendChild(document.createTextNode(s.slice(last)));
+    }
+}
+
+/**
+ * @param {HTMLElement} container
+ * @returns {string}
+ */
+function getChatInputPlainText(container) {
+    let out = '';
+    for (const child of container.childNodes) {
+        out += chatInputNodeToPlainText(child);
+    }
+    return out;
+}
+
+/**
+ * @param {HTMLElement} container
+ * @param {Range} range
+ * @param {number} targetOffset
+ * @returns {boolean}
+ */
+function setChatInputRangeToPlainOffset(container, range, targetOffset) {
+    let pos = 0;
+    const childNodes = Array.from(container.childNodes);
+    for (let i = 0; i < childNodes.length; i++) {
+        const node = childNodes[i];
+        const seg = chatInputNodePlainLength(node);
+        if (pos + seg >= targetOffset) {
+            if (node.nodeType === Node.TEXT_NODE) {
+                range.setStart(node, Math.max(0, targetOffset - pos));
+                return true;
+            }
+            if (node.nodeType === Node.ELEMENT_NODE) {
+                const el = /** @type {HTMLElement} */ (node);
+                if (el.classList.contains('skill-mention-chip')) {
+                    if (targetOffset <= pos) {
+                        range.setStart(container, i);
+                    } else {
+                        range.setStart(container, i + 1);
+                    }
+                    return true;
+                }
+                if (setChatInputRangeToPlainOffset(el, range, targetOffset - pos)) {
+                    return true;
+                }
+            }
+        }
+        pos += seg;
+    }
+    range.setStart(container, childNodes.length);
+    return true;
+}
+
+/**
+ * @param {HTMLElement} container
+ * @param {number} offset
+ * @returns {void}
+ */
+function setChatInputCaretPlainOffset(container, offset) {
+    const range = document.createRange();
+    setChatInputRangeToPlainOffset(container, range, offset);
+    range.collapse(true);
+    const sel = window.getSelection();
+    if (!sel) return;
+    sel.removeAllRanges();
+    sel.addRange(range);
+}
+
+/**
+ * @param {HTMLElement} container
+ * @returns {number}
+ */
+function getChatInputCaretPlainOffset(container) {
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) {
+        return getChatInputPlainText(container).length;
+    }
+    const range = sel.getRangeAt(0);
+    const pre = document.createRange();
+    pre.selectNodeContents(container);
+    pre.setEnd(range.endContainer, range.endOffset);
+    return chatInputRangeToPlainText(pre).length;
+}
+
+/**
+ * @param {HTMLElement} container
+ * @returns {string}
+ */
+function getChatInputPlainTextBeforeCaret(container) {
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) {
+        return '';
+    }
+    const range = sel.getRangeAt(0);
+    const pre = document.createRange();
+    pre.selectNodeContents(container);
+    pre.setEnd(range.endContainer, range.endOffset);
+    return chatInputRangeToPlainText(pre);
+}
+
+/**
+ * @param {Range} range
+ * @returns {HTMLElement|null}
+ */
+function getSkillChipBeforeCaret(range) {
+    const { startContainer, startOffset } = range;
+    if (startContainer.nodeType === Node.TEXT_NODE) {
+        if (startOffset > 0) return null;
+        const prev = startContainer.previousSibling;
+        if (
+            prev &&
+            prev.nodeType === Node.ELEMENT_NODE &&
+            /** @type {HTMLElement} */ (prev).classList.contains('skill-mention-chip')
+        ) {
+            return /** @type {HTMLElement} */ (prev);
+        }
+        return null;
+    }
+    if (startContainer.nodeType === Node.ELEMENT_NODE) {
+        const el = /** @type {HTMLElement} */ (startContainer);
+        const child = el.childNodes[startOffset - 1];
+        if (
+            child &&
+            child.nodeType === Node.ELEMENT_NODE &&
+            /** @type {HTMLElement} */ (child).classList.contains('skill-mention-chip')
+        ) {
+            return /** @type {HTMLElement} */ (child);
+        }
+    }
+    return null;
+}
+
+/**
+ * @param {Range} range
+ * @returns {HTMLElement|null}
+ */
+function getSkillChipAfterCaret(range) {
+    const { startContainer, startOffset } = range;
+    if (startContainer.nodeType === Node.TEXT_NODE) {
+        const len = (startContainer.textContent || '').length;
+        if (startOffset < len) return null;
+        const next = startContainer.nextSibling;
+        if (
+            next &&
+            next.nodeType === Node.ELEMENT_NODE &&
+            /** @type {HTMLElement} */ (next).classList.contains('skill-mention-chip')
+        ) {
+            return /** @type {HTMLElement} */ (next);
+        }
+        return null;
+    }
+    if (startContainer.nodeType === Node.ELEMENT_NODE) {
+        const el = /** @type {HTMLElement} */ (startContainer);
+        const child = el.childNodes[startOffset];
+        if (
+            child &&
+            child.nodeType === Node.ELEMENT_NODE &&
+            /** @type {HTMLElement} */ (child).classList.contains('skill-mention-chip')
+        ) {
+            return /** @type {HTMLElement} */ (child);
+        }
+    }
+    return null;
+}
+
 /** 与 `scripts/skills/renderer-engine-bridge.js` 中 `ALLOWED_ENGINE_OPS` 保持一致 */
 const ALLOWED_SKILLS_ENGINE_RPC_OPS = new Set([
     'runSchemeDesign',
@@ -64,8 +378,46 @@ function preferBriefAnswerFirst(text) {
             t
         );
     const strongDesignIntent =
-        /BOM|原理图|元件库匹配|帮我画板|完整方案|按.*skill|必须调用|runBomAnalysis|画布上/i.test(t);
+        /BOM|原理图|元件库匹配|帮我画板|完整方案|按.*skill|必须调用|runBomAnalysis|画布上|方案设计|硬件方案|元件选型|模块选型/i.test(
+            t
+        );
     return wantsBrief && !strongDesignIntent;
+}
+
+/**
+ * 用户显式点名 skill / 工具名时应走 Agent Loop（不仅放宽字数上限）。
+ * @param {string} text
+ * @returns {boolean}
+ */
+function userMessageNamesExplicitSkill(text) {
+    const t = String(text || '');
+    if (extractAtMentionedSkillsFromMessage(t).length > 0) {
+        return true;
+    }
+    return /scheme_design_skill|completion_suggestion_skill|web_search_exa|summarize_skill|wiring_edit_skill|firmware_codegen_skill|workspace_read_file|workspace_list_dir/i.test(
+        t
+    );
+}
+
+/**
+ * 方案设计 / 选型补全 / BOM 类需求，应对齐 `scheme_design_skill`、`completion_suggestion_skill` 等（非纯概念问句）。
+ * @param {string} text
+ * @returns {boolean}
+ */
+function userMessageSuggestsSchemeOrCompletionAgent(text) {
+    const t = String(text || '').trim();
+    if (!t || t.length > 4000) return false;
+    if (/^(什么是|啥是|什么叫|解释一下)\s*.{0,24}(方案|选型|BOM|skill)\s*[？?]?$/i.test(t)) {
+        return false;
+    }
+    return (
+        /方案设计|硬件方案|电路方案|系统方案|完整方案|元件选型|模块选型|选型方案|选型建议|帮我选型|BOM|物料清单|缺件|补全.{0,4}型号|推荐.{0,8}型号|具体型号|可采购|生成.{0,2}方案|出.{0,2}方案|做.{0,2}方案|设计方案|帮我设计|设计一个|想做一个|想做个|想做一?个/i.test(
+            t
+        ) ||
+        /(?:电机|芯片|传感器|模块|MCU|主控|执行器|云台|飞控|物联网).{0,20}选型|选型.{0,12}(?:电机|芯片|传感器|模块|MCU)/i.test(
+            t
+        )
+    );
 }
 
 /**
@@ -76,6 +428,9 @@ function preferBriefAnswerFirst(text) {
  */
 function explicitFullAgentIntent(text) {
     const t = String(text || '');
+    if (userMessageNamesExplicitSkill(t) || userMessageSuggestsSchemeOrCompletionAgent(t)) {
+        return true;
+    }
     if (
         /「生成完整方案」|生成完整方案|「生成方案编排」|生成方案编排/.test(t) ||
         /(?:元件库|画布).{0,12}(?:匹配|方案|分析)|(?:完整|深度)(?:编排|方案).{0,8}(?:元件|库|画布)/.test(t) ||
@@ -122,12 +477,18 @@ function explicitFullAgentIntent(text) {
 function userMessageSuggestsSkillOrchestration(text) {
     const t = String(text || '').trim();
     if (!t) return false;
+    if (userMessageNamesExplicitSkill(t)) {
+        return true;
+    }
     /** 含显式 skill / 工具名时允许更长指令，避免被 360 字截断误判为「不走 Agent」 */
     const explicitTool =
         /wiring_edit_skill|firmware_codegen_skill|scheme_design_skill|summarize_skill|completion_suggestion_skill|web_search_exa|add_connection|remove_connection/i.test(
             t
         );
-    if (t.length > 360 && !explicitTool) return false;
+    if (explicitTool) {
+        return true;
+    }
+    if (t.length > 360) return false;
     if (t.length > 4000) return false;
     if (/^(什么是|啥是|什么叫)\s*.{0,20}$/.test(t)) return false;
     return /连线|接线|补线|改线|连一下|接上|连上|飞线|自动连线|帮我连|帮(?:我)?(?:在)?画(?:布|板)(?:上)?(?:把|将)?.*连|画(?:布|板)(?:上)?.*(?:连|接)|电路(?:里)?.*(?:连|接)|引脚\s*(?:怎么|如何)?\s*连|GPIO\s*\d+.*连|wiring_edit|add_connection|remove_connection/i.test(
@@ -187,6 +548,14 @@ class ChatManager {
         this._agentTraceMessageId = null;
         /** @type {boolean} 最终合成 SSE 进行中：仅刷新块列表后需恢复 `.fh-agent-answer-stream` */
         this._skillsAgentFinalSynthesisActive = false;
+        /** @type {boolean} 终答已 Markdown 收口，禁止流式 `textContent` 覆盖已渲染 HTML */
+        this._skillsAgentFinalAnswerFinalized = false;
+        /** @type {string} 最终合成 SSE 增量缓冲 */
+        this._skillsAgentFinalStreamBuf = '';
+        /** @type {number|null} */
+        this._skillsAgentFinalStreamRaf = null;
+        /** @type {number|null} */
+        this._skillsAgentFinalStreamPendingMsgId = null;
         /** @type {number|null} 阶段+用时行显示在追踪气泡 `.message-time` 上（避免双气泡） */
         this._agentTraceHeaderMessageId = null;
         /** @type {Promise<string>|null} `getAssetsPath` 缓存，供 data-icon 动态节点复用 */
@@ -201,6 +570,8 @@ class ChatManager {
         this._workspaceLoopStreamPendingMsgId = null;
         /** @type {string} 工作区循环 SSE delta 合并缓冲 */
         this._workspaceLoopStreamBuf = '';
+        /** @type {{ active: boolean, atIndex: number, query: string, selectedIndex: number, filtered: Array<{name:string, label:string, brief:string}> }|null} */
+        this._skillMentionPopup = null;
         this.init();
     }
 
@@ -442,6 +813,258 @@ class ChatManager {
     }
 
     /**
+     * @returns {Array<{name:string, label:string, brief:string}>}
+     */
+    _getSkillMentionPickerItems() {
+        return this.getSkillsForAgent().map((skill) => ({
+            name: skill.name,
+            label: SKILL_PICKER_SHORT_LABEL[skill.name] || skill.name,
+            brief: SKILL_PICKER_BRIEF[skill.name] || SKILL_PICKER_SHORT_LABEL[skill.name] || ''
+        }));
+    }
+
+    /**
+     * @param {HTMLElement|null} [el]
+     * @returns {string}
+     */
+    _getChatInputPlainText(el) {
+        const input = el || document.getElementById('chat-input');
+        if (!input) return '';
+        return getChatInputPlainText(input);
+    }
+
+    /**
+     * @param {string} text
+     * @param {HTMLElement|null} [el]
+     * @returns {void}
+     */
+    _setChatInputPlainText(text, el) {
+        const input = el || document.getElementById('chat-input');
+        if (!input) return;
+        setChatInputPlainTextWithChips(input, text);
+        this.updateSendButton();
+    }
+
+    /**
+     * @param {HTMLElement} el
+     * @returns {{ atIndex: number, query: string }|null}
+     */
+    _detectSkillMentionAtCursor(el) {
+        if (!el) return null;
+        const before = getChatInputPlainTextBeforeCaret(el);
+        const atIndex = before.lastIndexOf('@');
+        if (atIndex < 0) return null;
+        if (atIndex > 0 && /\w/.test(before[atIndex - 1])) return null;
+        const query = before.slice(atIndex + 1);
+        if (/\s/.test(query)) return null;
+        return { atIndex, query };
+    }
+
+    /**
+     * @param {string} query
+     * @returns {Array<{name:string, label:string, brief:string}>}
+     */
+    _filterSkillMentionItems(query) {
+        const q = String(query || '').trim().toLowerCase();
+        const all = this._getSkillMentionPickerItems();
+        if (!q) return all;
+        return all.filter((item) => {
+            const hay = `${item.name} ${item.label} ${item.brief}`.toLowerCase();
+            return hay.includes(q) || item.name.toLowerCase().startsWith(q);
+        });
+    }
+
+    /**
+     * @returns {void}
+     */
+    _closeSkillMentionPopup() {
+        this._skillMentionPopup = null;
+        const popup = document.getElementById('skill-mention-popup');
+        if (popup) {
+            popup.hidden = true;
+            popup.innerHTML = '';
+        }
+    }
+
+    /**
+     * @param {number} atIndex
+     * @param {string} query
+     * @returns {void}
+     */
+    _openSkillMentionPopup(atIndex, query) {
+        const filtered = this._filterSkillMentionItems(query);
+        if (!filtered.length) {
+            this._closeSkillMentionPopup();
+            return;
+        }
+        this._skillMentionPopup = {
+            active: true,
+            atIndex,
+            query,
+            selectedIndex: 0,
+            filtered
+        };
+        this._renderSkillMentionPopup();
+    }
+
+    /**
+     * @returns {void}
+     */
+    _renderSkillMentionPopup() {
+        const state = this._skillMentionPopup;
+        const popup = document.getElementById('skill-mention-popup');
+        if (!state?.active || !popup) return;
+        const { filtered, selectedIndex } = state;
+        popup.hidden = false;
+        popup.innerHTML = `
+            <div class="skill-mention-popup-header">Skills · 输入 @ 点名工具</div>
+            <div class="skill-mention-popup-body" role="listbox">
+                ${filtered
+                    .map(
+                        (item, idx) => `
+                    <button type="button" class="skill-mention-item${idx === selectedIndex ? ' is-active' : ''}" data-skill-name="${item.name}" role="option" aria-selected="${idx === selectedIndex}">
+                        <span class="skill-mention-item-label">${item.label}</span>
+                        <span class="skill-mention-item-name">@${item.name}</span>
+                        <span class="skill-mention-item-brief">${item.brief}</span>
+                    </button>`
+                    )
+                    .join('')}
+            </div>`;
+        const activeEl = popup.querySelector('.skill-mention-item.is-active');
+        if (activeEl && typeof activeEl.scrollIntoView === 'function') {
+            activeEl.scrollIntoView({ block: 'nearest' });
+        }
+    }
+
+    /**
+     * @param {string} skillName
+     * @returns {void}
+     */
+    _selectSkillMentionItem(skillName) {
+        const input = document.getElementById('chat-input');
+        const state = this._skillMentionPopup;
+        if (!input || !state?.active) return;
+        const plain = this._getChatInputPlainText(input);
+        const end = getChatInputCaretPlainOffset(input);
+        const atIndex = state.atIndex;
+        const newPlain = `${plain.slice(0, atIndex)}@${skillName} ${plain.slice(end)}`;
+        setChatInputPlainTextWithChips(input, newPlain);
+        setChatInputCaretPlainOffset(input, atIndex + `@${skillName} `.length);
+        this._closeSkillMentionPopup();
+        input.focus();
+        this.updateSendButton();
+    }
+
+    /**
+     * @returns {void}
+     */
+    _onChatInputForSkillMention() {
+        const input = document.getElementById('chat-input');
+        if (!input) return;
+        const detected = this._detectSkillMentionAtCursor(input);
+        if (!detected) {
+            this._closeSkillMentionPopup();
+            return;
+        }
+        this._openSkillMentionPopup(detected.atIndex, detected.query);
+    }
+
+    /**
+     * @ 芯片整体导航：左右键跳过芯片，Backspace/Delete 整颗删除。
+     * @param {KeyboardEvent} e
+     * @returns {void}
+     */
+    _handleChatInputChipNavigation(e) {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Backspace' && e.key !== 'Delete') {
+            return;
+        }
+        const input = document.getElementById('chat-input');
+        const sel = window.getSelection();
+        if (!input || !sel?.rangeCount || !input.contains(sel.anchorNode)) {
+            return;
+        }
+        const range = sel.getRangeAt(0);
+        if (!range.collapsed) {
+            return;
+        }
+        if (e.key === 'Backspace') {
+            const chip = getSkillChipBeforeCaret(range);
+            if (chip) {
+                e.preventDefault();
+                chip.remove();
+                this.updateSendButton();
+            }
+            return;
+        }
+        if (e.key === 'Delete') {
+            const chip = getSkillChipAfterCaret(range);
+            if (chip) {
+                e.preventDefault();
+                chip.remove();
+                this.updateSendButton();
+            }
+            return;
+        }
+        if (e.key === 'ArrowLeft') {
+            const chip = getSkillChipBeforeCaret(range);
+            if (chip) {
+                e.preventDefault();
+                const r = document.createRange();
+                r.setStartBefore(chip);
+                r.collapse(true);
+                sel.removeAllRanges();
+                sel.addRange(r);
+            }
+            return;
+        }
+        if (e.key === 'ArrowRight') {
+            const chip = getSkillChipAfterCaret(range);
+            if (chip) {
+                e.preventDefault();
+                const r = document.createRange();
+                r.setStartAfter(chip);
+                r.collapse(true);
+                sel.removeAllRanges();
+                sel.addRange(r);
+            }
+        }
+    }
+
+    /**
+     * @param {KeyboardEvent} e
+     * @returns {void}
+     */
+    _onChatInputKeydownForSkillMention(e) {
+        const state = this._skillMentionPopup;
+        if (!state?.active || !state.filtered.length) return;
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            this._closeSkillMentionPopup();
+            return;
+        }
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            state.selectedIndex = (state.selectedIndex + 1) % state.filtered.length;
+            this._renderSkillMentionPopup();
+            return;
+        }
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            state.selectedIndex =
+                (state.selectedIndex - 1 + state.filtered.length) % state.filtered.length;
+            this._renderSkillMentionPopup();
+            return;
+        }
+        if (e.key === 'Enter' || e.key === 'Tab') {
+            e.preventDefault();
+            const item = state.filtered[state.selectedIndex];
+            if (item?.name) {
+                this._selectSkillMentionItem(item.name);
+            }
+        }
+    }
+
+    /**
      * 绑定事件监听器
      */
     bindEvents() {
@@ -465,17 +1088,73 @@ class ChatManager {
         }
 
         if (input) {
-            input.addEventListener('keypress', (e) => {
+            input.addEventListener('keydown', (e) => {
+                this._handleChatInputChipNavigation(e);
+                this._onChatInputKeydownForSkillMention(e);
+                if (e.defaultPrevented) {
+                    return;
+                }
                 if (e.key === 'Enter' && !e.shiftKey) {
+                    if (this._skillMentionPopup?.active) {
+                        return;
+                    }
                     e.preventDefault();
                     this.sendMessage();
                 }
             });
 
+            input.addEventListener('paste', (e) => {
+                e.preventDefault();
+                const text = e.clipboardData?.getData('text/plain') || '';
+                if (!text) return;
+                const sel = window.getSelection();
+                if (!sel?.rangeCount) return;
+                sel.deleteFromDocument();
+                const range = sel.getRangeAt(0);
+                const frag = document.createDocumentFragment();
+                const lines = text.replace(/\r\n/g, '\n').split('\n');
+                lines.forEach((line, idx) => {
+                    if (line) {
+                        frag.appendChild(document.createTextNode(line));
+                    }
+                    if (idx < lines.length - 1) {
+                        frag.appendChild(document.createElement('br'));
+                    }
+                });
+                range.insertNode(frag);
+                range.collapse(false);
+                sel.removeAllRanges();
+                sel.addRange(range);
+                this._onChatInputForSkillMention();
+                this.updateSendButton();
+            });
+
             input.addEventListener('input', () => {
+                this._onChatInputForSkillMention();
                 this.updateSendButton();
             });
         }
+
+        const skillMentionPopup = document.getElementById('skill-mention-popup');
+        if (skillMentionPopup) {
+            skillMentionPopup.addEventListener('mousedown', (e) => {
+                const item = e.target.closest('.skill-mention-item');
+                if (!item) return;
+                e.preventDefault();
+                const skillName = item.getAttribute('data-skill-name');
+                if (skillName) {
+                    this._selectSkillMentionItem(skillName);
+                }
+            });
+        }
+
+        document.addEventListener('click', (e) => {
+            const popup = document.getElementById('skill-mention-popup');
+            const chatInput = document.getElementById('chat-input');
+            if (!popup || !chatInput) return;
+            if (popup.contains(e.target) || chatInput.contains(e.target)) return;
+            this._closeSkillMentionPopup();
+        });
 
         if (clearBtn) {
             clearBtn.addEventListener('click', () => this.clearChat());
@@ -758,7 +1437,7 @@ class ChatManager {
         const input = document.getElementById('chat-input');
         if (!input) return;
 
-        const content = input.value.trim();
+        const content = this._getChatInputPlainText(input).trim();
 
         // 如果正在回复中，执行中断操作
         if (this.isTyping) {
@@ -793,7 +1472,7 @@ class ChatManager {
 
         this.messages.push(userMessage);
         await this.renderMessages();
-        input.value = '';
+        this._setChatInputPlainText('');
 
         // 清除上传的图片
         if (this.uploadedImages.length > 0) {
@@ -857,7 +1536,7 @@ class ChatManager {
             if (this.currentUserMessage) {
                 const input = document.getElementById('chat-input');
                 if (input) {
-                    input.value = this.currentUserMessage.content;
+                    this._setChatInputPlainText(this.currentUserMessage.content, input);
 
                     // 恢复图片
                     if (this.currentUserMessage.images && this.currentUserMessage.images.length > 0) {
@@ -1553,6 +2232,9 @@ class ChatManager {
                 console.log('🤖 机器人回复原文:', content);
                 this.hideTypingIndicator();
                 await this.renderMessages();
+                if (tid && content.trim()) {
+                    this._finalizeAgentTraceAnswerMarkdown(tid, content);
+                }
                 this.scrollToBottom();
                 return;
             }
@@ -2193,6 +2875,11 @@ class ChatManager {
             t.length >= 72 &&
             /方案|设计|实现|搭建|开发|传感器|执行器|主控|嵌入式|电路|硬件|控制|监测|自动化|装置|系统|飞控|云台|整机/.test(t) &&
             /需要|要做|想做一个|想做个|想做|帮我|如何|怎么|哪些|清单|架构|逻辑|条件|指标/.test(t);
+        const moderateProjectIntent =
+            t.length >= 20 &&
+            /(?:方案|选型|设计).{0,40}(?:硬件|电路|云台|系统|嵌入式|物联网|控制|装置)|(?:硬件|电路|云台|物联网|嵌入式).{0,40}(?:方案|选型|设计)/i.test(
+                t
+            );
 
         return (
             marketLike ||
@@ -2200,7 +2887,8 @@ class ChatManager {
             explicitWeb ||
             moduleOrPartSelection ||
             similarSolutionIntent ||
-            substantialProjectIntent
+            substantialProjectIntent ||
+            moderateProjectIntent
         );
     }
 
@@ -2239,13 +2927,17 @@ class ChatManager {
         const webPri = this.needsWebSearchPriority(messageContent);
         const fullAgent = explicitFullAgentIntent(messageContent);
         const skillOrch = userMessageSuggestsSkillOrchestration(messageContent);
-        if (webPri || fullAgent || skillOrch) {
+        const schemeOrCompletion = userMessageSuggestsSchemeOrCompletionAgent(messageContent);
+        const atMentionedSkills = extractAtMentionedSkillsFromMessage(messageContent);
+        if (webPri || fullAgent || skillOrch || schemeOrCompletion || atMentionedSkills.length > 0) {
             this._logSkillsChain('用户发送 → runSkillsAgentLoop', {
                 contentPreview: String(messageContent || '').slice(0, 200),
                 contentChars: String(messageContent || '').length,
                 needsWebSearchPriority: webPri,
                 explicitFullAgentIntent: fullAgent,
                 skillOrchestrationHint: skillOrch,
+                schemeOrCompletionAgent: schemeOrCompletion,
+                atMentionedSkills,
                 model: this.selectedModel
             });
             await this.runSkillsAgentLoop(messageContent, userMessage);
@@ -2967,6 +3659,7 @@ class ChatManager {
         }
         if (
             this._skillsAgentFinalSynthesisActive &&
+            !this._skillsAgentFinalAnswerFinalized &&
             this._agentTraceMessageId === messageId
         ) {
             this._applySkillsAgentFinalStreamToDom(messageId);
@@ -2992,6 +3685,8 @@ class ChatManager {
         this.activeSkillContextId = skillContextId;
 
         this._skillsFlowActive = true;
+        this._skillsAgentFinalAnswerFinalized = false;
+        this._skillsAgentFinalStreamBuf = '';
         /** @type {number} 本轮 agent 追踪气泡 id（供 merge / catch 使用，避免仅依赖 _agentTraceMessageId） */
         let traceIdForThisRun = 0;
         try {
@@ -3097,14 +3792,12 @@ class ChatManager {
                     projectPath:
                         typeof window.app?.currentProject === 'string'
                             ? String(window.app.currentProject).trim()
-                            : ''
+                            : '',
+                    userSelectedSkills: extractAtMentionedSkillsFromMessage(userMessage)
                 });
             } finally {
                 if (typeof unsubscribeFinalStream === 'function') {
                     unsubscribeFinalStream();
-                }
-                if (traceIdForThisRun) {
-                    this._applySkillsAgentFinalStreamToDom(traceIdForThisRun);
                 }
                 this._cancelSkillsAgentFinalStreamRaf();
             }
@@ -3146,6 +3839,10 @@ class ChatManager {
                     break;
                 }
             }
+            const streamFallback = String(this._skillsAgentFinalStreamBuf || '').trim();
+            if (!String(finalContent || '').trim() && streamFallback) {
+                finalContent = streamFallback;
+            }
             const tmsgOk = traceIdForThisRun ? this.messages.find((m) => m.id === traceIdForThisRun) : null;
             if (tmsgOk) {
                 tmsgOk.isAgentTrace = false;
@@ -3162,7 +3859,12 @@ class ChatManager {
                     timestamp: new Date()
                 });
             }
+            this._skillsAgentFinalSynthesisActive = false;
             await this.renderMessages();
+            if (traceIdForThisRun && String(finalContent || '').trim()) {
+                this._finalizeAgentTraceAnswerMarkdown(traceIdForThisRun, finalContent);
+            }
+            this._skillsAgentFinalStreamBuf = '';
             this.scrollToBottom();
         } catch (error) {
             this._logSkillsChain('skills 链路异常', {
@@ -3296,15 +3998,55 @@ class ChatManager {
     }
 
     /**
-     * 保证追踪气泡内存在流式答案节点；主进程已要求最终合成仅 Markdown，故缓冲即正文（纯文本预览，收尾时再 `renderMarkdown`）。
+     * 终答区是否已为 Markdown 渲染结果（非流式纯文本预览）
+     * @param {Element} root `.fh-agent-answer` 节点
+     * @returns {boolean}
+     */
+    _isAgentTraceAnswerRenderedMarkdown(root) {
+        if (!root) return false;
+        if (root.querySelector('.fh-agent-answer-stream, .fh-agent-placeholder')) {
+            return false;
+        }
+        return Boolean(
+            root.querySelector('h1, h2, h3, h4, table, ul, ol, p, blockquote, pre')
+        );
+    }
+
+    /**
+     * 将追踪气泡内终答区收口为 `renderMarkdown` HTML，避免流式 `textContent` 残留裸 Markdown。
+     * @param {number} messageId
+     * @param {string} markdownText
+     * @returns {void}
+     */
+    _finalizeAgentTraceAnswerMarkdown(messageId, markdownText) {
+        const text = String(markdownText || '').trim();
+        if (!text) return;
+        const root = document.querySelector(`[data-message-id="${messageId}"] .fh-agent-answer`);
+        if (!root) return;
+        root.innerHTML = this.renderMarkdown(text);
+        this._skillsAgentFinalAnswerFinalized = true;
+        this._skillsAgentFinalSynthesisActive = false;
+    }
+
+    /**
+     * 保证追踪气泡内存在流式答案节点；合成进行中仅纯文本预览，收口后由 `_finalizeAgentTraceAnswerMarkdown` 转 HTML。
      * @param {number} messageId
      * @returns {void}
      */
     _applySkillsAgentFinalStreamToDom(messageId) {
+        if (this._skillsAgentFinalAnswerFinalized || !this._skillsAgentFinalSynthesisActive) {
+            return;
+        }
         const root = document.querySelector(`[data-message-id="${messageId}"] .fh-agent-answer`);
         if (!root) return;
+        if (this._isAgentTraceAnswerRenderedMarkdown(root)) {
+            return;
+        }
         let el = root.querySelector('.fh-agent-answer-stream');
         if (!el) {
+            if (root.childElementCount > 0 && !root.querySelector('.fh-agent-placeholder')) {
+                return;
+            }
             root.innerHTML =
                 '<div class="fh-stream-preview fh-agent-answer-stream" style="white-space:pre-wrap;word-break:break-word;font-size:14px;line-height:1.55"></div>';
             el = root.querySelector('.fh-agent-answer-stream');
@@ -3793,7 +4535,7 @@ class ChatManager {
 
         if (!input || !sendBtn) return;
 
-        const hasContent = input.value.trim().length > 0;
+        const hasContent = this._getChatInputPlainText(input).trim().length > 0;
         const hasImage = this.uploadedImages && this.uploadedImages.length > 0;
 
         // 如果正在回复中，显示中断样式
@@ -3932,7 +4674,7 @@ class ChatManager {
         const input = document.getElementById('chat-input');
         if (!input) return;
 
-        input.value = message.content;
+        this._setChatInputPlainText(message.content, input);
         input.focus();
 
         // 如果有图片，恢复图片
